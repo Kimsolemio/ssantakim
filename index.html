@@ -13,6 +13,21 @@
 
     <title>나만의 스마트 가계부</title>
     
+    <!-- 모바일 드래그 앤 드롭 폴리필 (아이폰 등 터치 기기 지원용) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/scroll-behaviour.min.js"></script>
+    
+    <script>
+        // 모바일 드래그 설정 (0.3초 길게 누르면 드래그 시작)
+        try {
+            MobileDragDrop.polyfill({
+                dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride,
+                holdToDrag: 300
+            });
+        } catch (e) { console.log('DnD Polyfill Error', e); }
+    </script>
+
     <style>
         /* 기본 폰트 및 배경 */
         body { 
@@ -65,6 +80,10 @@
         /* 유틸리티 */
         .safe-top { padding-top: env(safe-area-inset-top); }
         .touch-action-none { touch-action: none; }
+        
+        /* 드래그 앤 드롭 스타일 */
+        .drag-over { background-color: rgba(16, 185, 129, 0.1) !important; border: 2px dashed #10B981 !important; }
+        .dragging { opacity: 0.5; }
     </style>
 
     <!-- Tailwind CSS -->
@@ -286,6 +305,41 @@
                 if (distance < -minSwipeDistance) handlePrevMonth();
             };
 
+            // --- Drag and Drop Handlers ---
+            const handleDragStart = (e, id) => {
+                e.dataTransfer.setData("text/plain", id);
+                e.dataTransfer.effectAllowed = "move";
+                e.target.style.opacity = "0.5";
+            };
+
+            const handleDragEnd = (e) => {
+                e.target.style.opacity = "1";
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                e.currentTarget.classList.add("drag-over");
+            };
+
+            const handleDragLeave = (e) => {
+                e.currentTarget.classList.remove("drag-over");
+            };
+
+            const handleDrop = (e, targetDateStr) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove("drag-over");
+                const id = e.dataTransfer.getData("text/plain");
+                
+                if (id) {
+                    const numId = Number(id);
+                    setTransactions(prev => prev.map(t => 
+                        t.id === numId ? { ...t, date: targetDateStr } : t
+                    ));
+                    showAlert('날짜가 변경되었습니다.');
+                }
+            };
+
             const handleDateClick = (dateStr) => {
                 if (!dateStr) return;
                 setEditingId(null);
@@ -502,7 +556,14 @@
                                     className={`grid grid-cols-7 gap-1 ${slideDirection === 'right' ? 'slide-in-right' : slideDirection === 'left' ? 'slide-in-left' : ''}`}
                                 >
                                     {generateCalendarDays().map((item, idx) => (
-                                        <div key={idx} onClick={() => handleDateClick(item.dateStr)} className={`min-h-[85px] p-1 flex flex-col rounded-xl transition-colors ${!item.day ? 'pointer-events-none' : 'active:bg-gray-50'}`}>
+                                        <div 
+                                            key={idx} 
+                                            onClick={() => handleDateClick(item.dateStr)} 
+                                            onDragOver={item.day ? handleDragOver : undefined}
+                                            onDragLeave={item.day ? handleDragLeave : undefined}
+                                            onDrop={item.day ? (e) => handleDrop(e, item.dateStr) : undefined}
+                                            className={`min-h-[85px] p-1 flex flex-col rounded-xl transition-colors ${!item.day ? 'pointer-events-none' : 'active:bg-gray-50'}`}
+                                        >
                                             {item.day && (
                                                 <>
                                                     <span className={`text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${
@@ -512,7 +573,14 @@
                                                     
                                                     <div className="flex-1 flex flex-col gap-1 w-full overflow-hidden">
                                                         {item.transactions.slice(0, 3).map((t) => (
-                                                            <div key={t.id} onClick={(e) => handleEditClick(t, e)} className={`flex items-center px-1 py-0.5 rounded-md ${t.type === 'income' ? 'bg-blue-50' : 'bg-red-50'}`}>
+                                                            <div 
+                                                                key={t.id} 
+                                                                onClick={(e) => handleEditClick(t, e)} 
+                                                                draggable="true"
+                                                                onDragStart={(e) => handleDragStart(e, t.id)}
+                                                                onDragEnd={handleDragEnd}
+                                                                className={`flex items-center px-1 py-0.5 rounded-md ${t.type === 'income' ? 'bg-blue-50' : 'bg-red-50'}`}
+                                                            >
                                                                 <div className={`h-1.5 w-1.5 rounded-full mr-1 shrink-0 ${t.type === 'income' ? 'bg-blue-400' : 'bg-red-400'}`}></div>
                                                                 <span className={`text-[9px] font-medium truncate ${t.type === 'income' ? 'text-blue-600' : 'text-red-600'}`}>{t.memo || t.category}</span>
                                                             </div>
@@ -730,7 +798,7 @@
                     )}
 
                     {alertModal.isOpen && (
-                        <div className="fixed top-safe left-1/2 -translate-x-1/2 mt-4 z-[70] animate-fade-in px-6 py-3 bg-gray-800 text-white text-sm font-bold rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
+                        <div className="fixed top-safe left-1/2 -translate-x-1/2 mt-4 z-[60] animate-fade-in px-6 py-3 bg-gray-800 text-white text-sm font-bold rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
                             {alertModal.type === 'success' ? <CheckCircle className="w-4 h-4 text-emerald-400"/> : <AlertCircle className="w-4 h-4 text-red-400"/>}
                             {alertModal.message}
                         </div>
