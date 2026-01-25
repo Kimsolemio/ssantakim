@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -203,27 +203,16 @@
                 const initFirebase = async () => {
                     const { firebaseApp } = window;
                     if (!firebaseApp) return;
-
-                    // [수정] Firebase 설정 확인 및 에러 처리 강화
-                    let firebaseConfig;
-                    try {
-                        if (typeof __firebase_config === 'undefined') {
-                            throw new Error("설정 파일 없음");
-                        }
-                        firebaseConfig = JSON.parse(__firebase_config);
-                    } catch (e) {
-                        console.error("Firebase config missing:", e);
-                        // 로컬 실행 시 안내 메시지 표시
-                        const errorDiv = document.getElementById('error-display');
-                        if (errorDiv) {
-                            errorDiv.style.display = 'block';
-                            errorDiv.innerHTML = '<strong>⚠️ 설정이 필요합니다.</strong><br>이 파일은 미리보기 환경에서만 자동으로 작동합니다.<br>개인 서버나 로컬에서 실행하시려면 소스 코드 내에 Firebase API 키를 직접 입력해야 합니다.';
-                            const loadingEl = document.getElementById('loading');
-                            if(loadingEl) loadingEl.style.display = 'none';
-                        }
-                        return;
-                    }
-
+                    const firebaseConfig = {
+                      apiKey: "AIzaSyAHenVPatYoRTW50WBgaww9OmqY7YxyMss",
+                      authDomain: "ssantakim-47baf.firebaseapp.com",
+                      projectId: "ssantakim-47baf",
+                      storageBucket: "ssantakim-47baf.firebasestorage.app",
+                      messagingSenderId: "152500074469",
+                      appId: "1:152500074469:web:1f2b3c42018e9ef7e4610c",
+                      measurementId: "G-HMKZ4NV799"
+                    };
+                    
                     try {
                         const app = firebaseApp.initializeApp(firebaseConfig);
                         const auth = firebaseApp.getAuth(app);
@@ -1077,3 +1066,4 @@
     </script>
 </body>
 </html>
+
