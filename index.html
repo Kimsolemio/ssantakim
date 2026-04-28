@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -333,15 +334,51 @@
                 showAlert(editingId ? "수정되었습니다." : "저장되었습니다.");
             };
 
+            // [수정 포인트 1]: 일반 지출 삭제 버그 완전 수정
             const deleteTransaction = async (id) => {
                 askConfirm("정말 삭제하시겠습니까?", async () => {
                     if (isFirebaseReady && user) {
                         await deleteDoc(doc(db, getColPath('transactions'), id));
                     } else {
-                        setTransactions(prev => prev.filter(t => t.id !== id));
+                        // 삭제 즉시 상태를 업데이트하고 로컬 스토리지에 강제 저장하여 꼬임을 방지합니다.
+                        setTransactions(prev => {
+                            const updatedList = prev.filter(t => t.id !== id);
+                            localStorage.setItem('moneybook_pro_local', JSON.stringify(updatedList));
+                            return updatedList;
+                        });
                     }
                     setIsModalOpen(false);
                     showAlert("삭제되었습니다.");
+                });
+            };
+
+            // [수정 포인트 3]: 고정 지출을 현재 표시된 달력에 일괄 반영하는 함수 분리
+            const applyRecurringToCurrentMonth = async () => {
+                askConfirm(`${month + 1}월 달력에 고정 내역을 일괄 등록할까요?`, async () => {
+                    const promises = [];
+                    let count = 0;
+                    const newTransactions = [...transactions];
+
+                    activeRecurring.forEach(item => {
+                        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(item.day).padStart(2,'0')}`;
+                        if(!transactions.some(t => t.date === dateStr && t.memo === item.memo)) {
+                            const newId = generateId();
+                            const payload = { ...item, date: dateStr, amount: Number(item.amount) };
+                            if (isFirebaseReady && user) promises.push(setDoc(doc(db, getColPath('transactions'), newId), payload));
+                            else newTransactions.push({ ...payload, id: newId });
+                            count++;
+                        }
+                    });
+
+                    if (isFirebaseReady && user) {
+                        await Promise.all(promises);
+                    } else {
+                        setTransactions(newTransactions);
+                        localStorage.setItem('moneybook_pro_local', JSON.stringify(newTransactions));
+                    }
+                    
+                    showAlert(`${count}건이 이번 달 내역에 반영되었습니다.`);
+                    setIsRecurringModalOpen(false);
                 });
             };
 
@@ -535,8 +572,19 @@
 
                         {/* 이달의 예정 고정 내역 요약 */}
                         <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-50 mb-20">
+                            {/* [수정 포인트 2]: 메인 화면 고정 지출 전용 '이달 내역에 반영' 버튼 추가 */}
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2"><PiggyBank size={16} className="text-[#3182F6]" /> 이달 예정 고정 입출금</h3>
+                                <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                                    <PiggyBank size={16} className="text-[#3182F6]" /> 이달 예정 고정 입출금
+                                </h3>
+                                {activeRecurring.length > 0 && (
+                                    <button 
+                                        onClick={applyRecurringToCurrentMonth} 
+                                        className="text-[11px] bg-[#E8F3FF] text-[#3182F6] px-3 py-1.5 rounded-xl font-bold active:bg-blue-100 transition-colors shadow-sm"
+                                    >
+                                        이달 내역에 반영
+                                    </button>
+                                )}
                             </div>
                             <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
                                 {activeRecurring.length === 0 ? (
@@ -651,27 +699,7 @@
                                         showAlert("삭제되었습니다.");
                                     });
                                 }}
-                                onApply={async () => {
-                                    askConfirm("현재 보이는 달력에 이번 달 예정 내역을 일괄 등록할까요?", async () => {
-                                        const promises = [];
-                                        let count = 0;
-                                        activeRecurring.forEach(item => {
-                                            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(item.day).padStart(2,'0')}`;
-                                            if(!transactions.some(t => t.date === dateStr && t.memo === item.memo)) {
-                                                const newId = generateId();
-                                                const payload = { ...item, date: dateStr, amount: Number(item.amount) };
-                                                if (isFirebaseReady && user) promises.push(setDoc(doc(db, getColPath('transactions'), newId), payload));
-                                                else transactions.push({ ...payload, id: newId });
-                                                count++;
-                                            }
-                                        });
-                                        if (isFirebaseReady && user) await Promise.all(promises);
-                                        else localStorage.setItem('moneybook_pro_local', JSON.stringify(transactions));
-                                        
-                                        showAlert(`${count}건이 이번 달 내역에 반영되었습니다.`);
-                                        setIsRecurringModalOpen(false);
-                                    });
-                                }}
+                                onApply={applyRecurringToCurrentMonth}
                             />
                         </Modal>
                     )}
@@ -749,7 +777,8 @@
                         <div className="relative"><input type="number" className="w-full p-4 bg-gray-50 rounded-2xl text-2xl font-black text-right pr-12 border-none outline-none focus:ring-2 focus:ring-blue-100" placeholder="0" value={local.amount} onChange={e => setLocal({...local, amount: e.target.value})} required/><span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-gray-300">원</span></div>
                     </div>
                     <div className="flex gap-3 pt-4">
-                        {isEdit && <button type="button" onClick={onDelete} className="p-4 bg-red-50 text-red-500 rounded-2xl active:bg-red-100"><Trash2 size={24}/></button>}
+                        {/* [수정 포인트 1 적용 부분] 폼 제출방지와 함수 명확한 바인딩 처리 */}
+                        {isEdit && <button type="button" onClick={(e) => { e.preventDefault(); onDelete(); }} className="p-4 bg-red-50 text-red-500 rounded-2xl active:bg-red-100"><Trash2 size={24}/></button>}
                         <button type="submit" className="flex-1 p-4 bg-[#191F28] text-white font-bold rounded-2xl active:scale-[0.98] transition-transform shadow-lg">기록 저장하기</button>
                     </div>
                 </form>
@@ -833,3 +862,5 @@
     </script>
 </body>
 </html>
+
+```
