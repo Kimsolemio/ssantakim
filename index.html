@@ -5,657 +5,551 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="스마트 가계부">
+    <meta name="apple-mobile-web-app-title" content="가족 가계부">
     <meta name="theme-color" content="#F2F4F6">
-    
     <link rel="apple-touch-icon" href="./icon.png">
-    <link rel="shortcut icon" href="./icon.png">
+    <title>실시간 공유 가족 가계부 PRO</title>
 
-    <title>나만의 스마트 가계부</title>
-    
-    <!-- 모바일 드래그 앤 드롭 폴리필 (아이폰 등 터치 기기 지원용) -->
+    <!-- 모바일 터치 드래그 앤 드롭 지원 라이브러리 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
     <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/scroll-behaviour.min.js"></script>
-    
     <script>
-        // 모바일 드래그 설정 (0.3초 길게 누르면 드래그 시작)
         try {
             MobileDragDrop.polyfill({
                 dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride,
                 holdToDrag: 300
             });
-        } catch (e) { console.log('DnD Polyfill Error', e); }
+        } catch (e) { console.error("DnD Polyfill Error:", e); }
     </script>
 
     <style>
-        /* 기본 폰트 및 배경 */
         body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
             background-color: #F2F4F6;
             color: #191F28;
             -webkit-tap-highlight-color: transparent;
             padding-bottom: env(safe-area-inset-bottom);
             overflow-x: hidden;
         }
-
-        /* 스크롤바 숨김 */
         ::-webkit-scrollbar { display: none; }
         
-        /* 애니메이션 */
-        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        
+        /* 애니메이션 정의 */
         .animate-slide-up { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
-        .animate-fade-in { animation: fadeIn 0.2s ease-out; }
-        .animate-scale-in { animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-
-        /* 달력 좌우 슬라이드 애니메이션 */
-        @keyframes slideInFromRight {
-            0% { transform: translateX(20px); opacity: 0; }
-            100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideInFromLeft {
-            0% { transform: translateX(-20px); opacity: 0; }
-            100% { transform: translateX(0); opacity: 1; }
-        }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         
         .slide-in-right { animation: slideInFromRight 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes slideInFromRight { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        
         .slide-in-left { animation: slideInFromLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes slideInFromLeft { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-        /* 로딩 및 에러 화면 */
-        #error-display { display: none; padding: 20px; background: #fee2e2; color: #991b1b; margin: 20px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
-        .loading-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; width: 100%; position: fixed; top: 0; left: 0; background: #fff; z-index: 9999; transition: opacity 0.5s; }
-        .spinner { width: 40px; height: 40px; border: 4px solid #E5E7EB; border-top: 4px solid #10B981; border-radius: 50%; animation: spin 1s linear infinite; }
+        .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* 로딩 화면 */
+        .loading-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; width: 100%; position: fixed; top: 0; left: 0; background: #fff; z-index: 9999; }
+        .spinner { width: 35px; height: 35px; border: 3px solid #E5E7EB; border-top: 3px solid #3182F6; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* 오버레이 로딩 (OCR용) */
-        .overlay-loading {
-            position: absolute; inset: 0; background: rgba(255,255,255,0.8);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 60; border-radius: 24px;
-        }
-
-        /* 유틸리티 */
         .safe-top { padding-top: env(safe-area-inset-top); }
-        .touch-action-none { touch-action: none; }
-        
-        /* 드래그 앤 드롭 스타일 */
-        .drag-over { background-color: rgba(16, 185, 129, 0.1) !important; border: 2px dashed #10B981 !important; }
-        .dragging { opacity: 0.5; }
+        .drag-over { background-color: rgba(49, 130, 246, 0.1) !important; border: 2px dashed #3182F6 !important; }
+        .calendar-cell { min-height: 95px; border: 0.5px solid #f8f9fa; }
     </style>
 
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- React & ReactDOM -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <!-- Tesseract.js (이미지 문자 인식 라이브러리) -->
     <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <script>
-        window.onerror = function(msg, url, lineNo, columnNo, error) {
-            var errorDisplay = document.getElementById('error-display');
-            var loading = document.getElementById('loading');
-            if (errorDisplay) {
-                if(loading) loading.style.display = 'none';
-                errorDisplay.style.display = 'block';
-                errorDisplay.innerHTML = '<strong>⚠️ 오류가 발생했습니다.</strong><br>화면을 캡처하여 개발자에게 문의해주세요.<br><br>' + msg + '<br>Line: ' + lineNo;
-            }
-            return false;
-        };
+    <!-- 모듈 임포트 설정 -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.292.0",
+            "firebase/app": "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js",
+            "firebase/auth": "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js",
+            "firebase/firestore": "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js"
+        }
+    }
     </script>
 </head>
 <body>
-    <div id="error-display"></div>
     <div id="root">
-        <div id="loading" class="loading-screen">
+        <div class="loading-screen" id="initial-loader">
             <div class="spinner mb-4"></div>
-            <span class="text-gray-500 font-bold text-sm">가계부를 준비하고 있어요...</span>
+            <span class="text-gray-400 text-sm font-bold">클라우드 서버 연결 중...</span>
         </div>
     </div>
 
-    <!-- React Application Script -->
-    <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
-        const { createRoot } = ReactDOM;
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, 
+            PieChart as ChartIcon, Trash2, TrendingUp, TrendingDown, 
+            Repeat, X, CheckCircle, AlertCircle, ClipboardPaste, Camera, Wand2,
+            Download, Upload, PiggyBank
+        } from 'lucide-react';
+        
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+        import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
-        // --- 아이콘 컴포넌트 ---
-        const IconBase = ({ children, className, ...props }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>{children}</svg>
-        );
-        const ChevronLeft = (props) => <IconBase {...props}><path d="m15 18-6-6 6-6"/></IconBase>;
-        const ChevronRight = (props) => <IconBase {...props}><path d="m9 18 6-6-6-6"/></IconBase>;
-        const Plus = (props) => <IconBase {...props}><path d="M5 12h14M12 5v14"/></IconBase>;
-        const CalendarIcon = (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></IconBase>;
-        const ListIcon = (props) => <IconBase {...props}><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></IconBase>;
-        const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
-        const TrendingUp = (props) => <IconBase {...props}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></IconBase>;
-        const TrendingDown = (props) => <IconBase {...props}><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></IconBase>;
-        const Wallet = (props) => <IconBase {...props}><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></IconBase>;
-        const Repeat = (props) => <IconBase {...props}><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></IconBase>;
-        const X = (props) => <IconBase {...props}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>;
-        const CheckCircle = (props) => <IconBase {...props}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></IconBase>;
-        const AlertCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></IconBase>;
-        const ClipboardPaste = (props) => <IconBase {...props}><path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3a1 1 0 0 0-1-1Z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2M11 14h10"/><path d="m17 10 4 4-4 4"/></IconBase>;
-        const Wand2 = (props) => <IconBase {...props}><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></IconBase>;
-        const PiggyBank = (props) => <IconBase {...props}><path d="M19 5c-1.5 0-2.8.6-3.8 1.5l-2.5 2.5"/><path d="M2 20.17C2 18.82 2.6 17.5 3.5 16.5l.5-.5 3-3a5.5 5.5 0 0 1 1.7-1.3"/><path d="M22 17c0 1.66-1.34 3-3 3h-2.5"/><path d="M10 21h4.5a2.5 2.5 0 0 0 2.5-2.5"/><path d="M7 8h10"/><path d="M16 16c0-1.5-2-2-2-4"/><circle cx="17.5" cy="10.5" r=".5"/></IconBase>;
-        const Camera = (props) => <IconBase {...props}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></IconBase>;
-
-        const INITIAL_DATA = [
-            { id: 1, date: '2023-10-25', type: 'expense', category: '식비', amount: 12000, memo: '점심 식사' },
-            { id: 2, date: '2023-10-25', type: 'income', category: '급여', amount: 3500000, memo: '10월 월급' },
-            { id: 3, date: '2023-10-28', type: 'expense', category: '교통', amount: 1500, memo: '버스비' },
-        ];
-
+        // ==========================================
+        // 1. 초기 데이터 및 상수 설정
+        // ==========================================
         const CATEGORIES = {
             expense: ['식비', '교통', '문화/생활', '쇼핑/뷰티', '의료/건강', '교육', '공과금', '저축/보험', '대출이자', '기타'],
             income: ['급여', '용돈', '금융수입', '기타']
         };
 
-        function App() {
-            // State
-            const [transactions, setTransactions] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('myMoneyBook');
-                    return saved ? JSON.parse(saved) : INITIAL_DATA;
-                } catch (e) { return INITIAL_DATA; }
-            });
+        const INITIAL_DATA = [
+            { id: "init-1", date: new Date().toISOString().split('T')[0], type: 'expense', category: '기타', amount: 0, memo: '환영합니다! 첫 기록을 남겨보세요.' }
+        ];
 
+        // ==========================================
+        // 2. Firebase 연결 설정
+        // ==========================================
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'family-money-pro';
+        const getColPath = (colName) => `artifacts/${appId}/public/data/${colName}`;
+
+        let firebaseApp, auth, db;
+        const isFirebaseReady = firebaseConfig.apiKey && firebaseConfig.apiKey !== "";
+        if (isFirebaseReady) {
+            firebaseApp = initializeApp(firebaseConfig);
+            auth = getAuth(firebaseApp);
+            db = getFirestore(firebaseApp);
+        }
+
+        // ==========================================
+        // 3. 유틸리티 함수
+        // ==========================================
+        const formatCurrency = (val) => new Intl.NumberFormat('ko-KR').format(val);
+        const generateId = () => {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+            return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+        };
+
+        // ==========================================
+        // 4. 메인 앱 컴포넌트
+        // ==========================================
+        function App() {
+            // --- Refs ---
+            const fileInputRef = useRef(null);
+            const importInputRef = useRef(null);
+            const workerRef = useRef(null);
+            const touchStart = useRef(null);
+
+            // --- State ---
+            const [user, setUser] = useState(null);
+            const [transactions, setTransactions] = useState(() => {
+                const localData = localStorage.getItem('moneybook_pro_local');
+                return localData ? JSON.parse(localData) : INITIAL_DATA;
+            });
             const [recurringItems, setRecurringItems] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('myMoneyBook_recurring');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) { return []; }
+                const localRec = localStorage.getItem('moneybook_rec_local');
+                return localRec ? JSON.parse(localRec) : [];
             });
             
             const [currentDate, setCurrentDate] = useState(new Date());
-            const [viewMode, setViewMode] = useState('calendar'); 
+            const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'stats'
+            const [slideDirection, setSlideDirection] = useState('none');
+            const [ocrLoading, setOcrLoading] = useState(false);
+            
+            // 모달 상태
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
             const [isParserOpen, setIsParserOpen] = useState(false);
             const [editingId, setEditingId] = useState(null);
-            const [slideDirection, setSlideDirection] = useState('none');
-            const [ocrLoading, setOcrLoading] = useState(false); 
             
-            const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
-            const [alertModal, setAlertModal] = useState({ isOpen: false, message: '', type: 'success' });
-
-            const [form, setForm] = useState({
-                type: 'expense',
-                date: new Date().toISOString().split('T')[0],
-                category: '식비',
-                amount: '',
-                memo: ''
+            // 폼 상태
+            const [formState, setFormState] = useState({ 
+                type: 'expense', 
+                date: new Date().toISOString().split('T')[0], 
+                category: '식비', 
+                amount: '', 
+                memo: '' 
             });
-
-            const [recurringForm, setRecurringForm] = useState({
-                day: 1,
-                type: 'expense',
-                category: '식비',
-                amount: '',
-                memo: ''
-            });
-
             const [smsText, setSmsText] = useState('');
-            
-            // Refs
-            const lastWheelTime = useRef(0);
-            const touchStart = useRef(null);
-            const touchEnd = useRef(null);
-            const minSwipeDistance = 50;
-            const fileInputRef = useRef(null); 
+            const [alert, setAlert] = useState({ show: false, message: '', type: 'success' });
+            const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
 
+            // --- Effects ---
+            
+            // 초기 로딩 화면 숨김
             useEffect(() => {
-                const loadingEl = document.getElementById('loading');
-                if(loadingEl) loadingEl.style.display = 'none';
+                const loader = document.getElementById('initial-loader');
+                if (loader) loader.style.display = 'none';
             }, []);
 
-            useEffect(() => { localStorage.setItem('myMoneyBook', JSON.stringify(transactions)); }, [transactions]);
-            useEffect(() => { localStorage.setItem('myMoneyBook_recurring', JSON.stringify(recurringItems)); }, [recurringItems]);
-
+            // 로컬 스토리지 자동 백업 (Firebase 미사용시)
             useEffect(() => {
-                const handleKeyDown = (e) => {
-                    if (isModalOpen || isRecurringModalOpen || isParserOpen) return;
-                    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-                    if (e.key === 'ArrowLeft') handlePrevMonth();
-                    if (e.key === 'ArrowRight') handleNextMonth();
-                };
-                window.addEventListener('keydown', handleKeyDown);
-                return () => window.removeEventListener('keydown', handleKeyDown);
-            }, [currentDate, isModalOpen, isRecurringModalOpen, isParserOpen]);
+                if (!isFirebaseReady) {
+                    localStorage.setItem('moneybook_pro_local', JSON.stringify(transactions));
+                    localStorage.setItem('moneybook_rec_local', JSON.stringify(recurringItems));
+                }
+            }, [transactions, recurringItems]);
 
+            // Firebase 인증 및 데이터 동기화
+            useEffect(() => {
+                if (!isFirebaseReady) return;
+
+                const initAuth = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (e) { console.error("Firebase Auth Fail:", e); }
+                };
+                initAuth();
+
+                const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+                    setUser(currentUser);
+                    if (currentUser) {
+                        const unsubTx = onSnapshot(collection(db, getColPath('transactions')), (snap) => {
+                            setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                        });
+                        const unsubRec = onSnapshot(collection(db, getColPath('recurring')), (snap) => {
+                            setRecurringItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                        });
+                        return () => { unsubTx(); unsubRec(); };
+                    }
+                });
+                return () => unsubAuth();
+            }, []);
+
+            // --- 데이터 연산 (Memoization) ---
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth();
 
-            const monthlyTransactions = useMemo(() => {
-                return transactions.filter(t => {
-                    const tDate = new Date(t.date);
-                    return tDate.getFullYear() === year && tDate.getMonth() === month;
-                }).sort((a, b) => new Date(b.date) - new Date(a.date)); 
-            }, [transactions, year, month]);
+            const monthlyData = useMemo(() => transactions.filter(t => {
+                const d = new Date(t.date);
+                return d.getFullYear() === year && d.getMonth() === month;
+            }).sort((a, b) => new Date(b.date) - new Date(a.date)), [transactions, year, month]);
 
-            const summary = useMemo(() => {
-                return monthlyTransactions.reduce((acc, curr) => {
-                    if (curr.type === 'income') acc.income += curr.amount;
-                    else acc.expense += curr.amount;
-                    return acc;
-                }, { income: 0, expense: 0 });
-            }, [monthlyTransactions]);
+            const summary = useMemo(() => monthlyData.reduce((acc, curr) => {
+                acc[curr.type] += Number(curr.amount);
+                return acc;
+            }, { income: 0, expense: 0 }), [monthlyData]);
 
-            const generateCalendarDays = () => {
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const startDayOfWeek = firstDay.getDay(); 
-                const daysInMonth = lastDay.getDate();
-                const days = [];
-                for (let i = 0; i < startDayOfWeek; i++) days.push({ day: null });
-                for (let i = 1; i <= daysInMonth; i++) {
-                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-                    const dailyTx = transactions.filter(t => t.date === dateStr);
-                    days.push({ day: i, dateStr, transactions: dailyTx });
-                }
-                return days;
-            };
+            // 이번 달에 해당하는 고정 내역 필터링 (연단위/월단위)
+            const activeRecurring = useMemo(() => recurringItems.filter(item => 
+                (item.frequency === 'monthly') || 
+                (item.frequency === 'yearly' && Number(item.month) === (month + 1))
+            ), [recurringItems, month]);
 
-            const formatCurrency = (amount) => new Intl.NumberFormat('ko-KR').format(amount) + '원';
-            const formatSimpleCurrency = (amount) => new Intl.NumberFormat('ko-KR').format(amount);
-
-            const showAlert = (message, type = 'success') => {
-                setAlertModal({ isOpen: true, message, type });
-                setTimeout(() => setAlertModal(prev => ({ ...prev, isOpen: false })), 3000);
-            };
-            const askConfirm = (message, onConfirm) => {
-                setConfirmModal({ isOpen: true, message, onConfirm });
-            };
-            const handleConfirmAction = () => {
-                if (confirmModal.onConfirm) confirmModal.onConfirm();
-                setConfirmModal({ ...confirmModal, isOpen: false });
-            };
-
-            const handlePrevMonth = () => {
-                setSlideDirection('left');
-                setCurrentDate(new Date(year, month - 1, 1));
-            };
-            const handleNextMonth = () => {
-                setSlideDirection('right');
-                setCurrentDate(new Date(year, month + 1, 1));
-            };
-
-            const handleWheel = (e) => {
-                if (isModalOpen || isRecurringModalOpen || isParserOpen) return;
-                if (Date.now() - lastWheelTime.current < 300) return;
-                if (viewMode !== 'calendar') return;
-                lastWheelTime.current = Date.now();
-                if (e.deltaY < 0) handlePrevMonth(); else if (e.deltaY > 0) handleNextMonth();
-            };
-            const onTouchStart = (e) => { touchEnd.current = null; touchStart.current = e.targetTouches[0].clientX; };
-            const onTouchMove = (e) => { touchEnd.current = e.targetTouches[0].clientX; };
-            const onTouchEnd = () => {
-                if (!touchStart.current || !touchEnd.current) return;
-                if (isModalOpen || isRecurringModalOpen || isParserOpen) return;
-                const distance = touchStart.current - touchEnd.current;
-                if (distance > minSwipeDistance) handleNextMonth();
-                if (distance < -minSwipeDistance) handlePrevMonth();
-            };
-
-            // --- Drag and Drop Handlers ---
-            const handleDragStart = (e, id) => {
-                e.dataTransfer.setData("text/plain", id);
-                e.dataTransfer.effectAllowed = "move";
-                e.target.style.opacity = "0.5";
-            };
-
-            const handleDragEnd = (e) => {
-                e.target.style.opacity = "1";
-            };
-
-            const handleDragOver = (e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                e.currentTarget.classList.add("drag-over");
-            };
-
-            const handleDragLeave = (e) => {
-                e.currentTarget.classList.remove("drag-over");
-            };
-
-            const handleDrop = (e, targetDateStr) => {
-                e.preventDefault();
-                e.currentTarget.classList.remove("drag-over");
-                const id = e.dataTransfer.getData("text/plain");
-                
-                if (id) {
-                    const numId = Number(id);
-                    setTransactions(prev => prev.map(t => 
-                        t.id === numId ? { ...t, date: targetDateStr } : t
-                    ));
-                    showAlert('날짜가 변경되었습니다.');
-                }
-            };
-
-            const handleDateClick = (dateStr) => {
-                if (!dateStr) return;
-                setEditingId(null);
-                setForm(prev => ({ ...prev, date: dateStr, amount: '', memo: '' }));
-                setIsModalOpen(true);
-            };
-            const handleEditClick = (transaction, e) => {
-                e.stopPropagation();
-                setEditingId(transaction.id);
-                setForm({ ...transaction, amount: transaction.amount, memo: transaction.memo || '' });
-                setIsModalOpen(true);
-            };
-            const handleDelete = (id, e) => {
-                if(e) e.stopPropagation();
-                askConfirm('정말 삭제하시겠습니까?', () => {
-                    setTransactions(prev => prev.filter(t => t.id !== id));
-                    if(isModalOpen) setIsModalOpen(false);
-                    showAlert('삭제되었습니다.');
-                });
-            };
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                if (!form.amount || !form.category) return;
-                const txData = { ...form, amount: parseInt(form.amount) };
-                
-                if (editingId) {
-                    setTransactions(prev => prev.map(t => t.id === editingId ? { ...t, ...txData } : t));
-                    showAlert('수정되었습니다.');
-                } else {
-                    setTransactions(prev => [...prev, { id: Date.now(), ...txData }]);
-                    showAlert('추가되었습니다.');
-                }
-                setIsModalOpen(false);
-                setEditingId(null);
-                setForm(prev => ({ ...prev, amount: '', memo: '' }));
-            };
-
-            // 공통 텍스트 분석 로직
-            const parseTextToForm = (text) => {
-                let parsedAmount = 0, parsedMemo = '', parsedDate = form.date, parsedType = 'expense';
-                
-                const amountRegex = /([0-9]{1,3}(,[0-9]{3})+)|([0-9]+)원/g;
-                const matches = text.match(amountRegex);
-                if (matches) {
-                    const wonMatch = matches.find(m => m.includes('원'));
-                    const rawAmount = wonMatch ? wonMatch : matches[0];
-                    parsedAmount = parseInt(rawAmount.replace(/[^0-9]/g, ''));
-                }
-
-                const dateMatch = text.match(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})/);
-                const shortDateMatch = text.match(/(\d{1,2})[\.\/월]\s*(\d{1,2})/);
-
-                if (dateMatch) {
-                    parsedDate = `${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`;
-                } else if (shortDateMatch) {
-                    const today = new Date();
-                    parsedDate = `${today.getFullYear()}-${shortDateMatch[1].padStart(2,'0')}-${shortDateMatch[2].padStart(2,'0')}`;
-                }
-
-                if (text.includes('입금') || text.includes('급여')) {
-                    parsedType = 'income'; parsedMemo = '입금';
-                } else {
-                    parsedType = 'expense';
-                    if (text.includes('승인') || text.includes('결제')) {
-                        parsedMemo = '카드결제'; 
-                    }
-                }
-
-                setForm(prev => ({ 
-                    ...prev, 
-                    amount: parsedAmount || prev.amount, 
-                    date: parsedDate, 
-                    memo: parsedMemo || prev.memo, 
-                    type: parsedType, 
-                    category: CATEGORIES[parsedType][0] 
-                }));
-                
-                return parsedAmount > 0;
-            };
-
-            const parseSms = () => {
-                if (!smsText.trim()) return;
-                parseTextToForm(smsText);
-                setIsParserOpen(false); setSmsText(''); showAlert('입력 완료!');
-            };
-
-            // --- 이미지 업로드 및 OCR 처리 ---
-            const handleImageUpload = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                setOcrLoading(true);
-                try {
-                    const worker = await Tesseract.createWorker('kor+eng');
-                    const ret = await worker.recognize(file);
-                    await worker.terminate();
+            // --- Chart.js 렌더링 ---
+            useEffect(() => {
+                if (viewMode === 'stats' && monthlyData.length > 0) {
+                    const ctx = document.getElementById('expenseChart');
+                    if (!ctx) return;
                     
-                    const extractedText = ret.data.text;
-                    const success = parseTextToForm(extractedText);
+                    const dataByCat = monthlyData.filter(t => t.type === 'expense').reduce((acc, curr) => {
+                        acc[curr.category] = (acc[curr.category] || 0) + Number(curr.amount);
+                        return acc;
+                    }, {});
                     
-                    if (success) {
-                        showAlert('영수증을 읽어 입력했습니다!');
-                    } else {
-                        showAlert('내용을 확실히 읽지 못했습니다. 직접 수정해주세요.', 'error');
-                        setForm(prev => ({...prev, memo: prev.memo || extractedText.slice(0, 20) + '...'}));
-                    }
-                } catch (err) {
-                    console.error(err);
-                    showAlert('이미지 인식에 실패했습니다.', 'error');
-                }
-                setOcrLoading(false);
-            };
-
-            const handleAddRecurring = (e) => {
-                e.preventDefault();
-                if (!recurringForm.amount) return;
-                setRecurringItems(prev => [...prev, { id: Date.now(), ...recurringForm, amount: parseInt(recurringForm.amount) }]);
-                setRecurringForm(prev => ({ ...prev, amount: '', memo: '' }));
-                showAlert('고정 내역 저장 완료');
-            };
-            const applyRecurringToMonth = () => {
-                askConfirm('이번 달에 일괄 등록하시겠습니까?', () => {
-                    const newTxs = [];
-                    recurringItems.forEach(item => {
-                        const lastDay = new Date(year, month + 1, 0).getDate();
-                        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(Math.min(item.day, lastDay)).padStart(2,'0')}`;
-                        if (!transactions.some(t => t.date === dateStr && t.amount === item.amount && t.memo === item.memo)) {
-                            newTxs.push({ id: Date.now() + Math.random(), date: dateStr, ...item });
+                    if (window.myChart) window.myChart.destroy();
+                    
+                    window.myChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: Object.keys(dataByCat),
+                            datasets: [{
+                                data: Object.values(dataByCat),
+                                backgroundColor: ['#FF6B6B', '#4DABF7', '#FFD43B', '#63E6BE', '#BE4BDB', '#FAB005', '#748FFC', '#A9E34B']
+                            }]
+                        },
+                        options: { 
+                            plugins: { legend: { position: 'bottom' } }, 
+                            cutout: '70%', 
+                            maintainAspectRatio: false 
                         }
                     });
-                    if(newTxs.length > 0) {
-                        setTransactions([...transactions, ...newTxs]);
-                        showAlert(`${newTxs.length}건 등록 완료`);
-                        setIsRecurringModalOpen(false);
+                }
+            }, [viewMode, monthlyData]);
+
+            // --- UI 핸들러 ---
+            const showAlert = (msg, type = 'success') => {
+                setAlert({ show: true, message: msg, type });
+                setTimeout(() => setAlert({ show: false, message: '', type: 'success' }), 3000);
+            };
+
+            const askConfirm = (msg, onConfirmCallback) => {
+                setConfirmModal({ isOpen: true, message: msg, onConfirm: onConfirmCallback });
+            };
+
+            const handleConfirm = () => {
+                if (confirmModal.onConfirm) confirmModal.onConfirm();
+                setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+            };
+
+            // 월 이동 (슬라이드 방향 설정 포함)
+            const handleMonthMove = (dir) => {
+                setSlideDirection(dir === 1 ? 'right' : 'left');
+                setCurrentDate(new Date(year, month + dir, 1));
+            };
+
+            // 모바일 스와이프
+            const onTS = (e) => { touchStart.current = e.touches[0].clientX; };
+            const onTE = (e) => {
+                if (!touchStart.current) return;
+                const diff = touchStart.current - e.changedTouches[0].clientX;
+                if (diff > 50) handleMonthMove(1);
+                else if (diff < -50) handleMonthMove(-1);
+                touchStart.current = null;
+            };
+
+            // --- 데이터베이스 CRUD 핸들러 ---
+            const saveTransaction = async (data) => {
+                const id = editingId || generateId();
+                const payload = { ...data, amount: Number(data.amount) };
+                
+                if (isFirebaseReady && user) {
+                    try {
+                        await setDoc(doc(db, getColPath('transactions'), id), payload);
+                    } catch(e) { showAlert('클라우드 저장 실패', 'error'); return; }
+                } else {
+                    const newList = editingId ? transactions.map(t => t.id === id ? payload : t) : [...transactions, { ...payload, id }];
+                    setTransactions(newList);
+                }
+                
+                setIsModalOpen(false);
+                setEditingId(null);
+                showAlert(editingId ? "수정되었습니다." : "저장되었습니다.");
+            };
+
+            const deleteTransaction = async (id) => {
+                askConfirm("정말 삭제하시겠습니까?", async () => {
+                    if (isFirebaseReady && user) {
+                        await deleteDoc(doc(db, getColPath('transactions'), id));
                     } else {
-                        showAlert('추가할 내역이 없어요.', 'error');
+                        setTransactions(prev => prev.filter(t => t.id !== id));
                     }
+                    setIsModalOpen(false);
+                    showAlert("삭제되었습니다.");
                 });
             };
 
-            return (
-                <div className="min-h-screen pb-safe">
-                    <nav className="bg-white sticky top-0 z-30 safe-top border-b border-gray-100 shadow-sm transition-all">
-                        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 bg-emerald-500 rounded-xl flex items-center justify-center text-white font-bold shadow-emerald-200 shadow-md">₩</div>
-                                <span className="font-bold text-lg tracking-tight text-gray-800">스마트 가계부</span>
-                            </div>
-                            
-                            <div className="flex items-center bg-gray-100 rounded-full px-1 py-0.5">
-                                <button onClick={handlePrevMonth} className="p-1.5 hover:bg-white rounded-full transition-all text-gray-500 hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></button>
-                                <span className="text-sm font-bold text-gray-800 min-w-[70px] text-center">{month + 1}월</span>
-                                <button onClick={handleNextMonth} className="p-1.5 hover:bg-white rounded-full transition-all text-gray-500 hover:shadow-sm"><ChevronRight className="w-4 h-4" /></button>
-                            </div>
+            // 드래그 앤 드롭 날짜 변경
+            const handleDropUpdate = async (id, newDate) => {
+                const target = transactions.find(t => t.id === id);
+                if (target) {
+                    const updated = { ...target, date: newDate };
+                    if (isFirebaseReady && user) {
+                        await setDoc(doc(db, getColPath('transactions'), id), updated);
+                    } else {
+                        setTransactions(prev => prev.map(t => t.id === id ? updated : t));
+                    }
+                    showAlert("날짜가 변경되었습니다.");
+                }
+            };
 
-                            <button onClick={() => setIsRecurringModalOpen(true)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-xl transition-colors">
-                                <Repeat className="w-5 h-5" />
-                            </button>
+            // --- 백업 및 복원 (가져오기/내보내기) ---
+            const exportData = () => {
+                const blob = new Blob([JSON.stringify({ transactions, recurringItems })], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `가계부_백업_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            };
+
+            const importData = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        askConfirm("기존 데이터를 덮어쓰고 복원할까요?", async () => {
+                            if (isFirebaseReady && user) {
+                                // 클라우드 동기화 모드일 땐 하나씩 업로드
+                                const promises = [];
+                                if(data.transactions) data.transactions.forEach(t => promises.push(setDoc(doc(db, getColPath('transactions'), t.id), t)));
+                                if(data.recurringItems) data.recurringItems.forEach(r => promises.push(setDoc(doc(db, getColPath('recurring'), r.id), r)));
+                                await Promise.all(promises);
+                            } else {
+                                if(data.transactions) setTransactions(data.transactions);
+                                if(data.recurringItems) setRecurringItems(data.recurringItems);
+                            }
+                            showAlert("데이터 복원이 완료되었습니다.");
+                        });
+                    } catch (err) {
+                        showAlert("파일 형식이 올바르지 않습니다.", "error");
+                    }
+                };
+                reader.readAsText(file);
+                if(importInputRef.current) importInputRef.current.value = '';
+            };
+
+            // --- OCR 파싱 (Tesseract) ---
+            const handleOCR = async (file) => {
+                if (!file) return;
+                setOcrLoading(true);
+                try {
+                    if (!workerRef.current) {
+                        workerRef.current = await Tesseract.createWorker('kor+eng');
+                    }
+                    const { data: { text } } = await workerRef.current.recognize(file);
+                    
+                    const amountMatch = text.replace(/,/g, '').match(/\d{3,}/);
+                    
+                    setFormState({
+                        type: 'expense',
+                        date: new Date().toISOString().split('T')[0],
+                        category: '식비',
+                        amount: amountMatch ? parseInt(amountMatch[0]) : '',
+                        memo: '영수증 자동인식 (내용 수정)'
+                    });
+                    setEditingId(null);
+                    setIsModalOpen(true);
+                } catch (e) { 
+                    showAlert("사진 인식에 실패했습니다.", "error"); 
+                } finally { 
+                    setOcrLoading(false); 
+                    if(fileInputRef.current) fileInputRef.current.value = ""; 
+                }
+            };
+
+            // --- SMS 문자 파서 ---
+            const parseSmsMsg = () => {
+                if (!smsText.trim()) return;
+                let amt = 0, memo = '카드결제', dt = formState.date, ty = 'expense';
+                
+                const amtMatch = smsText.match(/([0-9]{1,3}(,[0-9]{3})+)|([0-9]+)원/);
+                if (amtMatch) amt = parseInt(amtMatch[0].replace(/[^0-9]/g, ''));
+                
+                if (smsText.includes('입금') || smsText.includes('급여')) ty = 'income';
+                
+                setFormState(prev => ({ ...prev, amount: amt || prev.amount, type: ty, memo, category: CATEGORIES[ty][0] }));
+                setIsParserOpen(false); 
+                setSmsText('');
+            };
+
+            // --- 메인 렌더링 ---
+            return (
+                <div className="max-w-xl mx-auto min-h-screen bg-[#F2F4F6] pb-24 relative shadow-2xl overflow-hidden" onTouchStart={onTS} onTouchEnd={onTE}>
+                    
+                    {/* 상단바 */}
+                    <nav className="bg-white sticky top-0 z-40 safe-top border-b border-gray-100 px-4 h-14 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-[#3182F6] rounded-xl flex items-center justify-center text-white shadow-lg font-bold">₩</div>
+                            <h1 className="font-bold text-lg text-gray-800">가족 가계부 PRO</h1>
+                            {isFirebaseReady && user && <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse ml-1" title="동기화 중"></span>}
+                        </div>
+                        <div className="flex gap-1">
+                            <button onClick={exportData} title="백업 다운로드" className="p-2 text-gray-400 active:text-blue-500 transition-colors"><Download size={20}/></button>
+                            <label className="p-2 text-gray-400 cursor-pointer active:text-blue-500 transition-colors" title="백업 불러오기">
+                                <Upload size={20}/>
+                                <input type="file" ref={importInputRef} className="hidden" accept=".json" onChange={importData}/>
+                            </label>
+                            <button onClick={() => setIsRecurringModalOpen(true)} title="고정 지출" className="p-2 text-gray-400 active:text-blue-500 transition-colors"><Repeat size={20}/></button>
                         </div>
                     </nav>
 
-                    <main className="max-w-2xl mx-auto px-4 py-4 space-y-4" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-                        
-                        <div className="bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 relative overflow-hidden">
-                            <div className="relative z-10">
-                                <div className="flex flex-col items-center justify-center mb-6">
-                                    <span className="text-xs font-bold text-gray-400 mb-1">{year}년 {month + 1}월 잔액</span>
-                                    <div className="text-4xl font-extrabold text-gray-800 tracking-tight">
-                                        {formatCurrency(summary.income - summary.expense).replace('원', '')}
-                                        <span className="text-2xl font-semibold text-gray-400 ml-1">원</span>
+                    <main className="p-4 space-y-4">
+                        {/* 요약 대시보드 및 연/월 선택 */}
+                        <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-50">
+                            <div className="flex justify-between items-center mb-6">
+                                <div className="flex items-center bg-gray-100 rounded-full px-1 py-0.5">
+                                    <button onClick={() => handleMonthMove(-1)} className="p-1 text-gray-500 active:bg-gray-200 rounded-full"><ChevronLeft size={18}/></button>
+                                    <div className="flex items-center text-sm font-bold text-gray-800">
+                                        <select value={year} onChange={e => setCurrentDate(new Date(Number(e.target.value), month, 1))} className="bg-transparent outline-none appearance-none px-1" style={{WebkitAppearance:'none'}}>
+                                            {Array.from({length:11},(_,i)=>new Date().getFullYear()-5+i).map(y=><option key={y} value={y}>{y}년</option>)}
+                                        </select>
+                                        <select value={month} onChange={e => setCurrentDate(new Date(year, Number(e.target.value), 1))} className="bg-transparent outline-none appearance-none px-1" style={{WebkitAppearance:'none'}}>
+                                            {Array.from({length:12},(_,i)=>i).map(m=><option key={m} value={m}>{m+1}월</option>)}
+                                        </select>
                                     </div>
+                                    <button onClick={() => handleMonthMove(1)} className="p-1 text-gray-500 active:bg-gray-200 rounded-full"><ChevronRight size={18}/></button>
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-blue-50/50 p-4 rounded-2xl flex flex-col items-center">
-                                        <span className="text-xs font-semibold text-blue-400 mb-1">총 수입</span>
-                                        <span className="text-lg font-bold text-blue-600">{formatSimpleCurrency(summary.income)}</span>
-                                    </div>
-                                    <div className="bg-red-50/50 p-4 rounded-2xl flex flex-col items-center">
-                                        <span className="text-xs font-semibold text-red-400 mb-1">총 지출</span>
-                                        <span className="text-lg font-bold text-red-600">{formatSimpleCurrency(summary.expense)}</span>
-                                    </div>
+                                <div className="text-right">
+                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">이번 달 잔액</span>
+                                    <span className="text-2xl font-black text-[#191F28]">{formatCurrency(summary.income - summary.expense)}원</span>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-[#E8F3FF] p-4 rounded-2xl flex flex-col items-center">
+                                    <span className="text-[10px] font-bold text-[#3182F6] uppercase mb-1 flex items-center gap-1"><TrendingUp size={12}/> 수입</span>
+                                    <div className="font-bold text-blue-700 text-lg">+{formatCurrency(summary.income)}</div>
+                                </div>
+                                <div className="bg-[#FFF0F0] p-4 rounded-2xl flex flex-col items-center">
+                                    <span className="text-[10px] font-bold text-[#F04452] uppercase mb-1 flex items-center gap-1"><TrendingDown size={12}/> 지출</span>
+                                    <div className="font-bold text-red-700 text-lg">-{formatCurrency(summary.expense)}</div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="bg-gray-200/50 p-1 rounded-xl flex font-semibold text-sm">
-                            <button onClick={() => setViewMode('calendar')} className={`flex-1 py-2 rounded-lg flex justify-center items-center gap-2 transition-all ${viewMode === 'calendar' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}>
-                                <CalendarIcon className="w-4 h-4" /> 달력
+                        {/* 탭 전환 (달력/통계) */}
+                        <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-gray-50">
+                            <button onClick={() => setViewMode('calendar')} className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex justify-center items-center gap-2 transition-all ${viewMode === 'calendar' ? 'bg-[#3182F6] text-white shadow-md' : 'text-gray-400'}`}>
+                                <CalendarIcon size={16}/> 달력
                             </button>
-                            <button onClick={() => setViewMode('list')} className={`flex-1 py-2 rounded-lg flex justify-center items-center gap-2 transition-all ${viewMode === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}>
-                                <ListIcon className="w-4 h-4" /> 목록
+                            <button onClick={() => setViewMode('stats')} className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex justify-center items-center gap-2 transition-all ${viewMode === 'stats' ? 'bg-[#3182F6] text-white shadow-md' : 'text-gray-400'}`}>
+                                <ChartIcon size={16}/> 분석
                             </button>
                         </div>
 
+                        {/* 메인 뷰 */}
                         {viewMode === 'calendar' ? (
-                            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 overflow-hidden">
-                                <div className="grid grid-cols-7 mb-2 border-b border-gray-50 pb-2">
-                                    {['일','월','화','수','목','금','토'].map((d,i) => (
-                                        <div key={d} className={`text-center text-xs font-bold py-2 ${i===0?'text-red-400':i===6?'text-blue-400':'text-gray-400'}`}>{d}</div>
+                            <div className={`bg-white rounded-[24px] p-2 shadow-sm border border-gray-50 overflow-hidden ${slideDirection === 'right' ? 'slide-in-right' : slideDirection === 'left' ? 'slide-in-left' : ''}`}>
+                                <div className="grid grid-cols-7 mb-2 border-b border-gray-50 py-2">
+                                    {['일','월','화','수','목','금','토'].map((d, i) => (
+                                        <div key={d} className={`text-center text-[10px] font-bold ${i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-400'}`}>{d}</div>
                                     ))}
                                 </div>
-                                <div 
-                                    key={currentDate.toString()} 
-                                    className={`grid grid-cols-7 gap-1 ${slideDirection === 'right' ? 'slide-in-right' : slideDirection === 'left' ? 'slide-in-left' : ''}`}
-                                >
-                                    {generateCalendarDays().map((item, idx) => (
-                                        <div 
-                                            key={idx} 
-                                            onClick={() => handleDateClick(item.dateStr)} 
-                                            onDragOver={item.day ? handleDragOver : undefined}
-                                            onDragLeave={item.day ? handleDragLeave : undefined}
-                                            onDrop={item.day ? (e) => handleDrop(e, item.dateStr) : undefined}
-                                            className={`min-h-[85px] p-1 flex flex-col rounded-xl transition-colors ${!item.day ? 'pointer-events-none' : 'active:bg-gray-50'}`}
-                                        >
-                                            {item.day && (
-                                                <>
-                                                    <span className={`text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${
-                                                        item.dateStr === new Date().toISOString().split('T')[0] ? 'bg-emerald-500 text-white' : 
-                                                        new Date(item.dateStr).getDay() === 0 ? 'text-red-400' : 'text-gray-400'
-                                                    }`}>{item.day}</span>
-                                                    
-                                                    <div className="flex-1 flex flex-col gap-1 w-full overflow-hidden">
-                                                        {item.transactions.slice(0, 3).map((t) => (
-                                                            <div 
-                                                                key={t.id} 
-                                                                onClick={(e) => handleEditClick(t, e)} 
-                                                                draggable="true"
-                                                                onDragStart={(e) => handleDragStart(e, t.id)}
-                                                                onDragEnd={handleDragEnd}
-                                                                className={`flex items-center px-1 py-0.5 rounded-md ${t.type === 'income' ? 'bg-blue-50' : 'bg-red-50'}`}
-                                                            >
-                                                                <div className={`h-1.5 w-1.5 rounded-full mr-1 shrink-0 ${t.type === 'income' ? 'bg-blue-400' : 'bg-red-400'}`}></div>
-                                                                <span className={`text-[9px] font-medium truncate ${t.type === 'income' ? 'text-blue-600' : 'text-red-600'}`}>{t.memo || t.category}</span>
-                                                            </div>
-                                                        ))}
-                                                        {item.transactions.length > 3 && (
-                                                            <div className="text-[8px] text-gray-400 font-medium text-center">
-                                                                +{item.transactions.length - 3}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
+                                <CalendarGrid 
+                                    year={year} month={month} transactions={transactions}
+                                    onDateClick={(date) => { setFormState({ ...formState, date, amount: '', memo: '' }); setEditingId(null); setIsModalOpen(true); }}
+                                    onEdit={(t) => { setFormState(t); setEditingId(t.id); setIsModalOpen(true); }}
+                                    onDrop={handleDropUpdate}
+                                />
                             </div>
                         ) : (
-                            <div className="space-y-4 pb-20">
-                                {monthlyTransactions.length === 0 ? (
-                                    <div className="text-center py-20 text-gray-400 text-sm">이번 달 내역이 없습니다</div>
-                                ) : (
-                                    Object.entries(monthlyTransactions.reduce((acc, t) => {
-                                        (acc[t.date] = acc[t.date] || []).push(t); return acc;
-                                    }, {})).sort((a,b)=>new Date(b[0])-new Date(a[0])).map(([date, txs]) => (
-                                        <div key={date} className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
-                                            <div className="text-sm font-bold text-gray-500 mb-3 flex justify-between border-b border-gray-50 pb-2">
-                                                <span>{parseInt(date.split('-')[2])}일 {['일','월','화','수','목','금','토'][new Date(date).getDay()]}요일</span>
-                                            </div>
-                                            <div className="space-y-4">
-                                                {txs.map(t => (
-                                                    <div key={t.id} onClick={(e) => handleEditClick(t, e)} className="flex items-center justify-between active:opacity-50 transition-opacity">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={`p-2.5 rounded-2xl ${t.type === 'income' ? 'bg-blue-50 text-blue-500' : 'bg-red-50 text-red-500'}`}>
-                                                                {t.type === 'income' ? <TrendingUp className="w-4 h-4"/> : <TrendingDown className="w-4 h-4"/>}
-                                                            </div>
-                                                            <div>
-                                                                <div className="font-bold text-gray-800 text-sm">{t.memo}</div>
-                                                                <div className="text-xs text-gray-400 mt-0.5">{t.category}</div>
-                                                            </div>
-                                                        </div>
-                                                        <span className={`font-bold text-sm ${t.type === 'income' ? 'text-blue-500' : 'text-red-500'}`}>
-                                                            {t.type === 'income' ? '+' : '-'}{formatSimpleCurrency(t.amount)}
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-50 flex flex-col items-center">
+                                    <h3 className="font-bold text-gray-800 mb-4 w-full text-sm">이달의 지출 비율</h3>
+                                    <div className="w-full h-64 relative"><canvas id="expenseChart"></canvas></div>
+                                </div>
+                                <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-50">
+                                    <h3 className="font-bold text-gray-800 mb-4 text-sm tracking-widest uppercase">Transaction History</h3>
+                                    <TransactionList items={monthlyData} onEdit={(t) => { setFormState(t); setEditingId(t.id); setIsModalOpen(true); }} />
+                                </div>
                             </div>
                         )}
 
-                        {/* 고정 수입/지출 요약 (업데이트) */}
-                        <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-24">
+                        {/* 이달의 예정 고정 내역 요약 */}
+                        <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-50 mb-20">
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-                                    <PiggyBank className="w-4 h-4 text-emerald-500" /> 
-                                    고정 내역 요약
-                                </h3>
-                                <div className="flex gap-2">
-                                    {recurringItems.some(i => i.type === 'income') && (
-                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-                                            수입 +{formatSimpleCurrency(recurringItems.reduce((acc, item) => item.type === 'income' ? acc + item.amount : acc, 0))}
-                                        </span>
-                                    )}
-                                    {recurringItems.some(i => i.type === 'expense') && (
-                                        <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg">
-                                            지출 -{formatSimpleCurrency(recurringItems.reduce((acc, item) => item.type === 'expense' ? acc + item.amount : acc, 0))}
-                                        </span>
-                                    )}
-                                </div>
+                                <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2"><PiggyBank size={16} className="text-[#3182F6]" /> 이달 예정 고정 입출금</h3>
                             </div>
-                            
                             <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
-                                {recurringItems.length === 0 ? (
-                                    <div className="w-full text-center py-6 text-xs text-gray-400 border border-dashed rounded-2xl bg-gray-50">
-                                        상단의 <Repeat className="w-3 h-3 inline mx-1"/> 버튼을 눌러<br/>매달 고정 수입/지출을 등록해보세요
-                                    </div>
-                                ) : recurringItems.map(item => (
-                                    <div key={item.id} className="min-w-[140px] snap-center bg-gray-50 rounded-2xl p-3 flex flex-col justify-between h-20 border border-gray-100 shrink-0">
-                                        <div className="text-xs font-bold text-gray-700 truncate">{item.memo}</div>
-                                        <div className="flex justify-between items-end">
-                                            <span className="text-[10px] text-gray-400 font-medium">매월 {item.day}일</span>
-                                            <span className={`text-xs font-bold ${item.type === 'income' ? 'text-blue-500' : 'text-red-500'}`}>
-                                                {item.type === 'income' ? '+' : '-'}{formatSimpleCurrency(item.amount)}
+                                {activeRecurring.length === 0 ? (
+                                    <p className="text-xs text-gray-300 w-full text-center py-4 italic">등록된 내역이 없거나 이번 달 예정이 없습니다.</p>
+                                ) : activeRecurring.map(item => (
+                                    <div key={item.id} className="min-w-[140px] snap-center bg-gray-50 rounded-2xl p-4 flex flex-col justify-between h-24 border border-gray-100 shrink-0">
+                                        <div className="text-xs font-bold text-gray-800 truncate">{item.memo}</div>
+                                        <div className="flex flex-col items-start gap-1">
+                                            <span className="text-[9px] font-bold text-gray-400 bg-white px-1.5 py-0.5 rounded border border-gray-100">
+                                                {item.frequency === 'yearly' ? `${item.month}월 ${item.day}일` : `매월 ${item.day}일`}
+                                            </span>
+                                            <span className={`text-xs font-black ${item.type === 'income' ? 'text-blue-500' : 'text-red-500'}`}>
+                                                {formatCurrency(item.amount)}
                                             </span>
                                         </div>
                                     </div>
@@ -664,167 +558,276 @@
                         </div>
                     </main>
 
-                    <button onClick={() => { setEditingId(null); setForm(prev => ({ ...prev, date: new Date().toISOString().split('T')[0], amount: '', memo: '' })); setIsModalOpen(true); }} 
-                        className="fixed bottom-8 right-6 w-14 h-14 bg-gray-900 text-white rounded-full shadow-lg shadow-gray-400/50 flex items-center justify-center active:scale-95 transition-transform z-40">
-                        <Plus className="w-7 h-7" />
-                    </button>
+                    {/* --- FAB (Floating Buttons) --- */}
+                    {/* [오류 해결 핵심]: input 태그를 button 바깥으로 분리하여 ref 참조 오류 및 이벤트 꼬임 방지 */}
+                    <div className="fixed bottom-8 right-6 flex flex-col gap-3 z-30">
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => handleOCR(e.target.files[0])}/>
+                        <button onClick={() => fileInputRef.current?.click()} className="w-12 h-12 bg-white rounded-full shadow-xl flex items-center justify-center text-gray-600 active:scale-90 transition-transform hover:bg-gray-50">
+                            <Camera size={24}/>
+                        </button>
+                        <button onClick={() => { setFormState({...formState, date: new Date().toISOString().split('T')[0], amount:'', memo:''}); setEditingId(null); setIsModalOpen(true); }} className="w-14 h-14 bg-[#3182F6] rounded-full shadow-2xl flex items-center justify-center text-white active:scale-90 transition-transform hover:bg-[#2563EB]">
+                            <Plus size={32}/>
+                        </button>
+                    </div>
 
-                    {(isModalOpen || isRecurringModalOpen || isParserOpen || confirmModal.isOpen) && (
-                        <div className="fixed inset-0 bg-black/40 z-50 backdrop-blur-[2px] animate-fade-in" onClick={() => {
-                            if(!confirmModal.isOpen) { setIsModalOpen(false); setIsRecurringModalOpen(false); setIsParserOpen(false); }
-                        }} />
-                    )}
-
-                    {/* OCR Loading Overlay */}
+                    {/* --- 오버레이 및 모달 영역 --- */}
+                    
+                    {/* OCR 로딩 */}
                     {ocrLoading && (
-                        <div className="overlay-loading">
-                            <div className="spinner mb-4"></div>
-                            <span className="text-gray-800 font-bold">영수증을 읽고 있어요...</span>
-                            <span className="text-xs text-gray-500 mt-2">잠시만 기다려주세요 (최대 10초)</span>
+                        <div className="fixed inset-0 bg-white/90 z-[100] flex flex-col items-center justify-center animate-fade-in text-center p-10">
+                            <div className="spinner mb-6"></div>
+                            <p className="font-bold text-lg text-gray-800 leading-tight">영수증을 읽고 있어요</p>
+                            <p className="text-gray-400 text-sm mt-2 font-medium">잠시만 기다려 주세요 (최대 10초)</p>
                         </div>
                     )}
 
-                    {isModalOpen && (
-                        <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl p-6 pb-safe animate-slide-up shadow-2xl max-w-2xl mx-auto">
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-lg font-bold text-gray-900">
-                                    {editingId ? '내역 수정' : '새로운 내역'}
-                                </h2>
-                                <button onClick={() => setIsModalOpen(false)} className="bg-gray-100 p-2 rounded-full text-gray-500 active:bg-gray-200"><X className="w-5 h-5"/></button>
-                            </div>
-                            
-                            {!editingId && (
-                                <div className="flex gap-2 mb-6">
-                                    <button onClick={() => { setIsModalOpen(false); setIsParserOpen(true); }} className="flex-1 py-3 border-2 border-dashed border-indigo-100 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold active:bg-indigo-100 transition-colors">
-                                        <ClipboardPaste className="w-4 h-4" /> 문자 붙여넣기
-                                    </button>
-                                    <button onClick={() => fileInputRef.current.click()} className="flex-1 py-3 border-2 border-dashed border-gray-200 bg-gray-50 text-gray-600 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold active:bg-gray-100 transition-colors">
-                                        <Camera className="w-4 h-4" /> 사진으로 입력
-                                    </button>
-                                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
-                                </div>
-                            )}
-
-                            <form onSubmit={handleSubmit} className="space-y-4">
-                                <div className="bg-gray-100 p-1 rounded-2xl flex">
-                                    {['income', 'expense'].map(type => (
-                                        <button key={type} type="button" onClick={() => setForm({...form, type, category: CATEGORIES[type][0]})} 
-                                            className={`flex-1 py-3 rounded-xl text-sm font-bold transition-all ${form.type === type ? (type === 'income' ? 'bg-white text-blue-600 shadow-sm' : 'bg-white text-red-500 shadow-sm') : 'text-gray-400'}`}>
-                                            {type === 'income' ? '수입' : '지출'}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <input type="date" required value={form.date} onChange={(e) => setForm({...form, date: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500 transition-all" />
-                                    <select value={form.category} onChange={(e) => setForm({...form, category: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl text-sm font-bold outline-none appearance-none focus:ring-2 focus:ring-emerald-500 transition-all">
-                                        {CATEGORIES[form.type].map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                    </select>
-                                </div>
-
-                                <input type="text" placeholder="내용 (예: 점심)" value={form.memo} onChange={(e) => setForm({...form, memo: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500 transition-all" />
-                                
-                                <div className="relative">
-                                    <input type="number" required placeholder="0" value={form.amount} onChange={(e) => setForm({...form, amount: e.target.value})} className="w-full p-4 bg-gray-50 rounded-2xl text-lg font-bold outline-none focus:ring-2 focus:ring-emerald-500 text-right transition-all pr-8" />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">원</span>
-                                </div>
-
-                                <div className="flex gap-3 pt-2">
-                                    {editingId && <button type="button" onClick={() => handleDelete(editingId)} className="p-4 bg-red-100 text-red-500 rounded-2xl active:bg-red-200"><Trash2 className="w-6 h-6"/></button>}
-                                    <button type="submit" className="flex-1 py-4 bg-gray-900 text-white font-bold rounded-2xl active:scale-[0.98] transition-transform">저장하기</button>
-                                </div>
-                            </form>
+                    {/* 토스트 알림 */}
+                    {alert.show && (
+                        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[110] animate-slide-up px-6 py-3 bg-gray-800 text-white text-xs font-bold rounded-full shadow-lg flex items-center gap-2">
+                            {alert.type === 'success' ? <CheckCircle size={14} className="text-green-400"/> : <AlertCircle size={14} className="text-red-400"/>}
+                            {alert.message}
                         </div>
                     )}
 
-                    {isParserOpen && (
-                        <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl p-6 pb-safe animate-slide-up shadow-2xl max-w-2xl mx-auto">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-bold flex items-center gap-2"><Wand2 className="w-5 h-5 text-indigo-500"/>스마트 입력</h3>
-                                <button onClick={() => setIsParserOpen(false)} className="bg-gray-100 p-2 rounded-full text-gray-500"><X className="w-5 h-5"/></button>
-                            </div>
-                            <p className="text-sm text-gray-500 mb-3">카드사 문자나 뱅킹 앱 알림을 복사해서 붙여넣으세요.</p>
-                            <textarea className="w-full p-4 bg-gray-50 rounded-2xl h-32 outline-none text-sm resize-none mb-4 focus:ring-2 focus:ring-indigo-500" placeholder="예) [XX카드] 10/25 12:30 승인 12,000원 (주)스타벅스" value={smsText} onChange={(e) => setSmsText(e.target.value)}></textarea>
-                            <button onClick={parseSms} className="w-full py-4 bg-indigo-500 text-white font-bold rounded-2xl active:scale-[0.98]">분석하기</button>
-                        </div>
-                    )}
-
-                    {isRecurringModalOpen && (
-                        <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl p-6 pb-safe max-h-[85vh] flex flex-col animate-slide-up shadow-2xl max-w-2xl mx-auto">
-                            <div className="flex justify-between items-center mb-4 shrink-0">
-                                <h2 className="text-lg font-bold">고정 지출 관리</h2>
-                                <button onClick={() => setIsRecurringModalOpen(false)} className="bg-gray-100 p-2 rounded-full text-gray-500"><X className="w-5 h-5"/></button>
-                            </div>
-                            
-                            <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-1">
-                                {recurringItems.length === 0 ? (
-                                    <div className="text-center py-10 text-gray-400 text-sm border border-dashed rounded-2xl">등록된 고정 지출이 없습니다.</div>
-                                ) : recurringItems.map(item => (
-                                    <div key={item.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                                        <div>
-                                            <div className="font-bold text-gray-800 flex items-center gap-2">
-                                                {item.memo}
-                                                <span className="text-[10px] bg-white border px-1.5 py-0.5 rounded text-gray-500 font-medium">매월 {item.day}일</span>
-                                            </div>
-                                            <div className="text-xs text-gray-400 mt-0.5">{item.category}</div>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className={`font-bold ${item.type === 'income' ? 'text-blue-500' : 'text-red-500'}`}>
-                                                {item.type === 'income' ? '+' : '-'}{formatSimpleCurrency(item.amount)}
-                                            </span>
-                                            <button onClick={() => handleDeleteRecurring(item.id)} className="text-gray-300 hover:text-red-500 p-2"><Trash2 className="w-4 h-4"/></button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <form onSubmit={handleAddRecurring} className="space-y-3 shrink-0 pt-4 border-t border-gray-100">
-                                <div className="flex gap-2">
-                                    <select value={recurringForm.day} onChange={(e) => setRecurringForm({...recurringForm, day: parseInt(e.target.value)})} className="p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none w-24 text-center">
-                                        {[...Array(31)].map((_, i) => <option key={i+1} value={i+1}>{i+1}일</option>)}
-                                    </select>
-                                    <select value={recurringForm.type} onChange={(e) => setRecurringForm({...recurringForm, type: e.target.value, category: CATEGORIES[e.target.value][0]})} className="p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none">
-                                        <option value="expense">지출</option><option value="income">수입</option>
-                                    </select>
-                                    <input type="text" placeholder="내용" required value={recurringForm.memo} onChange={(e) => setRecurringForm({...recurringForm, memo: e.target.value})} className="flex-1 p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
-                                </div>
-                                <div className="flex gap-2">
-                                    <select value={recurringForm.category} onChange={(e) => setRecurringForm({...recurringForm, category: e.target.value})} className="flex-1 p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none">
-                                        {CATEGORIES[recurringForm.type].map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                    </select>
-                                    <input type="number" placeholder="금액" required value={recurringForm.amount} onChange={(e) => setRecurringForm({...recurringForm, amount: e.target.value})} className="flex-1 p-3 bg-gray-50 rounded-xl text-sm font-bold outline-none" />
-                                    <button type="submit" className="px-6 bg-gray-900 text-white rounded-xl font-bold text-sm shrink-0">추가</button>
-                                </div>
-                                <button type="button" onClick={applyRecurringToMonth} className="w-full py-3 bg-emerald-100 text-emerald-700 font-bold rounded-xl text-sm mt-2 active:bg-emerald-200 transition-colors">
-                                    이번 달에 일괄 등록하기
-                                </button>
-                            </form>
-                        </div>
-                    )}
-
-                    {alertModal.isOpen && (
-                        <div className="fixed top-safe left-1/2 -translate-x-1/2 mt-4 z-[60] animate-fade-in px-6 py-3 bg-gray-800 text-white text-sm font-bold rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
-                            {alertModal.type === 'success' ? <CheckCircle className="w-4 h-4 text-emerald-400"/> : <AlertCircle className="w-4 h-4 text-red-400"/>}
-                            {alertModal.message}
-                        </div>
-                    )}
-
+                    {/* 확인용 다이얼로그 */}
                     {confirmModal.isOpen && (
-                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 animate-fade-in">
-                            <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl text-center">
+                        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 animate-fade-in">
+                            <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setConfirmModal({...confirmModal, isOpen: false})}></div>
+                            <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl text-center z-10">
                                 <h3 className="text-lg font-bold text-gray-900 mb-2">확인해주세요</h3>
                                 <p className="text-gray-500 text-sm mb-6 whitespace-pre-wrap">{confirmModal.message}</p>
                                 <div className="flex gap-3">
                                     <button onClick={() => setConfirmModal({...confirmModal, isOpen: false})} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl active:bg-gray-200">취소</button>
-                                    <button onClick={handleConfirmAction} className="flex-1 py-3 bg-gray-900 text-white font-bold rounded-xl active:scale-[0.98] transition-transform">확인</button>
+                                    <button onClick={handleConfirm} className="flex-1 py-3 bg-gray-900 text-white font-bold rounded-xl active:scale-[0.98] transition-transform">확인</button>
                                 </div>
                             </div>
                         </div>
+                    )}
+
+                    {/* 입력 모달 */}
+                    {isModalOpen && (
+                        <Modal title={editingId ? "내역 수정하기" : "새로운 거래 기록"} onClose={() => setIsModalOpen(false)}>
+                            {!editingId && (
+                                <button onClick={() => { setIsModalOpen(false); setIsParserOpen(true); }} className="w-full mb-6 py-3 border-2 border-dashed border-indigo-100 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold active:bg-indigo-100 transition-colors">
+                                    <ClipboardPaste size={18} /> 은행/카드사 문자 복사해서 입력
+                                </button>
+                            )}
+                            <EntryForm data={formState} onSave={saveTransaction} onDelete={() => deleteTransaction(editingId)} isEdit={!!editingId} />
+                        </Modal>
+                    )}
+
+                    {/* 스마트 문자 인식 모달 */}
+                    {isParserOpen && (
+                        <Modal title="스마트 문자 분석" onClose={() => setIsParserOpen(false)}>
+                            <p className="text-[11px] text-gray-400 mb-3 font-medium">결제 문자나 입금 알림을 아래에 붙여넣으세요.</p>
+                            <textarea className="w-full p-4 bg-gray-50 rounded-2xl h-40 outline-none text-sm resize-none mb-4 focus:ring-2 focus:ring-indigo-500 font-bold" placeholder="예) [OO카드] 10/25 12:30 12,000원 결제 완료..." value={smsText} onChange={(e) => setSmsText(e.target.value)}></textarea>
+                            <button onClick={parseSmsMsg} className="w-full py-4 bg-indigo-500 text-white font-bold rounded-2xl active:scale-[0.98]">분석 및 자동입력</button>
+                        </Modal>
+                    )}
+
+                    {/* 고정 지출/수입 모달 (매년/매월) */}
+                    {isRecurringModalOpen && (
+                        <Modal title="고정 입출금 설정" onClose={() => setIsRecurringModalOpen(false)}>
+                            <RecurringManager 
+                                list={recurringItems} 
+                                onAdd={async (item) => {
+                                    const id = generateId();
+                                    if (isFirebaseReady && user) await setDoc(doc(db, getColPath('recurring'), id), item);
+                                    else {
+                                        const newList = [...recurringItems, { ...item, id }];
+                                        setRecurringItems(newList);
+                                        localStorage.setItem('moneybook_rec_local', JSON.stringify(newList));
+                                    }
+                                    showAlert("반복 내역 등록 완료");
+                                }}
+                                onDelete={async (id) => {
+                                    askConfirm("해당 고정 설정을 삭제하시겠습니까?", async () => {
+                                        if (isFirebaseReady && user) await deleteDoc(doc(db, getColPath('recurring'), id));
+                                        else {
+                                            const newList = recurringItems.filter(i => i.id !== id);
+                                            setRecurringItems(newList);
+                                            localStorage.setItem('moneybook_rec_local', JSON.stringify(newList));
+                                        }
+                                        showAlert("삭제되었습니다.");
+                                    });
+                                }}
+                                onApply={async () => {
+                                    askConfirm("현재 보이는 달력에 이번 달 예정 내역을 일괄 등록할까요?", async () => {
+                                        const promises = [];
+                                        let count = 0;
+                                        activeRecurring.forEach(item => {
+                                            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(item.day).padStart(2,'0')}`;
+                                            if(!transactions.some(t => t.date === dateStr && t.memo === item.memo)) {
+                                                const newId = generateId();
+                                                const payload = { ...item, date: dateStr, amount: Number(item.amount) };
+                                                if (isFirebaseReady && user) promises.push(setDoc(doc(db, getColPath('transactions'), newId), payload));
+                                                else transactions.push({ ...payload, id: newId });
+                                                count++;
+                                            }
+                                        });
+                                        if (isFirebaseReady && user) await Promise.all(promises);
+                                        else localStorage.setItem('moneybook_pro_local', JSON.stringify(transactions));
+                                        
+                                        showAlert(`${count}건이 이번 달 내역에 반영되었습니다.`);
+                                        setIsRecurringModalOpen(false);
+                                    });
+                                }}
+                            />
+                        </Modal>
                     )}
                 </div>
             );
         }
 
+        // ==========================================
+        // 5. 서브 컴포넌트: 달력 그리드
+        // ==========================================
+        function CalendarGrid({ year, month, transactions, onDateClick, onEdit, onDrop }) {
+            const firstDay = new Date(year, month, 1).getDay();
+            const lastDate = new Date(year, month + 1, 0).getDate();
+            const days = Array.from({length: firstDay}, () => null).concat(Array.from({length: lastDate}, (_, i) => i + 1));
+
+            return (
+                <div className="grid grid-cols-7 gap-px bg-gray-50 border border-gray-50">
+                    {days.map((day, idx) => {
+                        const dateStr = day ? `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}` : '';
+                        const txs = transactions.filter(t => t.date === dateStr);
+                        return (
+                            <div 
+                                key={idx} onClick={() => day && onDateClick(dateStr)}
+                                onDragOver={e => { if(day) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); } }}
+                                onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
+                                onDrop={e => {
+                                    e.preventDefault();
+                                    e.currentTarget.classList.remove('drag-over');
+                                    const id = e.dataTransfer.getData("text/plain");
+                                    if(id && dateStr) onDrop(id, dateStr);
+                                }}
+                                className={`calendar-cell bg-white p-1 flex flex-col transition-colors ${day ? 'active:bg-gray-100 cursor-pointer' : 'opacity-0 pointer-events-none'}`}
+                            >
+                                <span className={`text-[10px] font-black block mb-1 text-center ${new Date(dateStr).getDay() === 0 ? 'text-red-400' : 'text-gray-400'}`}>{day}</span>
+                                <div className="space-y-0.5">
+                                    {txs.slice(0, 3).map(t => (
+                                        <div 
+                                            key={t.id} draggable onDragStart={e => e.dataTransfer.setData("text/plain", t.id)}
+                                            onClick={e => { e.stopPropagation(); onEdit(t); }}
+                                            className={`text-[8px] font-bold px-1 py-0.5 rounded truncate shadow-sm flex items-center gap-0.5 ${t.type === 'income' ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-500'}`}
+                                        >
+                                            <span className="shrink-0">{t.type === 'income' ? '↑' : '↓'}</span>
+                                            <span className="truncate">{formatCurrency(t.amount).replace('원','')}</span>
+                                        </div>
+                                    ))}
+                                    {txs.length > 3 && <div className="text-[7px] text-gray-300 text-center font-bold">+{txs.length - 3}</div>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        // ==========================================
+        // 6. 서브 컴포넌트: 입력 폼
+        // ==========================================
+        function EntryForm({ data, onSave, onDelete, isEdit }) {
+            const [local, setLocal] = useState(data);
+            return (
+                <form className="space-y-4" onSubmit={e => { e.preventDefault(); onSave(local); }}>
+                    <div className="bg-gray-100 p-1 rounded-2xl flex">
+                        {['income', 'expense'].map(t => (
+                            <button key={t} type="button" onClick={() => setLocal({...local, type: t, category: CATEGORIES[t][0]})} className={`flex-1 py-3.5 rounded-xl text-sm font-black transition-all ${local.type === t ? 'bg-white shadow text-[#3182F6]' : 'text-gray-400'}`}>
+                                {t === 'income' ? '수입 (+)' : '지출 (-)'}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1 uppercase tracking-widest">Date</label><input type="date" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-none outline-none focus:ring-2 focus:ring-blue-100" value={local.date} onChange={e => setLocal({...local, date: e.target.value})} required/></div>
+                        <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1 uppercase tracking-widest">Category</label><select className="w-full p-4 bg-gray-50 rounded-2xl font-bold appearance-none border-none outline-none focus:ring-2 focus:ring-blue-100" value={local.category} onChange={e => setLocal({...local, category: e.target.value})}>{CATEGORIES[local.type].map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                    </div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1 uppercase tracking-widest">Description</label><input type="text" className="w-full p-4 bg-gray-50 rounded-2xl font-bold border-none outline-none focus:ring-2 focus:ring-blue-100" placeholder="상호명 또는 내용" value={local.memo} onChange={e => setLocal({...local, memo: e.target.value})}/></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1 uppercase tracking-widest">Amount</label>
+                        <div className="relative"><input type="number" className="w-full p-4 bg-gray-50 rounded-2xl text-2xl font-black text-right pr-12 border-none outline-none focus:ring-2 focus:ring-blue-100" placeholder="0" value={local.amount} onChange={e => setLocal({...local, amount: e.target.value})} required/><span className="absolute right-4 top-1/2 -translate-y-1/2 font-black text-gray-300">원</span></div>
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                        {isEdit && <button type="button" onClick={onDelete} className="p-4 bg-red-50 text-red-500 rounded-2xl active:bg-red-100"><Trash2 size={24}/></button>}
+                        <button type="submit" className="flex-1 p-4 bg-[#191F28] text-white font-bold rounded-2xl active:scale-[0.98] transition-transform shadow-lg">기록 저장하기</button>
+                    </div>
+                </form>
+            );
+        }
+
+        // ==========================================
+        // 7. 서브 컴포넌트: 모달 래퍼
+        // ==========================================
+        function Modal({ title, children, onClose }) {
+            return (
+                <div className="fixed inset-0 z-[60] flex items-end justify-center px-4 pb-4 animate-fade-in">
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose}></div>
+                    <div className="bg-white w-full max-w-xl rounded-[32px] p-6 z-10 animate-slide-up shadow-2xl relative">
+                        <div className="flex justify-between items-center mb-6"><h2 className="text-lg font-black text-gray-900 tracking-tighter">{title}</h2><button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100"><X size={20}/></button></div>
+                        {children}
+                    </div>
+                </div>
+            );
+        }
+
+        // ==========================================
+        // 8. 서브 컴포넌트: 거래 내역 리스트
+        // ==========================================
+        function TransactionList({ items, onEdit }) {
+            if (items.length === 0) return <p className="text-center text-gray-300 py-20 italic text-sm font-bold">표시할 내역이 없습니다.</p>;
+            return (
+                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                    {items.map(t => (
+                        <div key={t.id} onClick={() => onEdit(t)} className="flex justify-between items-center p-4 rounded-2xl hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer bg-white border border-gray-50 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2.5 rounded-xl flex items-center justify-center font-bold ${t.type === 'income' ? 'bg-blue-50 text-blue-500' : 'bg-red-50 text-red-500'}`}>
+                                    {t.type === 'income' ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
+                                </div>
+                                <div><div className="text-sm font-black text-[#191F28]">{t.memo || t.category}</div><div className="text-[10px] font-bold text-gray-400">{t.date} · {t.category}</div></div>
+                            </div>
+                            <span className={`font-black text-sm ${t.type === 'income' ? 'text-blue-500' : 'text-red-500'}`}>{t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}원</span>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // ==========================================
+        // 9. 서브 컴포넌트: 반복 관리 메뉴
+        // ==========================================
+        function RecurringManager({ list, onAdd, onDelete, onApply }) {
+            const [f, setF] = useState({ frequency: 'monthly', month: 1, day: 1, type: 'expense', category: '식비', amount: '', memo: '' });
+            return (
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+                    <div className="space-y-2">
+                        {list.length === 0 ? <p className="text-center text-gray-300 py-10 text-xs font-bold">반복되는 고정 지출/수입을 등록하세요.</p> : list.map(i => (
+                            <div key={i.id} className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                <div><span className={`text-[10px] font-black px-2 py-0.5 rounded ${i.type === 'income' ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'}`}>{i.frequency === 'yearly' ? `매년 ${i.month}월 ${i.day}일` : `매월 ${i.day}일`}</span><div className="font-bold text-sm mt-1">{i.memo}</div></div>
+                                <div className="flex items-center gap-3"><span className="font-black text-sm">{formatCurrency(i.amount)}원</span><button onClick={() => onDelete(i.id)} className="text-gray-300 active:text-red-400 p-2"><Trash2 size={18}/></button></div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-4 bg-[#F8F9FA] rounded-[28px] space-y-3 border border-dashed border-gray-300">
+                        <div className="flex gap-2">
+                            <select className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none border-none" value={f.frequency} onChange={e => setF({...f, frequency: e.target.value})}><option value="monthly">매월</option><option value="yearly">매년</option></select>
+                            {f.frequency === 'yearly' && <select className="w-20 p-3 bg-white rounded-xl text-xs font-bold outline-none border-none" value={f.month} onChange={e => setF({...f, month: Number(e.target.value)})}>{Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}월</option>)}</select>}
+                            <select className="w-20 p-3 bg-white rounded-xl text-xs font-bold outline-none border-none" value={f.day} onChange={e => setF({...f, day: Number(e.target.value)})}>{Array.from({length:31},(_,i)=>i+1).map(d=><option key={d} value={d}>{d}일</option>)}</select>
+                            <select className="w-24 p-3 bg-white rounded-xl text-xs font-bold outline-none border-none" value={f.type} onChange={e => setF({...f, type: e.target.value, category: CATEGORIES[e.target.value][0]})}>{['expense','income'].map(v=><option key={v} value={v}>{v==='expense'?'지출':'수입'}</option>)}</select>
+                        </div>
+                        <div className="flex gap-2">
+                            <select className="w-1/3 p-3 bg-white rounded-xl text-xs font-bold border-none outline-none" value={f.category} onChange={e => setF({...f, category: e.target.value})}>{CATEGORIES[f.type].map(c=><option key={c} value={c}>{c}</option>)}</select>
+                            <input className="flex-1 p-3 bg-white rounded-xl text-xs font-bold outline-none" placeholder="내용" value={f.memo} onChange={e => setF({...f, memo: e.target.value})}/>
+                            <input className="w-1/4 p-3 bg-white rounded-xl text-xs text-right font-black outline-none" placeholder="0" type="number" value={f.amount} onChange={e => setF({...f, amount: e.target.value})}/>
+                        </div>
+                        <button onClick={() => { if(f.memo && f.amount) { onAdd(f); setF({...f, memo:'', amount:''}); } }} className="w-full py-4 bg-[#3182F6] text-white rounded-2xl text-sm font-black active:scale-95 shadow-lg">반복 항목 추가</button>
+                    </div>
+                    <button onClick={onApply} className="w-full py-4 bg-[#E8F3FF] text-[#3182F6] font-black rounded-2xl active:scale-[0.98] transition-all">이달 내역에 일괄 반영하기</button>
+                </div>
+            );
+        }
+
+        // --- 렌더링 ---
         const root = createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
