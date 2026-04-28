@@ -1,18 +1,33 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="스마트 공유 가계부">
+    <meta name="apple-mobile-web-app-title" content="스마트 가계부">
     <meta name="theme-color" content="#F2F4F6">
     
     <link rel="apple-touch-icon" href="./icon.png">
     <link rel="shortcut icon" href="./icon.png">
 
-    <title>우리만의 스마트 가계부</title>
+    <title>나만의 스마트 가계부</title>
     
+    <!-- 모바일 드래그 앤 드롭 폴리필 (아이폰 등 터치 기기 지원용) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/scroll-behaviour.min.js"></script>
+    
+    <script>
+        // 모바일 드래그 설정 (0.3초 길게 누르면 드래그 시작)
+        try {
+            MobileDragDrop.polyfill({
+                dragImageTranslateOverride: MobileDragDrop.scrollBehaviourDragImageTranslateOverride,
+                holdToDrag: 300
+            });
+        } catch (e) { console.log('DnD Polyfill Error', e); }
+    </script>
+
     <style>
         /* 기본 폰트 및 배경 */
         body { 
@@ -36,7 +51,7 @@
         .animate-fade-in { animation: fadeIn 0.2s ease-out; }
         .animate-scale-in { animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
 
-        /* [NEW] 달력 좌우 슬라이드 애니메이션 */
+        /* 달력 좌우 슬라이드 애니메이션 */
         @keyframes slideInFromRight {
             0% { transform: translateX(20px); opacity: 0; }
             100% { transform: translateX(0); opacity: 1; }
@@ -66,11 +81,9 @@
         .safe-top { padding-top: env(safe-area-inset-top); }
         .touch-action-none { touch-action: none; }
         
-        /* 테이블 스타일 */
-        .bulk-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .bulk-table th { text-align: left; padding: 8px; color: #6b7280; font-weight: 600; border-bottom: 1px solid #e5e7eb; }
-        .bulk-table td { padding: 8px; border-bottom: 1px solid #f3f4f6; color: #374151; }
-        .bulk-table tr:last-child td { border-bottom: none; }
+        /* 드래그 앤 드롭 스타일 */
+        .drag-over { background-color: rgba(16, 185, 129, 0.1) !important; border: 2px dashed #10B981 !important; }
+        .dragging { opacity: 0.5; }
     </style>
 
     <!-- Tailwind CSS -->
@@ -108,16 +121,6 @@
         </div>
     </div>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // 전역 변수로 Firebase 함수 노출
-        window.firebaseApp = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, onSnapshot, setDoc, updateDoc, arrayUnion, arrayRemove, collection };
-    </script>
-
     <!-- React Application Script -->
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
@@ -135,6 +138,7 @@
         const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconBase>;
         const TrendingUp = (props) => <IconBase {...props}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></IconBase>;
         const TrendingDown = (props) => <IconBase {...props}><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></IconBase>;
+        const Wallet = (props) => <IconBase {...props}><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></IconBase>;
         const Repeat = (props) => <IconBase {...props}><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></IconBase>;
         const X = (props) => <IconBase {...props}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconBase>;
         const CheckCircle = (props) => <IconBase {...props}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></IconBase>;
@@ -143,195 +147,89 @@
         const Wand2 = (props) => <IconBase {...props}><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></IconBase>;
         const PiggyBank = (props) => <IconBase {...props}><path d="M19 5c-1.5 0-2.8.6-3.8 1.5l-2.5 2.5"/><path d="M2 20.17C2 18.82 2.6 17.5 3.5 16.5l.5-.5 3-3a5.5 5.5 0 0 1 1.7-1.3"/><path d="M22 17c0 1.66-1.34 3-3 3h-2.5"/><path d="M10 21h4.5a2.5 2.5 0 0 0 2.5-2.5"/><path d="M7 8h10"/><path d="M16 16c0-1.5-2-2-2-4"/><circle cx="17.5" cy="10.5" r=".5"/></IconBase>;
         const Camera = (props) => <IconBase {...props}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></IconBase>;
-        const Users = (props) => <IconBase {...props}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconBase>;
-        const LogOut = (props) => <IconBase {...props}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></IconBase>;
-        const FileText = (props) => <IconBase {...props}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></IconBase>;
-        const ImageIcon = (props) => <IconBase {...props}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconBase>;
+
+        const INITIAL_DATA = [
+            { id: 1, date: '2023-10-25', type: 'expense', category: '식비', amount: 12000, memo: '점심 식사' },
+            { id: 2, date: '2023-10-25', type: 'income', category: '급여', amount: 3500000, memo: '10월 월급' },
+            { id: 3, date: '2023-10-28', type: 'expense', category: '교통', amount: 1500, memo: '버스비' },
+        ];
 
         const CATEGORIES = {
             expense: ['식비', '교통', '문화/생활', '쇼핑/뷰티', '의료/건강', '교육', '공과금', '저축/보험', '대출이자', '기타'],
             income: ['급여', '용돈', '금융수입', '기타']
         };
 
-        const INITIAL_DATA = [
-            { id: 1, date: '2023-10-25', type: 'expense', category: '가이드', amount: 0, memo: '공유 가계부 시작' }
-        ];
-
         function App() {
-            // Firebase 관련 State
-            const [user, setUser] = useState(null);
-            const [db, setDb] = useState(null);
-            const [groupId, setGroupId] = useState(() => localStorage.getItem('moneyBook_groupId') || '');
-            const [isGroupConfirmed, setIsGroupConfirmed] = useState(!!localStorage.getItem('moneyBook_groupId'));
-            
-            // App Data State
-            const [transactions, setTransactions] = useState([]);
-            const [recurringItems, setRecurringItems] = useState([]);
-            const [loadingData, setLoadingData] = useState(false);
+            // State
+            const [transactions, setTransactions] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('myMoneyBook');
+                    return saved ? JSON.parse(saved) : INITIAL_DATA;
+                } catch (e) { return INITIAL_DATA; }
+            });
 
-            // UI State
+            const [recurringItems, setRecurringItems] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('myMoneyBook_recurring');
+                    return saved ? JSON.parse(saved) : [];
+                } catch (e) { return []; }
+            });
+            
             const [currentDate, setCurrentDate] = useState(new Date());
             const [viewMode, setViewMode] = useState('calendar'); 
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
             const [isParserOpen, setIsParserOpen] = useState(false);
-            const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
             const [editingId, setEditingId] = useState(null);
             const [slideDirection, setSlideDirection] = useState('none');
-            const [ocrLoading, setOcrLoading] = useState(false);
+            const [ocrLoading, setOcrLoading] = useState(false); 
             
             const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
             const [alertModal, setAlertModal] = useState({ isOpen: false, message: '', type: 'success' });
 
-            const [form, setForm] = useState({ type: 'expense', date: new Date().toISOString().split('T')[0], category: '식비', amount: '', memo: '' });
-            const [recurringForm, setRecurringForm] = useState({ day: 1, type: 'expense', category: '식비', amount: '', memo: '' });
+            const [form, setForm] = useState({
+                type: 'expense',
+                date: new Date().toISOString().split('T')[0],
+                category: '식비',
+                amount: '',
+                memo: ''
+            });
+
+            const [recurringForm, setRecurringForm] = useState({
+                day: 1,
+                type: 'expense',
+                category: '식비',
+                amount: '',
+                memo: ''
+            });
+
             const [smsText, setSmsText] = useState('');
-            const [bulkText, setBulkText] = useState('');
-            const [bulkPreview, setBulkPreview] = useState([]);
-            const [loginInput, setLoginInput] = useState('');
             
             // Refs
             const lastWheelTime = useRef(0);
             const touchStart = useRef(null);
             const touchEnd = useRef(null);
             const minSwipeDistance = 50;
-            const fileInputRef = useRef(null);
-            const bulkFileInputRef = useRef(null); // 대량 입력용 파일 ref
+            const fileInputRef = useRef(null); 
 
-            // 1. Firebase 초기화 및 Auth
             useEffect(() => {
-                const initFirebase = async () => {
-                    const { firebaseApp } = window;
-                    if (!firebaseApp) return;
-                    const firebaseConfig = {
-                      apiKey: "AIzaSyAHenVPatYoRTW50WBgaww9OmqY7YxyMss",
-                      authDomain: "ssantakim-47baf.firebaseapp.com",
-                      projectId: "ssantakim-47baf",
-                      storageBucket: "ssantakim-47baf.firebasestorage.app",
-                      messagingSenderId: "152500074469",
-                      appId: "1:152500074469:web:1f2b3c42018e9ef7e4610c",
-                      measurementId: "G-HMKZ4NV799"
-                    };
-                    
-                    try {
-                        const app = firebaseApp.initializeApp(firebaseConfig);
-                        const auth = firebaseApp.getAuth(app);
-                        const firestore = firebaseApp.getFirestore(app);
-                        
-                        setDb(firestore);
-
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await firebaseApp.signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await firebaseApp.signInAnonymously(auth);
-                        }
-
-                        firebaseApp.onAuthStateChanged(auth, (u) => {
-                            setUser(u);
-                            const loadingEl = document.getElementById('loading');
-                            if(loadingEl) loadingEl.style.display = 'none';
-                        });
-                    } catch (err) {
-                        console.error("Firebase init failed:", err);
-                        showAlert("서버 연결에 실패했습니다. 새로고침 해주세요.", "error");
-                    }
-                };
-                initFirebase();
+                const loadingEl = document.getElementById('loading');
+                if(loadingEl) loadingEl.style.display = 'none';
             }, []);
 
-            // 2. 데이터 동기화
-            useEffect(() => {
-                if (!user || !db || !isGroupConfirmed || !groupId) return;
+            useEffect(() => { localStorage.setItem('myMoneyBook', JSON.stringify(transactions)); }, [transactions]);
+            useEffect(() => { localStorage.setItem('myMoneyBook_recurring', JSON.stringify(recurringItems)); }, [recurringItems]);
 
-                const { doc, onSnapshot } = window.firebaseApp;
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shared_ledgers', groupId);
-                
-                setLoadingData(true);
-                const unsubscribe = onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        setTransactions(data.transactions || []);
-                        setRecurringItems(data.recurringItems || []);
-                    } else {
-                        setTransactions([]);
-                        setRecurringItems([]);
-                    }
-                    setLoadingData(false);
-                }, (error) => {
-                    console.error("Data sync error:", error);
-                    setLoadingData(false);
-                    showAlert("데이터를 불러오는데 실패했습니다.", "error");
-                });
-
-                return () => unsubscribe();
-            }, [user, db, isGroupConfirmed, groupId]);
-
-            // --- 데이터 저장 헬퍼 함수 ---
-            const saveToFirestore = async (newTransactions, newRecurring) => {
-                // [수정] 저장 실패 원인 명확히 알림
-                if (!db) {
-                    showAlert("서버와 연결되지 않았습니다.", "error");
-                    return;
-                }
-                if (!user) {
-                    showAlert("로그인 정보를 확인 중입니다. 잠시만 기다려주세요.", "error");
-                    return;
-                }
-                if (!groupId) {
-                    showAlert("공유 그룹 ID가 없습니다.", "error");
-                    return;
-                }
-
-                const { doc, setDoc } = window.firebaseApp;
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shared_ledgers', groupId);
-
-                try {
-                    await setDoc(docRef, {
-                        transactions: newTransactions !== undefined ? newTransactions : transactions,
-                        recurringItems: newRecurring !== undefined ? newRecurring : recurringItems,
-                        lastUpdated: new Date().toISOString(),
-                        updatedBy: user.uid
-                    }, { merge: true });
-                } catch (e) {
-                    console.error("Save error:", e);
-                    showAlert("저장 실패. 인터넷 연결을 확인하세요.", "error");
-                }
-            };
-
-            const handleGroupLogin = (e) => {
-                e.preventDefault();
-                if(!loginInput.trim()) return showAlert('공유 ID를 입력해주세요.', 'error');
-                const id = loginInput.trim();
-                setGroupId(id);
-                localStorage.setItem('moneyBook_groupId', id);
-                setIsGroupConfirmed(true);
-                showAlert(`'${id}' 가계부에 접속합니다.`);
-            };
-
-            const handleLogout = () => {
-                askConfirm('공유 가계부에서 나가시겠습니까?\n다음에 같은 ID를 입력하면 다시 볼 수 있습니다.', () => {
-                    localStorage.removeItem('moneyBook_groupId');
-                    setGroupId('');
-                    setIsGroupConfirmed(false);
-                    setTransactions([]);
-                    setRecurringItems([]);
-                    setLoginInput('');
-                });
-            };
-            
             useEffect(() => {
                 const handleKeyDown = (e) => {
-                    if (isModalOpen || isRecurringModalOpen || isParserOpen || isBulkModalOpen || !isGroupConfirmed) return;
+                    if (isModalOpen || isRecurringModalOpen || isParserOpen) return;
                     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
                     if (e.key === 'ArrowLeft') handlePrevMonth();
                     if (e.key === 'ArrowRight') handleNextMonth();
                 };
                 window.addEventListener('keydown', handleKeyDown);
                 return () => window.removeEventListener('keydown', handleKeyDown);
-            }, [currentDate, isModalOpen, isRecurringModalOpen, isParserOpen, isBulkModalOpen, isGroupConfirmed]);
+            }, [currentDate, isModalOpen, isRecurringModalOpen, isParserOpen]);
 
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth();
@@ -381,11 +279,17 @@
                 setConfirmModal({ ...confirmModal, isOpen: false });
             };
 
-            const handlePrevMonth = () => { setSlideDirection('left'); setCurrentDate(new Date(year, month - 1, 1)); };
-            const handleNextMonth = () => { setSlideDirection('right'); setCurrentDate(new Date(year, month + 1, 1)); };
+            const handlePrevMonth = () => {
+                setSlideDirection('left');
+                setCurrentDate(new Date(year, month - 1, 1));
+            };
+            const handleNextMonth = () => {
+                setSlideDirection('right');
+                setCurrentDate(new Date(year, month + 1, 1));
+            };
 
             const handleWheel = (e) => {
-                if (isModalOpen || isRecurringModalOpen || isParserOpen || isBulkModalOpen) return;
+                if (isModalOpen || isRecurringModalOpen || isParserOpen) return;
                 if (Date.now() - lastWheelTime.current < 300) return;
                 if (viewMode !== 'calendar') return;
                 lastWheelTime.current = Date.now();
@@ -395,10 +299,45 @@
             const onTouchMove = (e) => { touchEnd.current = e.targetTouches[0].clientX; };
             const onTouchEnd = () => {
                 if (!touchStart.current || !touchEnd.current) return;
-                if (isModalOpen || isRecurringModalOpen || isParserOpen || isBulkModalOpen) return;
+                if (isModalOpen || isRecurringModalOpen || isParserOpen) return;
                 const distance = touchStart.current - touchEnd.current;
                 if (distance > minSwipeDistance) handleNextMonth();
                 if (distance < -minSwipeDistance) handlePrevMonth();
+            };
+
+            // --- Drag and Drop Handlers ---
+            const handleDragStart = (e, id) => {
+                e.dataTransfer.setData("text/plain", id);
+                e.dataTransfer.effectAllowed = "move";
+                e.target.style.opacity = "0.5";
+            };
+
+            const handleDragEnd = (e) => {
+                e.target.style.opacity = "1";
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                e.currentTarget.classList.add("drag-over");
+            };
+
+            const handleDragLeave = (e) => {
+                e.currentTarget.classList.remove("drag-over");
+            };
+
+            const handleDrop = (e, targetDateStr) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove("drag-over");
+                const id = e.dataTransfer.getData("text/plain");
+                
+                if (id) {
+                    const numId = Number(id);
+                    setTransactions(prev => prev.map(t => 
+                        t.id === numId ? { ...t, date: targetDateStr } : t
+                    ));
+                    showAlert('날짜가 변경되었습니다.');
+                }
             };
 
             const handleDateClick = (dateStr) => {
@@ -413,50 +352,36 @@
                 setForm({ ...transaction, amount: transaction.amount, memo: transaction.memo || '' });
                 setIsModalOpen(true);
             };
-
             const handleDelete = (id, e) => {
                 if(e) e.stopPropagation();
                 askConfirm('정말 삭제하시겠습니까?', () => {
-                    const newTransactions = transactions.filter(t => t.id !== id);
-                    saveToFirestore(newTransactions, undefined);
+                    setTransactions(prev => prev.filter(t => t.id !== id));
                     if(isModalOpen) setIsModalOpen(false);
                     showAlert('삭제되었습니다.');
                 });
             };
-
             const handleSubmit = (e) => {
                 e.preventDefault();
-                // [수정] 입력값 검증 알림 추가
-                if (!form.amount) {
-                    showAlert('금액을 입력해주세요.', 'error');
-                    return;
-                }
-                if (!form.category) {
-                    showAlert('카테고리를 선택해주세요.', 'error');
-                    return;
-                }
-                
+                if (!form.amount || !form.category) return;
                 const txData = { ...form, amount: parseInt(form.amount) };
                 
-                let newTransactions;
                 if (editingId) {
-                    newTransactions = transactions.map(t => t.id === editingId ? { ...t, ...txData } : t);
+                    setTransactions(prev => prev.map(t => t.id === editingId ? { ...t, ...txData } : t));
                     showAlert('수정되었습니다.');
                 } else {
-                    newTransactions = [...transactions, { id: Date.now(), ...txData }];
+                    setTransactions(prev => [...prev, { id: Date.now(), ...txData }]);
                     showAlert('추가되었습니다.');
                 }
-                saveToFirestore(newTransactions, undefined);
-
                 setIsModalOpen(false);
                 setEditingId(null);
                 setForm(prev => ({ ...prev, amount: '', memo: '' }));
             };
 
-            const parseLineToData = (text) => {
-                let parsedAmount = 0, parsedMemo = '', parsedDate = '', parsedType = 'expense', parsedCategory = '기타';
+            // 공통 텍스트 분석 로직
+            const parseTextToForm = (text) => {
+                let parsedAmount = 0, parsedMemo = '', parsedDate = form.date, parsedType = 'expense';
                 
-                const amountRegex = /([0-9]{1,3}(,[0-9]{3})+)|([0-9]+)원?/g;
+                const amountRegex = /([0-9]{1,3}(,[0-9]{3})+)|([0-9]+)원/g;
                 const matches = text.match(amountRegex);
                 if (matches) {
                     const wonMatch = matches.find(m => m.includes('원'));
@@ -464,99 +389,44 @@
                     parsedAmount = parseInt(rawAmount.replace(/[^0-9]/g, ''));
                 }
 
-                const dateMatch = text.match(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})/); 
-                const shortDateMatch = text.match(/(\d{1,2})[\.\/월]\s*(\d{1,2})/); 
+                const dateMatch = text.match(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})/);
+                const shortDateMatch = text.match(/(\d{1,2})[\.\/월]\s*(\d{1,2})/);
 
                 if (dateMatch) {
                     parsedDate = `${dateMatch[1]}-${dateMatch[2].padStart(2,'0')}-${dateMatch[3].padStart(2,'0')}`;
                 } else if (shortDateMatch) {
                     const today = new Date();
                     parsedDate = `${today.getFullYear()}-${shortDateMatch[1].padStart(2,'0')}-${shortDateMatch[2].padStart(2,'0')}`;
+                }
+
+                if (text.includes('입금') || text.includes('급여')) {
+                    parsedType = 'income'; parsedMemo = '입금';
                 } else {
-                    parsedDate = new Date().toISOString().split('T')[0];
+                    parsedType = 'expense';
+                    if (text.includes('승인') || text.includes('결제')) {
+                        parsedMemo = '카드결제'; 
+                    }
                 }
 
-                if (text.includes('입금') || text.includes('급여') || text.includes('수입')) {
-                    parsedType = 'income'; parsedCategory = '기타';
-                }
+                setForm(prev => ({ 
+                    ...prev, 
+                    amount: parsedAmount || prev.amount, 
+                    date: parsedDate, 
+                    memo: parsedMemo || prev.memo, 
+                    type: parsedType, 
+                    category: CATEGORIES[parsedType][0] 
+                }));
                 
-                let memoRaw = text.replace(amountRegex, '').replace(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})/, '').replace(/(\d{1,2})[\.\/월]\s*(\d{1,2})/, '').replace(/입금|급여|수입|지출|원/g, '').trim();
-                parsedMemo = memoRaw.replace(/\s+/g, ' ').substring(0, 20) || (parsedType === 'income' ? '입금' : '지출');
-
-                if (parsedType === 'expense') {
-                    if (memoRaw.includes('식') || memoRaw.includes('밥') || memoRaw.includes('카페') || memoRaw.includes('커피')) parsedCategory = '식비';
-                    else if (memoRaw.includes('택시') || memoRaw.includes('버스') || memoRaw.includes('주유')) parsedCategory = '교통';
-                    else if (memoRaw.includes('마트') || memoRaw.includes('편의점')) parsedCategory = '쇼핑/뷰티';
-                    else if (memoRaw.includes('병원') || memoRaw.includes('약국')) parsedCategory = '의료/건강';
-                }
-
-                if (parsedAmount > 0) {
-                    return {
-                        id: Date.now() + Math.random(),
-                        date: parsedDate,
-                        type: parsedType,
-                        category: parsedCategory,
-                        amount: parsedAmount,
-                        memo: parsedMemo
-                    };
-                }
-                return null;
-            };
-
-            const runBulkAnalysis = (textSource) => {
-                if (!textSource.trim()) {
-                    showAlert('분석할 내용이 없습니다.', 'error');
-                    return;
-                }
-                const lines = textSource.split('\n');
-                const newItems = [];
-                lines.forEach(line => {
-                    const item = parseLineToData(line);
-                    if (item) newItems.push(item);
-                });
-                
-                if (newItems.length > 0) {
-                    setBulkPreview(newItems);
-                    showAlert(`${newItems.length}건이 분석되었습니다. 확인 후 저장하세요.`);
-                } else {
-                    showAlert('분석할 수 있는 내용이 없습니다.', 'error');
-                }
-            };
-
-            const handleBulkAnalyzeClick = () => {
-                runBulkAnalysis(bulkText);
-            };
-
-            const handleBulkSave = () => {
-                if (bulkPreview.length === 0) return;
-                const newTransactions = [...transactions, ...bulkPreview];
-                saveToFirestore(newTransactions, undefined);
-                
-                setBulkText('');
-                setBulkPreview([]);
-                setIsBulkModalOpen(false);
-                showAlert(`${bulkPreview.length}건 일괄 등록 완료!`);
-            };
-
-            const deleteBulkItem = (index) => {
-                const newPreview = [...bulkPreview];
-                newPreview.splice(index, 1);
-                setBulkPreview(newPreview);
+                return parsedAmount > 0;
             };
 
             const parseSms = () => {
                 if (!smsText.trim()) return;
-                const item = parseLineToData(smsText);
-                if (item) {
-                    setForm({ ...form, ...item, id: undefined });
-                    setIsParserOpen(false); 
-                    setSmsText(''); 
-                    showAlert('입력 완료! 저장 버튼을 눌러주세요.');
-                } else {
-                    showAlert('분석 실패. 내용을 확인해주세요.', 'error');
-                }
+                parseTextToForm(smsText);
+                setIsParserOpen(false); setSmsText(''); showAlert('입력 완료!');
             };
 
+            // --- 이미지 업로드 및 OCR 처리 ---
             const handleImageUpload = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
@@ -568,41 +438,14 @@
                     await worker.terminate();
                     
                     const extractedText = ret.data.text;
-                    const item = parseLineToData(extractedText);
+                    const success = parseTextToForm(extractedText);
                     
-                    if (item) {
-                        setForm({...form, ...item, id: undefined});
+                    if (success) {
                         showAlert('영수증을 읽어 입력했습니다!');
                     } else {
                         showAlert('내용을 확실히 읽지 못했습니다. 직접 수정해주세요.', 'error');
-                        setForm(prev => ({...prev, memo: extractedText.slice(0, 20) + '...'}));
+                        setForm(prev => ({...prev, memo: prev.memo || extractedText.slice(0, 20) + '...'}));
                     }
-                } catch (err) {
-                    console.error(err);
-                    showAlert('이미지 인식에 실패했습니다.', 'error');
-                }
-                setOcrLoading(false);
-            };
-
-            // 대량 이미지 업로드 처리
-            const handleBulkImageUpload = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                setOcrLoading(true);
-                try {
-                    const worker = await Tesseract.createWorker('kor+eng');
-                    const ret = await worker.recognize(file);
-                    await worker.terminate();
-                    
-                    const extractedText = ret.data.text;
-                    
-                    // 텍스트창에 원본 표시 (수정 가능하게)
-                    setBulkText(extractedText);
-                    
-                    // 자동 분석 실행
-                    runBulkAnalysis(extractedText);
-                    
                 } catch (err) {
                     console.error(err);
                     showAlert('이미지 인식에 실패했습니다.', 'error');
@@ -613,17 +456,10 @@
             const handleAddRecurring = (e) => {
                 e.preventDefault();
                 if (!recurringForm.amount) return;
-                const newRecurring = [...recurringItems, { id: Date.now(), ...recurringForm, amount: parseInt(recurringForm.amount) }];
-                saveToFirestore(undefined, newRecurring);
+                setRecurringItems(prev => [...prev, { id: Date.now(), ...recurringForm, amount: parseInt(recurringForm.amount) }]);
                 setRecurringForm(prev => ({ ...prev, amount: '', memo: '' }));
                 showAlert('고정 내역 저장 완료');
             };
-
-            const handleDeleteRecurring = (id) => {
-                const newRecurring = recurringItems.filter(t => t.id !== id);
-                saveToFirestore(undefined, newRecurring);
-            };
-
             const applyRecurringToMonth = () => {
                 askConfirm('이번 달에 일괄 등록하시겠습니까?', () => {
                     const newTxs = [];
@@ -635,7 +471,7 @@
                         }
                     });
                     if(newTxs.length > 0) {
-                        saveToFirestore([...transactions, ...newTxs], undefined);
+                        setTransactions([...transactions, ...newTxs]);
                         showAlert(`${newTxs.length}건 등록 완료`);
                         setIsRecurringModalOpen(false);
                     } else {
@@ -644,31 +480,13 @@
                 });
             };
 
-            if (!isGroupConfirmed) {
-                return (
-                    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white">
-                        <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-emerald-200 shadow-xl mb-6">₩</div>
-                        <h1 className="text-2xl font-bold text-gray-800 mb-2">공유 가계부 시작하기</h1>
-                        <p className="text-gray-500 text-center mb-8 text-sm">가족, 연인과 함께 쓸<br/>공유 ID를 입력하거나 새로 만드세요.</p>
-                        <form onSubmit={handleGroupLogin} className="w-full max-w-xs space-y-4">
-                            <input type="text" value={loginInput} onChange={e => setLoginInput(e.target.value)} placeholder="예: 우리집101호, love2024" className="w-full p-4 bg-gray-50 rounded-2xl text-center font-bold outline-none focus:ring-2 focus:ring-emerald-500 transition-all" />
-                            <button type="submit" className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl active:scale-[0.98] shadow-lg shadow-gray-200">입장하기</button>
-                        </form>
-                        <p className="mt-6 text-xs text-gray-400">같은 ID를 입력하면 내역이 자동으로 공유됩니다.</p>
-                    </div>
-                );
-            }
-
             return (
                 <div className="min-h-screen pb-safe">
                     <nav className="bg-white sticky top-0 z-30 safe-top border-b border-gray-100 shadow-sm transition-all">
                         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <div className="w-8 h-8 bg-emerald-500 rounded-xl flex items-center justify-center text-white font-bold shadow-emerald-200 shadow-md">₩</div>
-                                <div>
-                                    <span className="font-bold text-lg tracking-tight text-gray-800 block leading-tight">스마트 가계부</span>
-                                    <span className="text-[10px] text-gray-400 font-medium block leading-none">ID: {groupId}</span>
-                                </div>
+                                <span className="font-bold text-lg tracking-tight text-gray-800">스마트 가계부</span>
                             </div>
                             
                             <div className="flex items-center bg-gray-100 rounded-full px-1 py-0.5">
@@ -677,25 +495,15 @@
                                 <button onClick={handleNextMonth} className="p-1.5 hover:bg-white rounded-full transition-all text-gray-500 hover:shadow-sm"><ChevronRight className="w-4 h-4" /></button>
                             </div>
 
-                            <div className="flex gap-1">
-                                <button onClick={() => setIsRecurringModalOpen(true)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-xl transition-colors">
-                                    <Repeat className="w-5 h-5" />
-                                </button>
-                                <button onClick={handleLogout} className="p-2 text-gray-500 hover:bg-gray-100 rounded-xl transition-colors">
-                                    <LogOut className="w-5 h-5" />
-                                </button>
-                            </div>
+                            <button onClick={() => setIsRecurringModalOpen(true)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-xl transition-colors">
+                                <Repeat className="w-5 h-5" />
+                            </button>
                         </div>
                     </nav>
 
                     <main className="max-w-2xl mx-auto px-4 py-4 space-y-4" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
                         
                         <div className="bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 relative overflow-hidden">
-                            {loadingData && (
-                                <div className="absolute inset-0 bg-white/80 z-20 flex items-center justify-center">
-                                    <div className="spinner w-6 h-6 border-2"></div>
-                                </div>
-                            )}
                             <div className="relative z-10">
                                 <div className="flex flex-col items-center justify-center mb-6">
                                     <span className="text-xs font-bold text-gray-400 mb-1">{year}년 {month + 1}월 잔액</span>
@@ -727,7 +535,7 @@
                         </div>
 
                         {viewMode === 'calendar' ? (
-                            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 overflow-hidden min-h-[400px]">
+                            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-2 overflow-hidden">
                                 <div className="grid grid-cols-7 mb-2 border-b border-gray-50 pb-2">
                                     {['일','월','화','수','목','금','토'].map((d,i) => (
                                         <div key={d} className={`text-center text-xs font-bold py-2 ${i===0?'text-red-400':i===6?'text-blue-400':'text-gray-400'}`}>{d}</div>
@@ -738,7 +546,14 @@
                                     className={`grid grid-cols-7 gap-1 ${slideDirection === 'right' ? 'slide-in-right' : slideDirection === 'left' ? 'slide-in-left' : ''}`}
                                 >
                                     {generateCalendarDays().map((item, idx) => (
-                                        <div key={idx} onClick={() => handleDateClick(item.dateStr)} className={`min-h-[85px] p-1 flex flex-col rounded-xl transition-colors ${!item.day ? 'pointer-events-none' : 'active:bg-gray-50'}`}>
+                                        <div 
+                                            key={idx} 
+                                            onClick={() => handleDateClick(item.dateStr)} 
+                                            onDragOver={item.day ? handleDragOver : undefined}
+                                            onDragLeave={item.day ? handleDragLeave : undefined}
+                                            onDrop={item.day ? (e) => handleDrop(e, item.dateStr) : undefined}
+                                            className={`min-h-[85px] p-1 flex flex-col rounded-xl transition-colors ${!item.day ? 'pointer-events-none' : 'active:bg-gray-50'}`}
+                                        >
                                             {item.day && (
                                                 <>
                                                     <span className={`text-[10px] font-bold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${
@@ -748,7 +563,14 @@
                                                     
                                                     <div className="flex-1 flex flex-col gap-1 w-full overflow-hidden">
                                                         {item.transactions.slice(0, 3).map((t) => (
-                                                            <div key={t.id} onClick={(e) => handleEditClick(t, e)} className={`flex items-center px-1 py-0.5 rounded-md ${t.type === 'income' ? 'bg-blue-50' : 'bg-red-50'}`}>
+                                                            <div 
+                                                                key={t.id} 
+                                                                onClick={(e) => handleEditClick(t, e)} 
+                                                                draggable="true"
+                                                                onDragStart={(e) => handleDragStart(e, t.id)}
+                                                                onDragEnd={handleDragEnd}
+                                                                className={`flex items-center px-1 py-0.5 rounded-md ${t.type === 'income' ? 'bg-blue-50' : 'bg-red-50'}`}
+                                                            >
                                                                 <div className={`h-1.5 w-1.5 rounded-full mr-1 shrink-0 ${t.type === 'income' ? 'bg-blue-400' : 'bg-red-400'}`}></div>
                                                                 <span className={`text-[9px] font-medium truncate ${t.type === 'income' ? 'text-blue-600' : 'text-red-600'}`}>{t.memo || t.category}</span>
                                                             </div>
@@ -801,27 +623,40 @@
                             </div>
                         )}
 
+                        {/* 고정 수입/지출 요약 (업데이트) */}
                         <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-24">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                     <PiggyBank className="w-4 h-4 text-emerald-500" /> 
-                                    고정 지출 요약
+                                    고정 내역 요약
                                 </h3>
-                                <span className="text-xs font-bold text-gray-500 bg-gray-50 px-2 py-1 rounded-lg">
-                                    총 {formatSimpleCurrency(recurringItems.reduce((acc, item) => item.type === 'expense' ? acc + item.amount : acc, 0))}원
-                                </span>
+                                <div className="flex gap-2">
+                                    {recurringItems.some(i => i.type === 'income') && (
+                                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
+                                            수입 +{formatSimpleCurrency(recurringItems.reduce((acc, item) => item.type === 'income' ? acc + item.amount : acc, 0))}
+                                        </span>
+                                    )}
+                                    {recurringItems.some(i => i.type === 'expense') && (
+                                        <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-lg">
+                                            지출 -{formatSimpleCurrency(recurringItems.reduce((acc, item) => item.type === 'expense' ? acc + item.amount : acc, 0))}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
+                            
                             <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
                                 {recurringItems.length === 0 ? (
                                     <div className="w-full text-center py-6 text-xs text-gray-400 border border-dashed rounded-2xl bg-gray-50">
-                                        상단의 <Repeat className="w-3 h-3 inline mx-1"/> 버튼을 눌러<br/>매달 나가는 돈을 등록해보세요
+                                        상단의 <Repeat className="w-3 h-3 inline mx-1"/> 버튼을 눌러<br/>매달 고정 수입/지출을 등록해보세요
                                     </div>
                                 ) : recurringItems.map(item => (
                                     <div key={item.id} className="min-w-[140px] snap-center bg-gray-50 rounded-2xl p-3 flex flex-col justify-between h-20 border border-gray-100 shrink-0">
                                         <div className="text-xs font-bold text-gray-700 truncate">{item.memo}</div>
                                         <div className="flex justify-between items-end">
                                             <span className="text-[10px] text-gray-400 font-medium">매월 {item.day}일</span>
-                                            <span className="text-xs font-bold text-red-500">{formatSimpleCurrency(item.amount)}</span>
+                                            <span className={`text-xs font-bold ${item.type === 'income' ? 'text-blue-500' : 'text-red-500'}`}>
+                                                {item.type === 'income' ? '+' : '-'}{formatSimpleCurrency(item.amount)}
+                                            </span>
                                         </div>
                                     </div>
                                 ))}
@@ -834,16 +669,17 @@
                         <Plus className="w-7 h-7" />
                     </button>
 
-                    {(isModalOpen || isRecurringModalOpen || isParserOpen || isBulkModalOpen || confirmModal.isOpen) && (
+                    {(isModalOpen || isRecurringModalOpen || isParserOpen || confirmModal.isOpen) && (
                         <div className="fixed inset-0 bg-black/40 z-50 backdrop-blur-[2px] animate-fade-in" onClick={() => {
-                            if(!confirmModal.isOpen) { setIsModalOpen(false); setIsRecurringModalOpen(false); setIsParserOpen(false); setIsBulkModalOpen(false); }
+                            if(!confirmModal.isOpen) { setIsModalOpen(false); setIsRecurringModalOpen(false); setIsParserOpen(false); }
                         }} />
                     )}
 
+                    {/* OCR Loading Overlay */}
                     {ocrLoading && (
                         <div className="overlay-loading">
                             <div className="spinner mb-4"></div>
-                            <span className="text-gray-800 font-bold">이미지를 읽고 있어요...</span>
+                            <span className="text-gray-800 font-bold">영수증을 읽고 있어요...</span>
                             <span className="text-xs text-gray-500 mt-2">잠시만 기다려주세요 (최대 10초)</span>
                         </div>
                     )}
@@ -861,9 +697,6 @@
                                 <div className="flex gap-2 mb-6">
                                     <button onClick={() => { setIsModalOpen(false); setIsParserOpen(true); }} className="flex-1 py-3 border-2 border-dashed border-indigo-100 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold active:bg-indigo-100 transition-colors">
                                         <ClipboardPaste className="w-4 h-4" /> 문자 붙여넣기
-                                    </button>
-                                    <button onClick={() => { setIsModalOpen(false); setIsBulkModalOpen(true); }} className="flex-1 py-3 border-2 border-dashed border-emerald-100 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold active:bg-emerald-100 transition-colors">
-                                        <FileText className="w-4 h-4" /> 엑셀/대량 입력
                                     </button>
                                     <button onClick={() => fileInputRef.current.click()} className="flex-1 py-3 border-2 border-dashed border-gray-200 bg-gray-50 text-gray-600 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold active:bg-gray-100 transition-colors">
                                         <Camera className="w-4 h-4" /> 사진으로 입력
@@ -916,77 +749,6 @@
                         </div>
                     )}
 
-                    {isBulkModalOpen && (
-                        <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl p-6 pb-safe animate-slide-up shadow-2xl max-w-2xl mx-auto h-[90vh] flex flex-col">
-                            <div className="flex justify-between items-center mb-4 shrink-0">
-                                <h3 className="text-lg font-bold flex items-center gap-2"><FileText className="w-5 h-5 text-emerald-500"/>일괄 입력</h3>
-                                <button onClick={() => { setIsBulkModalOpen(false); setBulkPreview([]); setBulkText(''); }} className="bg-gray-100 p-2 rounded-full text-gray-500"><X className="w-5 h-5"/></button>
-                            </div>
-
-                            {bulkPreview.length === 0 ? (
-                                <>
-                                    <p className="text-sm text-gray-500 mb-3">
-                                        엑셀, 메모장 내용을 붙여넣거나<br/>
-                                        <span className="font-bold text-gray-800">은행 앱 캡처/스크린샷</span>을 불러오세요.
-                                    </p>
-                                    
-                                    <button onClick={() => bulkFileInputRef.current.click()} className="w-full py-3 border-2 border-dashed border-gray-300 bg-gray-50 text-gray-600 rounded-2xl flex items-center justify-center gap-2 text-sm font-bold active:bg-gray-100 transition-colors mb-4">
-                                        <ImageIcon className="w-5 h-5" /> 📸 스크린샷 판독 (사진 불러오기)
-                                    </button>
-                                    <input type="file" ref={bulkFileInputRef} className="hidden" accept="image/*" onChange={handleBulkImageUpload} />
-
-                                    <textarea 
-                                        className="w-full p-4 bg-gray-50 rounded-2xl flex-1 outline-none text-sm resize-none mb-4 focus:ring-2 focus:ring-emerald-500 font-mono whitespace-pre" 
-                                        placeholder={`2023-11-01 점심식사 12000\n2023-11-02 택시비 8500\n11/03 월급 3000000 수입`} 
-                                        value={bulkText} 
-                                        onChange={(e) => setBulkText(e.target.value)}
-                                    ></textarea>
-                                    <button onClick={handleBulkAnalyzeClick} className="w-full py-4 bg-emerald-500 text-white font-bold rounded-2xl active:scale-[0.98] shrink-0">분석하기</button>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="flex justify-between items-center mb-2">
-                                        <p className="text-sm font-bold text-gray-700">총 {bulkPreview.length}건 인식됨</p>
-                                        <button onClick={() => setBulkPreview([])} className="text-xs text-red-500 font-bold underline">다시 입력</button>
-                                    </div>
-                                    <div className="flex-1 overflow-y-auto bg-gray-50 rounded-2xl border border-gray-100 mb-4">
-                                        <table className="bulk-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>날짜</th>
-                                                    <th>내용</th>
-                                                    <th>금액</th>
-                                                    <th></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {bulkPreview.map((item, idx) => (
-                                                    <tr key={idx}>
-                                                        <td className="whitespace-nowrap">{item.date.slice(5)}</td>
-                                                        <td>
-                                                            <div className="font-bold">{item.memo}</div>
-                                                            <div className="text-xs text-gray-400">{item.category}</div>
-                                                        </td>
-                                                        <td className={`font-bold text-right ${item.type==='income'?'text-blue-500':'text-red-500'}`}>
-                                                            {formatSimpleCurrency(item.amount)}
-                                                        </td>
-                                                        <td className="text-right">
-                                                            <button onClick={() => deleteBulkItem(idx)} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4"/></button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <div className="text-xs text-gray-400 mb-3 text-center">
-                                        * 인식이 부정확할 수 있으니 꼭 확인해주세요.
-                                    </div>
-                                    <button onClick={handleBulkSave} className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl active:scale-[0.98] shrink-0">일괄 저장하기</button>
-                                </>
-                            )}
-                        </div>
-                    )}
-
                     {isRecurringModalOpen && (
                         <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl p-6 pb-safe max-h-[85vh] flex flex-col animate-slide-up shadow-2xl max-w-2xl mx-auto">
                             <div className="flex justify-between items-center mb-4 shrink-0">
@@ -1007,7 +769,9 @@
                                             <div className="text-xs text-gray-400 mt-0.5">{item.category}</div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <span className="font-bold text-gray-800">{formatSimpleCurrency(item.amount)}</span>
+                                            <span className={`font-bold ${item.type === 'income' ? 'text-blue-500' : 'text-red-500'}`}>
+                                                {item.type === 'income' ? '+' : '-'}{formatSimpleCurrency(item.amount)}
+                                            </span>
                                             <button onClick={() => handleDeleteRecurring(item.id)} className="text-gray-300 hover:text-red-500 p-2"><Trash2 className="w-4 h-4"/></button>
                                         </div>
                                     </div>
@@ -1039,7 +803,7 @@
                     )}
 
                     {alertModal.isOpen && (
-                        <div className="fixed top-safe left-1/2 -translate-x-1/2 mt-4 z-[70] animate-fade-in px-6 py-3 bg-gray-800 text-white text-sm font-bold rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
+                        <div className="fixed top-safe left-1/2 -translate-x-1/2 mt-4 z-[60] animate-fade-in px-6 py-3 bg-gray-800 text-white text-sm font-bold rounded-full shadow-lg flex items-center gap-2 whitespace-nowrap">
                             {alertModal.type === 'success' ? <CheckCircle className="w-4 h-4 text-emerald-400"/> : <AlertCircle className="w-4 h-4 text-red-400"/>}
                             {alertModal.message}
                         </div>
@@ -1066,4 +830,3 @@
     </script>
 </body>
 </html>
-
