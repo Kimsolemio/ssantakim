@@ -2,13 +2,13 @@
 
 작성일: 2026-09-28
 대상: 나와 가족만 사용하는 비영리 개인용 앱
-기반: 이 저장소의 기존 "가족 가계부" 앱과 동일한 구조(단일 `index.html` + React(CDN) + Tailwind + Firebase Firestore) 재사용
+기반: 기존 저장소의 가계부 앱과는 무관하게 **새로 설계**한다(가계부 앱은 참고용 실험물로만 취급)
 
 ---
 
 ## 1. 한 줄 결론
 
-**실현 가능하다.** 세 기능 중 둘(레시피 자동 생성, 냉장고 재료 관리)은 지금 기술로 확실히 되고, 나머지 하나(인스타/유튜브 링크 → 레시피 추출)는 **유튜브는 확실, 인스타그램은 반쯤**(캡션 붙여넣기·화면캡처·영상 업로드 방식으로 우회) 가능하다. 가족용이라 비용은 월 몇천 원 수준이며, 가장 큰 결정 사항은 "AI API 키를 어떻게 숨길 것인가" 하나뿐이다.
+**실현 가능하다.** 세 기능 중 둘(레시피 자동 생성, 냉장고 재료 관리)은 지금 기술로 확실히 되고, 나머지 하나(인스타/유튜브 링크 → 레시피 추출)는 **유튜브는 확실, 인스타그램은 반쯤**(캡션 붙여넣기·화면캡처·영상 업로드 방식으로 우회) 가능하다. 가족용이라 비용은 월 몇천 원 수준이다. 결정할 것은 두 가지, "어떤 기술 구성으로 새로 시작할 것인가"와 "AI API 키를 어떻게 숨길 것인가"이다.
 
 ---
 
@@ -21,7 +21,7 @@
 | B' | 공개 요리법 링크 추천 | 음식 이름으로 유튜브 영상 링크 제시 | YouTube Data API 검색 |
 | C | 냉장고 현황(재료 관리) | 재료 추가/차감, 유통기한, 가족 간 실시간 공유 | Firestore(가계부 앱과 동일) |
 | D | A·B·C 연결 | 레시피 재료 vs 냉장고 재료 대조 → 부족한 것 표시, 요리 완료 시 재료 자동 차감, "지금 있는 재료로 뭐 해먹지?" | 재료 이름 정규화(표준화) 로직 + LLM |
-| E | 앱처럼 쓰기 | 아이폰 홈화면 아이콘, 오프라인 열람 | PWA(가계부 앱에 이미 있는 메타태그 재사용) |
+| E | 앱처럼 쓰기 | 아이폰 홈화면 아이콘, 오프라인 열람 | PWA(manifest + 서비스워커) |
 
 ---
 
@@ -51,8 +51,8 @@
 ### B'. 음식 이름으로 유튜브 링크 추천 — ✅ 가능
 - YouTube Data API `search.list`는 호출당 100유닛 → 무료 할당량으로 하루 100회 검색. 가족용에 충분.
 
-### C. 냉장고 재료 관리 — ✅ 확실히 가능 (이미 해본 구조)
-- 가계부 앱의 Firestore 실시간 동기화(`onSnapshot`)를 그대로 재사용. 컬렉션만 `fridge_items`로 추가.
+### C. 냉장고 재료 관리 — ✅ 확실히 가능
+- 가족 간 실시간 공유가 핵심이므로 실시간 동기화가 되는 DB(Firestore 또는 Supabase Realtime)를 쓴다. 일반적인 CRUD라 난이도는 낮다.
 - 데이터: 재료명, 표준화된 재료 키(예: "대파", "파" → `green_onion`), 수량, 단위, 보관 위치(냉장/냉동/실온), 유통기한, 등록일.
 - 부가 기능: 유통기한 임박 알림(앱 열 때 배지), 장보기 목록 자동 생성, 영수증 사진으로 재료 일괄 추가(LLM 비전).
 
@@ -62,29 +62,33 @@
 - "있는 재료로 뭐 해먹지?"는 냉장고 목록을 프롬프트에 넣어 후보 5개를 받아오면 된다.
 
 ### E. PWA / 아이폰 홈화면 — ✅ 가능
-- 가계부 앱의 `apple-mobile-web-app-*` 메타태그와 아이콘을 그대로 복사. `manifest.json` + 최소한의 서비스워커만 추가하면 오프라인에서 저장된 레시피 열람 가능.
+- `manifest.json` + `apple-mobile-web-app-*` 메타태그 + 서비스워커. Vite PWA 플러그인을 쓰면 프롬프트 한 줄로 끝난다. 오프라인에서 저장된 레시피 열람 가능.
 
 ---
 
-## 4. 반드시 결정해야 할 한 가지: API 키 보호
+## 4. 결정 사항 ① 기술 구성 — 처음부터 새로 만든다
 
-가계부 앱처럼 `index.html` 한 파일에 모든 걸 넣으면 **AI API 키가 소스에 그대로 노출**된다. Firebase 키는 원래 공개용이지만, Claude/Gemini 키는 도용되면 요금이 청구된다. 가족용이라도 GitHub Pages 등에 올리면 누구나 볼 수 있다.
+가계부 앱은 재미로 만든 실험물이므로 그 구조(HTML 한 파일에 전부)를 따를 이유가 없다. 요리 앱은 화면이 많고(레시피 목록/상세/냉장고/장보기/가져오기/추천) 서버 로직도 있으므로 처음부터 정상적인 프로젝트 구조로 간다.
 
-| 선택지 | 방법 | 장점 | 단점 |
+| 선택지 | 구성 | 장점 | 단점 |
 |--------|------|------|------|
-| ① Cloudflare Worker 프록시 (권장) | 키를 Worker 환경변수에 두고, 앱은 Worker에만 요청. Worker는 Firebase 로그인 토큰 또는 가족용 공유 비밀번호를 검사 | 무료(일 10만 요청), 코드 50줄, 유튜브 자막 가져오기도 같은 Worker에서 처리 | 배포 단계가 하나 늘어남 |
-| ② Firebase Cloud Functions | 이미 쓰는 Firebase 프로젝트 안에서 처리 | 인증 연동이 가장 자연스러움 | Blaze(종량제) 플랜 전환 필요(실사용 비용은 거의 0원) |
-| ③ 키를 그대로 노출 + 도메인 제한 | Gemini 키는 "HTTP 리퍼러 제한"이 가능 | 서버 없음 | Claude API 키는 리퍼러 제한이 없어 이 방식 불가. Gemini만 쓸 때만 성립 |
+| ① Vite + React + TypeScript + Firebase + Cloudflare Worker (권장) | 프론트는 정적 사이트(Cloudflare Pages/Firebase Hosting), 서버 로직은 Worker, DB/인증은 Firebase | 전부 무료 등급, 배포 단순, AI 코딩 도구가 가장 잘 다루는 조합 | 프론트와 Worker 두 곳에 배포 |
+| ② Next.js + Supabase (Vercel 배포) | 프론트와 API 라우트를 한 프로젝트에, DB는 Postgres | 한 저장소·한 배포, SQL로 재료 대조 쿼리가 쉬움 | Vercel 무료 등급 한도(함수 실행시간 10초)가 영상 분석엔 빠듯함 |
+| ③ 단일 HTML (가계부 방식) | 파일 하나 | 가장 빠르게 시작 | 키 노출, 코드 비대화, 링크 가져오기 기능이 브라우저만으로는 불가 |
 
-**권장: ①** Cloudflare Worker. 이유: 무료, 유튜브 처리·LLM 호출·키 보관을 한 곳에서 해결, 가계부 앱의 "단일 HTML" 구조를 그대로 유지할 수 있음. 브라우저에서 Claude API를 직접 부르려면 별도 위험 헤더를 켜야 하고 키가 노출되므로 채택하지 않는다.
+**권장: ①.** 근거는 무료·단순·AI 코딩에 친화적이라는 점이고, 유튜브 처리처럼 오래 걸리는 작업도 Worker(무료 등급 CPU 10ms지만 외부 API 대기시간은 미포함)에서 문제없이 처리된다.
+
+## 4-2. 결정 사항 ② API 키 보호
+
+브라우저 코드에 Claude/Gemini 키를 넣으면 배포 즉시 누구나 볼 수 있고, 도용되면 요금이 청구된다. 위 ① 구성에서는 키를 **Worker 환경변수**에만 두고, 앱은 Worker에만 요청한다. Worker는 Firebase 로그인 토큰을 검증하거나, 최소한 가족용 공유 비밀 헤더를 검사한다. 추가로 Anthropic 콘솔에서 월 지출 한도를 걸어둔다.
 
 ---
 
 ## 5. 권장 기술 구성 (최종)
 
 ```
-[아이폰/브라우저]  index.html (React CDN + Tailwind, PWA)
-        │  Firebase Auth(익명 or 이메일) + Firestore 실시간 동기화 (가계부 앱과 동일)
+[아이폰/브라우저]  Vite + React + TS, Tailwind, PWA
+        │  Firebase Auth(이메일 또는 구글 로그인) + Firestore 실시간 동기화
         │
         └─▶ [Cloudflare Worker  /api/*]  ── 키 보관, 요청 검증
                  ├─ /recipe        → Claude API (claude-opus-5-5, 구조화 출력)
@@ -94,6 +98,7 @@
                  └─ /suggest       → 냉장고 목록 → Claude → 메뉴 후보
 ```
 
+- 폴더 구조: `apps/web`(Vite 프론트), `apps/worker`(Cloudflare Worker), `packages/shared`(Recipe·FridgeItem 타입과 JSON 스키마를 프론트/Worker가 공유)
 - 데이터 모델(Firestore, `families/{familyId}/…`):
   - `recipes` : 제목, 출처(url/유형), 인분, 재료[{name, key, qty, unit}], 단계[], 팁[], 태그[], 생성일, 즐겨찾기
   - `fridge_items` : name, key, qty, unit, location, expiresAt, addedBy, addedAt
@@ -111,7 +116,7 @@
 | 유튜브 자막 없는 영상 | Gemini 영상 이해로 대체, 그래도 실패하면 설명란만 정리 |
 | 재료 매칭 오류(마늘 vs 깐마늘) | 저장 시 LLM 정규화 + 사용자가 수정 가능한 "재료 키" 필드 |
 | API 키 도용 | Worker 프록시 + 요청 검증 + Claude 콘솔 월 지출 한도 설정 |
-| 단일 HTML이 커져서 관리 어려움 | 가계부 앱(866줄)보다 커질 것이 확실. 처음부터 `js/` 폴더로 파일 분리(빌드 도구 없이 ES 모듈로) |
+| 프론트/Worker가 같은 스키마를 다르게 해석 | `packages/shared`에 타입과 JSON 스키마를 한 번만 정의하고 양쪽이 import |
 | 모델 응답 형식 흔들림 | 구조화 출력(JSON 스키마)으로 강제, 프론트에서 스키마 검증 |
 
 ---
@@ -124,11 +129,11 @@ AI 코딩 도구(Claude Code)에 순서대로 줄 프롬프트를 **6단계**로
 
 ```
 [프로젝트 컨텍스트]
-- 저장소: kimsolemio/ssantakim. 기존 index.html은 가족 가계부 앱(React 18 CDN + Babel standalone + Tailwind CDN + Firebase 11 Firestore/Auth + lucide-react). 요리 앱은 같은 기술 스택과 디자인 톤(토스 스타일, #F2F4F6 배경, 하단 탭)을 따른다.
-- 새 앱은 /cook/ 폴더에 만든다. 가계부 앱은 건드리지 않는다.
-- 빌드 도구 없이 브라우저에서 바로 열리는 구조(ES 모듈 + importmap). 파일은 cook/index.html, cook/js/*.js, cook/worker/*.js로 분리.
-- 사용자는 나와 가족뿐. 한국어 UI. 아이폰 사파리 PWA 우선.
-- AI 호출은 반드시 Cloudflare Worker(cook/worker)를 거친다. 브라우저 코드에 Claude API 키를 절대 넣지 않는다.
+- 새 프로젝트다. 저장소 루트의 기존 index.html(가계부 실험물)은 무시하고 건드리지 않는다.
+- 구조: pnpm 워크스페이스. apps/web(Vite + React 18 + TypeScript + Tailwind + PWA 플러그인), apps/worker(Cloudflare Worker, TypeScript, wrangler), packages/shared(zod로 정의한 Recipe/FridgeItem 스키마와 타입).
+- DB/인증: Firebase(Auth + Firestore). 가족 단위 데이터는 families/{familyId}/ 아래에 둔다.
+- 사용자는 나와 가족뿐. 한국어 UI. 아이폰 사파리 PWA 우선, 모바일 세로 화면 기준 디자인, 하단 탭 내비게이션.
+- AI 호출은 반드시 apps/worker를 거친다. 브라우저 코드에 Claude/Gemini/YouTube 키를 절대 넣지 않는다.
 - Claude 모델: claude-opus-5-5, 구조화 출력(output_config.format)으로 JSON 스키마 강제, 스트리밍 사용.
 - 완료 기준: 실제로 동작해야 하고, 수동 테스트 절차를 마지막에 적어준다.
 ```
@@ -136,24 +141,24 @@ AI 코딩 도구(Claude Code)에 순서대로 줄 프롬프트를 **6단계**로
 ### 7-1. 1단계 — 뼈대 + 냉장고 관리 (AI 없음, 확실한 것부터)
 프롬프트 요지:
 ```
-cook/index.html을 만들어라. 하단 탭 3개(레시피 / 냉장고 / 장보기). 이번 단계는 "냉장고" 탭만 완성한다.
-- Firebase 익명 로그인 + 가계부 앱과 같은 방식의 familyId 공유(URL ?family= 파라미터 또는 저장된 값).
+워크스페이스와 apps/web을 만들어라. 하단 탭 3개(레시피 / 냉장고 / 장보기). 이번 단계는 "냉장고" 탭만 완성한다.
+- Firebase 구글 로그인. 첫 로그인 시 familyId 생성 또는 초대 코드로 기존 가족에 참여. Firestore 보안 규칙으로 자기 가족 데이터만 접근.
 - Firestore 컬렉션 families/{familyId}/fridge_items: name, key, qty, unit, location(냉장/냉동/실온), expiresAt, addedAt.
 - 기능: 추가/수정/삭제, 위치별 그룹 표시, 유통기한 D-day 표시(3일 이내 빨강), 검색.
 - 재료 key는 이번 단계에서는 name을 소문자·공백제거한 값으로 임시 생성(다음 단계에서 AI 정규화로 교체).
-- PWA: manifest.json, apple-touch-icon, 가계부 앱과 같은 메타태그.
+- PWA: vite-plugin-pwa로 manifest, 아이콘, apple 메타태그 설정.
 ```
 
 ### 7-2. 2단계 — Worker 프록시 + 음식 이름 → 레시피
 프롬프트 요지:
 ```
-cook/worker/index.js(Cloudflare Worker)를 만들어라.
-- 환경변수 ANTHROPIC_API_KEY, FAMILY_SECRET. 요청 헤더 X-Family-Secret이 맞지 않으면 401.
+apps/worker(Cloudflare Worker, TypeScript)를 만들어라.
+- 환경변수 ANTHROPIC_API_KEY. 요청의 Firebase ID 토큰을 검증하고 실패 시 401.
 - POST /recipe {dish, servings, profile} → Claude(claude-opus-5-5)에 시스템 프롬프트 + 구조화 출력으로 아래 스키마의 JSON을 받아 반환.
   Recipe 스키마: title, servings, timeMinutes, difficulty, ingredients[{name, key, qty, unit, optional}], steps[{order, text, minutes}], tips[], tags[], source{type:"generated"}.
 - 시스템 프롬프트: 한국 가정에서 구할 수 있는 재료, g/ml/개/큰술 단위, 대체 재료 제안, profile의 알레르기·매운맛 선호 반영.
 - wrangler.toml과 배포 방법을 README에 적어라.
-그다음 cook/index.html "레시피" 탭: 검색창에 음식 이름 입력 → Worker 호출 → 결과를 레시피 카드로 표시 → "저장" 시 Firestore recipes에 저장. 저장된 레시피 목록/상세/즐겨찾기.
+그다음 apps/web "레시피" 탭: 검색창에 음식 이름 입력 → Worker 호출 → 결과를 레시피 카드로 표시 → "저장" 시 Firestore recipes에 저장. 저장된 레시피 목록/상세/즐겨찾기.
 ```
 
 ### 7-3. 3단계 — 재료 정규화 + 레시피↔냉장고 대조 + 요리 완료 차감
@@ -193,7 +198,7 @@ cook/worker/index.js(Cloudflare Worker)를 만들어라.
 
 ### 7-7. 프롬프트 작성 시 지킬 원칙
 1. **한 단계 = 한 프롬프트 = 한 커밋.** 단계마다 실제로 열어서 써보고 다음 단계로 간다.
-2. **스키마는 1단계에서 확정하고 이후 절대 바꾸지 않는다**(Recipe, FridgeItem). 바꾸면 이전 데이터가 깨진다.
+2. **스키마는 1단계에서 packages/shared에 확정하고 이후 절대 바꾸지 않는다**(Recipe, FridgeItem). 바꾸면 이전 데이터가 깨진다.
 3. **런타임 프롬프트(앱이 Claude에 보내는 시스템 프롬프트)는 Worker 코드 안에 상수로 두고 파일 하나에 모은다.** 나중에 "레시피가 너무 서양식이다" 같은 불만은 그 파일만 고치면 된다.
 4. 각 프롬프트 끝에 "실패 케이스 처리(네트워크 오류, 401, JSON 파싱 실패)와 로딩 UI를 포함하라"를 반드시 넣는다.
 5. 각 프롬프트 끝에 "수동 테스트 절차를 적어라"를 넣어 검증 가능하게 한다.
@@ -208,12 +213,12 @@ cook/worker/index.js(Cloudflare Worker)를 만들어라.
 | Cloudflare 계정 + Wrangler CLI | cloudflare.com | 무료 |
 | YouTube Data API v3 키 | Google Cloud Console | 무료 |
 | Gemini API 키 | Google AI Studio | 무료 등급 |
-| Firebase 프로젝트 | 기존 santa-kim 재사용 또는 새로 생성 | 무료 |
+| Firebase 프로젝트 | Firebase 콘솔에서 새로 생성 | 무료 |
 
 ---
 
 ## 9. 다음 행동
 
-1. 4장의 키 보호 방식(①권장)과 5장의 구성에 동의하면, 7-1 프롬프트를 실제 전문으로 작성해 1단계 제작을 시작한다.
+1. 4장의 기술 구성(①권장)과 키 보호 방식에 동의하면, 7-1 프롬프트를 실제 전문으로 작성해 1단계 제작을 시작한다.
 2. 인스타그램은 "링크만으로 자동"이 안 된다는 점을 받아들이고 캡션 붙여넣기 방식으로 갈지 결정한다.
 3. 8장의 키 4개를 준비한다(1단계는 Firebase만 있으면 시작 가능).
