@@ -1,110 +1,143 @@
-# 가족 요리 앱 기획 보고서 — 요구사항 점검 · 실현가능성 · 프롬프트 작성 플랜
+# 가족 요리 앱 기획 보고서 v2 — 시중 인기·프리미엄 앱 벤치마크 기반 재정립
 
-작성일: 2026-09-28
+작성일: 2026-09-29
 대상: 나와 가족만 사용하는 비영리 개인용 앱
-기반: 기존 저장소의 가계부 앱과는 무관하게 **새로 설계**한다(가계부 앱은 참고용 실험물로만 취급)
+전제: 기존 저장소의 가계부 `index.html`은 재미로 만든 실험물이며, 요리 앱은 그와 무관하게 **새로 설계**한다.
 
 ---
 
 ## 1. 한 줄 결론
 
-**실현 가능하다.** 세 기능 중 둘(레시피 자동 생성, 냉장고 재료 관리)은 지금 기술로 확실히 되고, 나머지 하나(인스타/유튜브 링크 → 레시피 추출)는 **유튜브는 확실, 인스타그램은 반쯤**(캡션 붙여넣기·화면캡처·영상 업로드 방식으로 우회) 가능하다. 가족용이라 비용은 월 몇천 원 수준이다. 결정할 것은 두 가지, "어떤 기술 구성으로 새로 시작할 것인가"와 "AI API 키를 어떻게 숨길 것인가"이다.
+원하는 세 가지(링크 → 레시피, 음식 이름 → 레시피, 냉장고 관리)는 **이미 시장 1위 앱들이 유료로 파는 조합**이다. 특히 Samsung Food는 "SNS 공유 버튼 → AI가 영상 보고 레시피 생성 → 재료 목록(Food List) 연동"을 그대로 하고 있다. 따라서 "되는가"는 검증이 끝났고, 우리 앱의 목표는 **그 앱들의 검증된 UX를 가져오되, 광고·구독·데이터 수집 없이 우리 가족 취향에 맞춘 개인 버전**을 만드는 것이다.
 
 ---
 
-## 2. 원하는 기능 정리 (요구사항 점검)
+## 2. 벤치마크: 시중 인기·프리미엄 앱이 실제로 하는 것
 
-| # | 기능 | 사용자가 기대하는 것 | 필요한 핵심 요소 |
-|---|------|--------------------|-----------------|
-| A | 음식 이름 → 완벽한 레시피 | "알리오올리오" 입력 → 재료·분량·단계·팁·시간이 정리된 레시피 | LLM API + 고정 JSON 형식(구조화 출력) |
-| B | 인스타/유튜브 링크 → 레시피 | 링크 붙여넣기 → 그 영상의 요리법을 정리해서 저장 | 영상·캡션 내용 접근 수단 + LLM 요약 |
-| B' | 공개 요리법 링크 추천 | 음식 이름으로 유튜브 영상 링크 제시 | YouTube Data API 검색 |
-| C | 냉장고 현황(재료 관리) | 재료 추가/차감, 유통기한, 가족 간 실시간 공유 | 실시간 동기화 DB(Firestore) |
-| D | A·B·C 연결 | 레시피 재료 vs 냉장고 재료 대조 → 부족한 것 표시, 요리 완료 시 재료 자동 차감, "지금 있는 재료로 뭐 해먹지?" | 재료 이름 정규화(표준화) 로직 + LLM |
-| E | 앱처럼 쓰기 | 아이폰 홈화면 아이콘, 오프라인 열람 | PWA(manifest + 서비스워커) |
+### 2-1. 해외 프리미엄/인기 앱
 
----
+| 앱 | 가격 | 핵심 강점 | 우리 앱에 가져올 것 |
+|----|------|-----------|-------------------|
+| **Samsung Food** (구 Whisk) | 무료 + Food+ 월 $6.99 / 연 $59.99 | 틱톡·인스타·블로그 **공유 버튼 → AI가 영상·캡션 분석해 레시피 생성**, 24만 레시피, 폴더 정리, Food List(재료 목록)에 **사진으로 재료 추가(Vision AI)**, "Use It Up"(있는 재료 소진 레시피), 장보기 ↔ 재료 목록 상호 이동, AI 주간 식단 | 공유 → AI 추출 흐름, 사진으로 재료 추가, 장보기↔냉장고 이동, Use It Up |
+| **Paprika** 3 → 4 | 3: 플랫폼별 1회 구매 / 4: 구독 전환 | 웹 임포트, **인분 스케일링**, 식단 캘린더, 통로별 장보기, 팬트리. 4에서 추가: SNS 공유 임포트, **레시피 사진 스캔**, **가족 계정 공유**, 바코드, **팬트리 위치 복수(냉장/냉동 등)** | 스케일링, 가족 계정, 사진 스캔, 냉장/냉동/실온 위치 |
+| **Crouton** | 1회 구매 ~£19.99 (Apple Design Award) | **쿡 모드**(화면 꺼짐 방지, 단계별 큰 글씨, 타이머), 공유 시트 임포트, 블루투스 저울 연동. ※ 2026년 1월 앱스토어에서 내려갔다는 보도 있음 | 쿡 모드의 완성도 |
+| **ReciMe / Pestle** | 구독 / 무료+ | 틱톡·인스타·페북·유튜브 전 플랫폼 임포트(ReciMe). Pestle은 **캡션만** 기기 내 ML로 파싱(영상 분석 없음, 인스타 미지원) | "캡션 기반 추출"이 실무 기본값이라는 점 |
+| **NYT Cooking / SideChef Premium** | 월 $4.99 | 큐레이션 레시피, **음성 안내 단계별 영상**, 요리 클래스 | 단계별 음성 안내(TTS) |
+| **KitchenPal / NoWaste / Eatvora** (팬트리 특화) | 무료 / 연 $7 / 구독 | 바코드 스캔, 유통기한 알림, 재고 기반 레시피 추천, 떨어지면 자동 장보기, 가족 공유, 팬트리 건강 점수·절약 리포트 | 유통기한 알림, 자동 장보기, 가족 공유 |
 
-## 3. 실현가능성 검토 (기능별)
+### 2-2. 국내 인기 앱
 
-### A. 음식 이름 → 레시피 자동 생성 — ✅ 확실히 가능
-- Claude API 한 번 호출로 끝난다. 시스템 프롬프트에 "한국 가정식 기준, 2인분 기본, 재료는 g/ml/개 단위, JSON으로만 출력"을 고정하고, 구조화 출력(`output_config.format`)으로 스키마를 강제하면 파싱 실패가 없다.
-- 권장 모델: `claude-opus-5-5` (입력 $4/백만 토큰, 출력 $20/백만 토큰). 레시피 1건 ≈ 출력 1,500토큰 ≈ **약 40원**. 가족이 월 100건 써도 4,000원 안팎.
-- 비용을 더 낮추려면 `claude-sonnet-5-5` ($2/$10)로 교체 가능하나, "완벽한 레시피" 품질을 원하면 Opus 권장.
-- 주의: 모델은 "정답 레시피"가 아니라 "일반적으로 널리 쓰이는 레시피"를 생성한다. 가족 취향(매운 정도, 알레르기, 아이 유무)을 프로필로 저장해 프롬프트에 함께 넣으면 만족도가 크게 오른다.
+| 앱 | 규모 | 핵심 기능 | 우리 앱에 가져올 것 |
+|----|------|-----------|-------------------|
+| **만개의레시피** | 1,000만 이용자, 20만 레시피 | **냉장고 파먹기**(가진 재료 입력 → 레시피 추천, **제외 재료** 입력 가능), 장보기 메모, **식재료 손질·보관법** | 제외 재료 옵션, 재료별 보관법 안내 |
+| **우리의식탁** | 200만 이용자 | **AI에게 어떤 요리·재료든 요리법 질문**, 기본 조리법 영상, 앱 내 타이머 | "음식 이름 → AI 레시피"는 이미 국내 대형 앱의 정식 기능 |
+| **냉장고를부탁해 / 유통기한 언제지 / 잇이즈 / 냉장고파먹기** | — | 사진 촬영 등록, 바코드·영수증 촬영 자동 등록, 소비기한 알림, 인원 제한 없는 가족 냉장고 공유 | 영수증 촬영 일괄 등록, 소비기한(유통기한) D-day |
 
-### B. 유튜브 링크 → 레시피 — ✅ 가능 (약간의 서버 필요)
-- 브라우저(정적 HTML)에서 유튜브 페이지를 직접 긁어오는 것은 CORS 때문에 **불가능**하다. 아주 작은 서버(프록시)가 하나 필요하다.
-- 방법 1(권장): Google **Gemini API**는 공개 유튜브 URL을 입력으로 바로 받아 영상 내용을 이해할 수 있다(자막 없어도 됨). 무료 등급에서 하루 8시간 분량까지 처리 가능 → 가족용에 충분.
-- 방법 2: 서버에서 유튜브 자막(transcript) + 영상 설명란을 가져와 Claude에 넘겨 정리. 자막이 없는 영상은 실패한다.
-- 방법 3(간단 폴백): 영상 설명란에 레시피를 적어두는 요리 유튜버가 많다. YouTube Data API(무료 할당량 10,000/일)로 설명란만 가져와도 절반은 해결된다.
-- 결론: **방법 3을 기본, 방법 1을 보강**으로 쓰면 유튜브는 거의 100% 커버.
+### 2-3. 벤치마크에서 얻은 5가지 교훈
 
-### B. 인스타그램 링크 → 레시피 — ⚠️ 부분 가능
-- 인스타그램은 로그인 없이 릴스/게시물 내용을 가져오는 공식 경로가 사실상 없다. oEmbed API도 Facebook 앱 심사·토큰이 필요하고 릴스 본문은 안 준다. 스크래핑은 자주 막힌다.
-- 현실적 우회 3가지(모두 앱에 넣을 수 있음):
-  1. **캡션 복사 → 붙여넣기**: 인스타 게시물 "..." → 캡션 복사 → 앱 텍스트박스에 붙여넣기 → LLM이 레시피로 정리. 가장 안정적.
-  2. **화면 캡처 업로드**: 캡션/자막 스크린샷을 올리면 LLM 비전(이미지 입력)으로 읽어 정리. 일반 OCR보다 LLM 비전이 훨씬 정확.
-  3. **영상 저장 후 업로드**: 릴스를 기기에 저장해 앱에 올리면 Gemini가 영상을 직접 분석. 파일 크기가 커서 선택 기능으로.
-- 결론: "링크만 붙여넣으면 자동"은 인스타에서는 **약속 못 함**. 대신 "링크 + 캡션 붙여넣기" 조합으로 원문 링크는 보관하고 레시피는 텍스트로 뽑는 방식이 현실적이다.
-
-### B'. 음식 이름으로 유튜브 링크 추천 — ✅ 가능
-- YouTube Data API `search.list`는 호출당 100유닛 → 무료 할당량으로 하루 100회 검색. 가족용에 충분.
-
-### C. 냉장고 재료 관리 — ✅ 확실히 가능
-- 가족 간 실시간 공유가 핵심이므로 실시간 동기화가 되는 DB(Firestore 또는 Supabase Realtime)를 쓴다. 일반적인 CRUD라 난이도는 낮다.
-- 데이터: 재료명, 표준화된 재료 키(예: "대파", "파" → `green_onion`), 수량, 단위, 보관 위치(냉장/냉동/실온), 유통기한, 등록일.
-- 부가 기능: 유통기한 임박 알림(앱 열 때 배지), 장보기 목록 자동 생성, 영수증 사진으로 재료 일괄 추가(LLM 비전).
-
-### D. 레시피 ↔ 냉장고 연결 — ✅ 가능, 난이도는 여기가 가장 높음
-- 어려운 점은 **재료 이름 매칭**이다. 레시피의 "마늘 5쪽"과 냉장고의 "깐마늘 200g"을 같은 것으로 봐야 한다.
-- 해결: 재료를 저장할 때마다 LLM에게 "표준 재료 키 + 표준 단위로 환산"을 시켜 정규화된 값을 같이 저장한다(1회 호출, 몇 원). 이후 대조는 코드로 정확히 처리.
-- "있는 재료로 뭐 해먹지?"는 냉장고 목록을 프롬프트에 넣어 후보 5개를 받아오면 된다.
-
-### E. PWA / 아이폰 홈화면 — ✅ 가능
-- `manifest.json` + `apple-mobile-web-app-*` 메타태그 + 서비스워커. Vite PWA 플러그인을 쓰면 프롬프트 한 줄로 끝난다. 오프라인에서 저장된 레시피 열람 가능.
+1. **공유 버튼이 곧 진입점이다.** 잘 되는 앱은 모두 "앱을 열고 링크를 붙여넣기"가 아니라 "인스타/유튜브에서 공유 → 우리 앱 선택"으로 시작한다. 이 한 단계 차이가 실제 사용 빈도를 좌우한다.
+2. **인스타 추출의 업계 표준은 "캡션 우선, 영상은 보조"다.** Pestle은 아예 캡션만 본다. 영상 자체 분석은 Samsung Food 정도만 하고, 그것도 정확도 편차가 있어 "원본 영상과 대조하라"고 안내한다. 우리가 캡션 붙여넣기 방식을 쓰는 것은 타협이 아니라 표준이다.
+3. **쿡 모드가 프리미엄과 무료의 차이를 만든다.** 한 화면에 한 단계, 큰 글씨, 그 단계에 필요한 재료만 표시, 화면 꺼짐 방지, 조리시간 자동 타이머, 음성 읽어주기. 이 묶음이 있어야 "요리하면서" 쓴다.
+4. **냉장고 앱의 필수 3종은 유통기한 D-day, 가족 공유, 장보기 연동이다.** 바코드는 국내 신선식품엔 잘 안 맞아 사진·영수증 등록이 더 유용하다.
+5. **재고 기반 추천은 "제외 재료"와 "임박 재료 우선"이 있어야 쓸만하다.** 만개의레시피와 Samsung Food의 Use It Up이 공통으로 갖고 있다.
 
 ---
 
-## 4. 결정 사항 ① 기술 구성 — 처음부터 새로 만든다
+## 3. 재정립한 기능 범위
 
-가계부 앱은 재미로 만든 실험물이므로 그 구조(HTML 한 파일에 전부)를 따를 이유가 없다. 요리 앱은 화면이 많고(레시피 목록/상세/냉장고/장보기/가져오기/추천) 서버 로직도 있으므로 처음부터 정상적인 프로젝트 구조로 간다.
+### 3-1. 필수(Table stakes) — 이게 없으면 시중 무료 앱보다 못하다
+- 레시피 저장/폴더(태그)/검색/즐겨찾기
+- 음식 이름 → AI 레시피 생성(가족 프로필 반영: 인원, 매운맛, 알레르기, 아이 유무)
+- 링크 가져오기: 유튜브(자동), 인스타(캡션 붙여넣기 + 스크린샷)
+- **인분 스케일링**(재료 자동 환산)
+- **쿡 모드**(단계별 큰 화면, 단계별 재료, 화면 켜짐 유지, 자동 타이머)
+- 냉장고: 재료 추가/차감, 냉장·냉동·실온 위치, 유통기한 D-day, 가족 실시간 공유
+- 장보기: 부족 재료 자동 담기, 체크하면 냉장고로 이동
 
-| 선택지 | 구성 | 장점 | 단점 |
-|--------|------|------|------|
-| ① Vite + React + TypeScript + Firebase + Cloudflare Worker (권장) | 프론트는 정적 사이트(Cloudflare Pages/Firebase Hosting), 서버 로직은 Worker, DB/인증은 Firebase | 전부 무료 등급, 배포 단순, AI 코딩 도구가 가장 잘 다루는 조합 | 프론트와 Worker 두 곳에 배포 |
-| ② Next.js + Supabase (Vercel 배포) | 프론트와 API 라우트를 한 프로젝트에, DB는 Postgres | 한 저장소·한 배포, SQL로 재료 대조 쿼리가 쉬움 | Vercel 무료 등급 한도(함수 실행시간 10초)가 영상 분석엔 빠듯함 |
-| ③ 단일 HTML (가계부 방식) | 파일 하나 | 가장 빠르게 시작 | 키 노출, 코드 비대화, 링크 가져오기 기능이 브라우저만으로는 불가 |
+### 3-2. 프리미엄 차별점 — 유료 앱이 돈 받는 기능, 우리는 공짜로
+- **공유 시트 진입**: 인스타/유튜브에서 "공유" → 우리 앱(아래 4장 참고)
+- **사진으로 재료 등록**: 냉장고 내부 사진 또는 영수증 사진 → AI가 재료 목록 추출(Samsung Food Vision AI, 국내 냉장고 앱 공통)
+- **레시피 사진 스캔**: 요리책·손글씨 레시피 촬영 → 구조화(Paprika 4)
+- **Use It Up**: 유통기한 임박 재료 우선 + 제외 재료 옵션으로 오늘 메뉴 추천
+- **음성 읽어주기(TTS)**와 "다음" 음성 명령(브라우저 Web Speech API로 가능)
+- 요리 완료 시 냉장고 자동 차감 + "이 레시피 언제 만들었는지" 기록
+- 주간 식단 캘린더 → 일주일치 장보기 한 번에 생성
 
-**권장: ①.** 근거는 무료·단순·AI 코딩에 친화적이라는 점이고, 유튜브 처리처럼 오래 걸리는 작업도 Worker(무료 등급 CPU 10ms지만 외부 API 대기시간은 미포함)에서 문제없이 처리된다.
-
-## 4-2. 결정 사항 ② API 키 보호
-
-브라우저 코드에 Claude/Gemini 키를 넣으면 배포 즉시 누구나 볼 수 있고, 도용되면 요금이 청구된다. 위 ① 구성에서는 키를 **Worker 환경변수**에만 두고, 앱은 Worker에만 요청한다. Worker는 Firebase 로그인 토큰을 검증하거나, 최소한 가족용 공유 비밀 헤더를 검사한다. 추가로 Anthropic 콘솔에서 월 지출 한도를 걸어둔다.
+### 3-3. 의도적으로 뺄 것 — 가족용에 불필요
+- 영양 정보·칼로리 추적(Samsung Food+, NYT의 핵심 유료 기능이지만 요구사항에 없음)
+- 24만 개 공개 레시피 DB, 커뮤니티, 셀러샵, 광고
+- 블루투스 저울, 삼성 냉장고 연동
+- 바코드 스캔(국내 신선식품에 효용 낮음, 사진 등록으로 대체)
 
 ---
 
-## 5. 권장 기술 구성 (최종)
+## 4. 실현가능성 재검토 (벤치마크 반영)
+
+| 기능 | 판정 | 근거·방법 |
+|------|------|-----------|
+| 음식 이름 → 레시피 | ✅ | 우리의식탁이 이미 정식 기능. Claude API + 구조화 출력(JSON 스키마)으로 1회 호출. 건당 약 40원 |
+| 유튜브 링크 | ✅ | 서버(Cloudflare Worker)에서 YouTube Data API로 설명란 취득 + Gemini에 유튜브 URL 직접 입력해 영상 이해 → Claude로 정리 |
+| 인스타 링크 | ⚠️ 표준 방식으로 가능 | 캡션 붙여넣기(Pestle 방식) + 스크린샷 비전 분석. 링크는 출처 보관용. 릴스 저장 후 영상 업로드는 선택 기능 |
+| 공유 시트 진입 | ⚠️ 방법 선택 필요 | 아래 4-1 참고 |
+| 사진·영수증으로 재료 등록 | ✅ | Claude 비전으로 이미지 → 재료 JSON. 국내 앱들이 이미 하는 기능 |
+| 쿡 모드 | ✅ | Screen Wake Lock API(iOS 16.4+ 사파리 지원), 단계 텍스트에서 "10분" 자동 감지 → 타이머, SpeechSynthesis로 읽어주기 |
+| 인분 스케일링 | ✅ | 재료를 qty/unit로 구조화해 저장하면 곱셈. "약간", "적당량"은 스케일 제외 플래그 |
+| 냉장고·장보기·가족 공유 | ✅ | Firestore 실시간 동기화 |
+| Use It Up 추천 | ✅ | 냉장고 목록 + 임박 재료 + 제외 재료를 프롬프트에 넣어 후보 5개 |
+| 레시피↔냉장고 재료 매칭 | ⚠️ 난이도 최고 | 저장 시 AI로 표준 재료 키·표준 단위 부여. 사용자가 키를 고칠 수 있게 |
+
+### 4-1. 공유 시트 진입 — 3가지 방법
+
+| 방법 | 되는 것 | 안 되는 것 | 난이도 |
+|------|---------|-----------|--------|
+| ① iOS 단축어(Shortcut) | 공유 시트에 "요리앱에 저장" 항목 추가 → 우리 PWA를 `?url=…`로 열기. 가족 폰마다 단축어 1회 설치 | 인스타 캡션은 못 가져옴(링크만) | 낮음 |
+| ② Android Web Share Target | PWA가 공유 대상으로 등록됨(텍스트·링크·이미지 수신) | iOS 미지원 | 낮음 |
+| ③ Capacitor로 네이티브 래핑 | iOS/Android 모두 정식 공유 대상. 푸시 알림도 가능 | Apple 개발자 계정(연 $99) + 빌드·배포 관리 | 높음 |
+
+**권장: ① + ②로 시작**, 나중에 유통기한 푸시 알림까지 원하면 ③ 검토. 인스타는 어차피 캡션을 따로 복사해야 하므로 ①의 한계가 실질적 손해가 아니다.
+
+---
+
+## 5. 기술 구성 (변경 없음, 근거 보강)
 
 ```
-[아이폰/브라우저]  Vite + React + TS, Tailwind, PWA
-        │  Firebase Auth(이메일 또는 구글 로그인) + Firestore 실시간 동기화
+[아이폰/안드로이드]  Vite + React + TS, Tailwind, PWA(Web Share Target, Wake Lock, Web Speech)
+        │  Firebase Auth(구글 로그인, 가족 초대 코드) + Firestore 실시간 동기화
         │
-        └─▶ [Cloudflare Worker  /api/*]  ── 키 보관, 요청 검증
-                 ├─ /recipe        → Claude API (claude-opus-5-5, 구조화 출력)
-                 ├─ /normalize     → Claude API (재료 표준화, 저렴한 claude-sonnet-5-5 가능)
-                 ├─ /youtube       → YouTube Data API(설명란) → Gemini(영상 이해) → Claude(정리)
-                 ├─ /from-text     → 인스타 캡션/스크린샷 → Claude(비전 포함)
-                 └─ /suggest       → 냉장고 목록 → Claude → 메뉴 후보
+        └─▶ [Cloudflare Worker /api/*]  ── API 키 보관, Firebase 토큰 검증
+                 ├─ /recipe        음식 이름 → Claude(claude-opus-5-5, 구조화 출력)
+                 ├─ /import/youtube  YouTube Data API + Gemini(영상) → Claude(정리)
+                 ├─ /import/text     인스타 캡션·스크린샷·레시피 사진 → Claude(비전)
+                 ├─ /normalize     재료 표준화(claude-sonnet-5-5)
+                 ├─ /pantry/photo  냉장고 사진·영수증 → 재료 JSON(Claude 비전)
+                 └─ /suggest       Use It Up 추천
 ```
 
-- 폴더 구조: `apps/web`(Vite 프론트), `apps/worker`(Cloudflare Worker), `packages/shared`(Recipe·FridgeItem 타입과 JSON 스키마를 프론트/Worker가 공유)
-- 데이터 모델(Firestore, `families/{familyId}/…`):
-  - `recipes` : 제목, 출처(url/유형), 인분, 재료[{name, key, qty, unit}], 단계[], 팁[], 태그[], 생성일, 즐겨찾기
-  - `fridge_items` : name, key, qty, unit, location, expiresAt, addedBy, addedAt
-  - `profile` : 가족 인원, 매운맛 선호, 알레르기, 싫어하는 재료
-  - `shopping_list` : 자동 생성 + 수동 추가
-- 월 예상 비용: Claude 약 2,000~5,000원, Cloudflare 0원, Firebase 0원(Spark 플랜 범위), YouTube/Gemini 0원(무료 할당량).
+- 브라우저에 AI 키를 두지 않는다(도용 시 과금). Anthropic 콘솔에 월 지출 한도 설정.
+- 월 예상 비용: Claude 3,000~7,000원(사진 분석이 늘어 v1보다 소폭 증가), 나머지 0원.
+
+### 5-1. 데이터 모델 (벤치마크 반영해 확장)
+
+```
+Recipe
+  title, source{type: generated|youtube|instagram|photo|text, url, channel}
+  servingsBase, timeMinutes, difficulty, folderId, tags[], favorite, photoUrl
+  ingredients[{ name, key, qty, unit, scalable, optional, group }]   ← group: "양념", "고명" 등
+  steps[{ order, text, minutes?, ingredientKeys[] }]                 ← 쿡 모드용 단계별 재료·타이머
+  tips[], cookedLog[{ date, by, servings }]
+
+FridgeItem
+  name, key, qty, unit, location(냉장|냉동|실온), expiresAt, addedBy, addedAt, photoUrl?
+
+ShoppingItem
+  name, key, qty, unit, fromRecipeId?, checked
+
+FamilyProfile
+  members, spicyLevel, allergies[], dislikes[], kidsFriendly, defaultServings
+
+MealPlan (선택)
+  date, slot(아침|점심|저녁), recipeId
+```
 
 ---
 
@@ -112,113 +145,137 @@
 
 | 위험 | 대응 |
 |------|------|
-| 인스타 링크 자동 추출 실패 | 처음부터 "캡션 붙여넣기/스크린샷" UI를 기본 제공, 링크는 출처 보관용으로만 |
-| 유튜브 자막 없는 영상 | Gemini 영상 이해로 대체, 그래도 실패하면 설명란만 정리 |
-| 재료 매칭 오류(마늘 vs 깐마늘) | 저장 시 LLM 정규화 + 사용자가 수정 가능한 "재료 키" 필드 |
-| API 키 도용 | Worker 프록시 + 요청 검증 + Claude 콘솔 월 지출 한도 설정 |
-| 프론트/Worker가 같은 스키마를 다르게 해석 | `packages/shared`에 타입과 JSON 스키마를 한 번만 정의하고 양쪽이 import |
-| 모델 응답 형식 흔들림 | 구조화 출력(JSON 스키마)으로 강제, 프론트에서 스키마 검증 |
+| 인스타 자동 추출 기대 불일치 | 첫 화면부터 "인스타는 캡션을 붙여넣어 주세요"를 UI로 명시. 업계 표준임을 가족에게 설명 |
+| AI 레시피 정확도(분량 오류) | 저장 전 편집 화면 필수. 원본 링크 항상 표시(ReciMe·Samsung Food 모두 "원본과 대조" 권고) |
+| 재료 매칭 오류 | 표준 키 + 사용자 수정 + 매칭 실패 시 "직접 연결" UI |
+| iOS 백그라운드 타이머·알림 제약 | 쿡 모드 타이머는 화면 켜진 상태 전제(Wake Lock). 유통기한 알림은 앱 열 때 배지, 푸시는 Capacitor 전환 시 |
+| API 키 도용 | Worker 프록시 + Firebase 토큰 검증 + 월 지출 한도 |
+| 스키마 변경으로 데이터 깨짐 | 1단계에서 `packages/shared`에 스키마 확정, 이후 필드 추가만 허용 |
 
 ---
 
-## 7. 앱 제작용 프롬프트 작성 플랜
+## 7. 앱 제작용 프롬프트 작성 플랜 (재정립)
 
-AI 코딩 도구(Claude Code)에 순서대로 줄 프롬프트를 **6단계**로 나눈다. 각 단계는 독립적으로 동작하는 결과물을 남기고, 다음 단계 프롬프트는 이전 결과물을 전제로 한다. 모든 프롬프트 앞에는 아래 "공통 헤더"를 붙인다.
+6단계 → **7단계**. 벤치마크에서 필수로 확인된 쿡 모드·스케일링을 앞당기고, 공유 진입·사진 등록을 추가했다. 각 단계는 동작하는 결과물을 남기고 한 커밋으로 마무리한다.
 
-### 7-0. 공통 헤더 (모든 프롬프트 맨 앞에 붙임)
+### 7-0. 공통 헤더 (모든 프롬프트 맨 앞)
 
 ```
 [프로젝트 컨텍스트]
-- 새 프로젝트다. 저장소 루트의 기존 index.html(가계부 실험물)은 무시하고 건드리지 않는다.
-- 구조: pnpm 워크스페이스. apps/web(Vite + React 18 + TypeScript + Tailwind + PWA 플러그인), apps/worker(Cloudflare Worker, TypeScript, wrangler), packages/shared(zod로 정의한 Recipe/FridgeItem 스키마와 타입).
-- DB/인증: Firebase(Auth + Firestore). 가족 단위 데이터는 families/{familyId}/ 아래에 둔다.
-- 사용자는 나와 가족뿐. 한국어 UI. 아이폰 사파리 PWA 우선, 모바일 세로 화면 기준 디자인, 하단 탭 내비게이션.
+- 새 프로젝트다. 저장소 루트의 기존 index.html(실험물)은 무시하고 건드리지 않는다.
+- 구조: pnpm 워크스페이스. apps/web(Vite + React 18 + TypeScript + Tailwind + vite-plugin-pwa), apps/worker(Cloudflare Worker, TypeScript, wrangler), packages/shared(zod로 정의한 Recipe/FridgeItem/ShoppingItem/FamilyProfile 스키마와 타입).
+- DB/인증: Firebase(구글 로그인 + Firestore). 가족 데이터는 families/{familyId}/ 아래. 보안 규칙으로 자기 가족만 접근.
+- 사용자는 나와 가족뿐. 한국어 UI. 모바일 세로 화면 기준, 하단 탭(레시피 / 냉장고 / 장보기 / 오늘 뭐 먹지).
+- 벤치마크 UX: Samsung Food의 저장 흐름, Paprika의 스케일링·가족 공유, Crouton의 쿡 모드를 참고한다. 광고·영양정보·커뮤니티는 만들지 않는다.
 - AI 호출은 반드시 apps/worker를 거친다. 브라우저 코드에 Claude/Gemini/YouTube 키를 절대 넣지 않는다.
-- Claude 모델: claude-opus-5-5, 구조화 출력(output_config.format)으로 JSON 스키마 강제, 스트리밍 사용.
-- 완료 기준: 실제로 동작해야 하고, 수동 테스트 절차를 마지막에 적어준다.
+- Claude 모델: claude-opus-5-5(레시피 생성·비전), claude-sonnet-5-5(재료 정규화). 구조화 출력(output_config.format)으로 JSON 스키마 강제, 스트리밍 사용.
+- 완료 기준: 실제로 동작해야 하고, 네트워크 오류·401·JSON 파싱 실패 처리와 로딩 UI를 포함하며, 마지막에 수동 테스트 절차를 적는다.
 ```
 
-### 7-1. 1단계 — 뼈대 + 냉장고 관리 (AI 없음, 확실한 것부터)
-프롬프트 요지:
+### 7-1. 1단계 — 뼈대 + 스키마 확정 + 냉장고
 ```
-워크스페이스와 apps/web을 만들어라. 하단 탭 3개(레시피 / 냉장고 / 장보기). 이번 단계는 "냉장고" 탭만 완성한다.
-- Firebase 구글 로그인. 첫 로그인 시 familyId 생성 또는 초대 코드로 기존 가족에 참여. Firestore 보안 규칙으로 자기 가족 데이터만 접근.
-- Firestore 컬렉션 families/{familyId}/fridge_items: name, key, qty, unit, location(냉장/냉동/실온), expiresAt, addedAt.
-- 기능: 추가/수정/삭제, 위치별 그룹 표시, 유통기한 D-day 표시(3일 이내 빨강), 검색.
-- 재료 key는 이번 단계에서는 name을 소문자·공백제거한 값으로 임시 생성(다음 단계에서 AI 정규화로 교체).
-- PWA: vite-plugin-pwa로 manifest, 아이콘, apple 메타태그 설정.
+워크스페이스 3개(web/worker/shared)를 만들고, shared에 5장 데이터 모델을 zod 스키마로 확정하라.
+apps/web: 구글 로그인, 첫 로그인 시 familyId 생성 또는 초대 코드 참여. 하단 탭 4개 중 "냉장고"만 완성.
+냉장고: 추가/수정/삭제, 냉장·냉동·실온 그룹, 유통기한 D-day(3일 이내 빨강, 지난 것 회색), 검색, 누가 추가했는지 표시.
+재료 key는 임시로 name 정규화 값(3단계에서 AI 정규화로 교체).
+PWA: manifest, 아이콘, apple 메타태그. Firestore 보안 규칙 파일 포함.
 ```
 
-### 7-2. 2단계 — Worker 프록시 + 음식 이름 → 레시피
-프롬프트 요지:
+### 7-2. 2단계 — Worker + 음식 이름 → 레시피 + 저장/폴더/스케일링
 ```
-apps/worker(Cloudflare Worker, TypeScript)를 만들어라.
-- 환경변수 ANTHROPIC_API_KEY. 요청의 Firebase ID 토큰을 검증하고 실패 시 401.
-- POST /recipe {dish, servings, profile} → Claude(claude-opus-5-5)에 시스템 프롬프트 + 구조화 출력으로 아래 스키마의 JSON을 받아 반환.
-  Recipe 스키마: title, servings, timeMinutes, difficulty, ingredients[{name, key, qty, unit, optional}], steps[{order, text, minutes}], tips[], tags[], source{type:"generated"}.
-- 시스템 프롬프트: 한국 가정에서 구할 수 있는 재료, g/ml/개/큰술 단위, 대체 재료 제안, profile의 알레르기·매운맛 선호 반영.
-- wrangler.toml과 배포 방법을 README에 적어라.
-그다음 apps/web "레시피" 탭: 검색창에 음식 이름 입력 → Worker 호출 → 결과를 레시피 카드로 표시 → "저장" 시 Firestore recipes에 저장. 저장된 레시피 목록/상세/즐겨찾기.
+apps/worker: 환경변수 ANTHROPIC_API_KEY. Firebase ID 토큰 검증 미들웨어(실패 시 401).
+POST /recipe {dish, servings, profile} → Claude 구조화 출력으로 Recipe JSON. 시스템 프롬프트는 worker/src/prompts.ts 한 파일에 상수로 모은다. 규칙: 한국 가정에서 구하기 쉬운 재료, g/ml/개/큰술 단위, "약간"은 scalable:false, 재료 group(주재료/양념/고명), 각 step에 ingredientKeys와 minutes.
+apps/web "레시피" 탭: 검색창 → 생성 → 편집 가능한 미리보기 → 저장. 목록/폴더/태그/즐겨찾기/검색. 상세 화면에 인분 스테퍼(스케일링, scalable:false는 고정). 원본 출처 링크 항상 표시.
 ```
 
-### 7-3. 3단계 — 재료 정규화 + 레시피↔냉장고 대조 + 요리 완료 차감
-프롬프트 요지:
+### 7-3. 3단계 — 쿡 모드
 ```
-- Worker에 POST /normalize {items:[{name, qty, unit}]} 추가: Claude(claude-sonnet-5-5)로 각 항목에 표준 key(영문 스네이크케이스), 표준 단위(g/ml/개)로 환산한 qtyStd, unitStd를 붙여 반환. 냉장고 추가 시와 레시피 저장 시 자동 호출.
-- 레시피 상세 화면에 "냉장고 대조": 재료마다 있음/부족(부족량)/없음 표시.
-- "요리 완료" 버튼: 사용한 재료를 냉장고에서 차감(확인 모달에서 수량 조정 가능).
-- 부족 재료를 "장보기" 탭으로 한 번에 보내기. 장보기 탭: 체크하면 냉장고로 이동.
-```
-
-### 7-4. 4단계 — 유튜브 링크 가져오기 + 링크 추천
-프롬프트 요지:
-```
-- Worker에 POST /youtube {url} 추가: (1) YouTube Data API로 제목·설명란·채널 취득, (2) Gemini API에 유튜브 URL을 직접 넘겨 요리 과정을 한국어로 서술하게 함, (3) 둘을 합쳐 Claude로 Recipe 스키마 JSON 생성. source{type:"youtube", url, channel}. 환경변수 YOUTUBE_API_KEY, GEMINI_API_KEY.
-- Worker에 GET /search?q= 추가: YouTube search.list로 요리 영상 5개(제목, 썸네일, 채널, 링크).
-- 앱: 레시피 탭에 "링크로 가져오기" 입력창. 음식 이름 검색 결과 아래에 "참고 영상" 5개 표시, 각 영상에 "이 영상으로 레시피 만들기" 버튼.
-- 실패 시(자막·설명 없음) 사용자에게 "캡션을 붙여넣어 주세요" 폴백 화면으로 안내.
+레시피 상세에 "요리 시작" 버튼 → 쿡 모드 전체화면.
+한 화면에 한 단계, 큰 글씨, 그 단계의 재료(스케일링 반영)만 아래에 표시, 좌우 스와이프/큰 버튼으로 이동.
+Screen Wake Lock API로 화면 꺼짐 방지(미지원 시 안내). step.minutes가 있으면 한 번 탭으로 타이머 시작, 여러 타이머 동시 표시, 종료 시 소리+진동.
+SpeechSynthesis로 현재 단계 읽어주기(켜기/끄기), 선택적으로 "다음/이전" 음성 명령(Web Speech API, 미지원 브라우저는 숨김).
 ```
 
-### 7-5. 5단계 — 인스타그램/텍스트/사진 가져오기
-프롬프트 요지:
+### 7-4. 4단계 — 재료 정규화 + 냉장고 대조 + 요리 완료 차감 + 장보기
 ```
-- Worker에 POST /from-text {url?, text?, images?[base64]} 추가: 캡션 텍스트 또는 스크린샷 이미지를 Claude(비전)에 넘겨 Recipe 스키마 JSON 생성. source{type:"instagram"|"text", url}.
-- 앱: "링크로 가져오기"에 인스타 URL을 넣으면 자동으로 "캡션 붙여넣기 / 스크린샷 올리기" 화면으로 전환. 두 개 이상 스크린샷 지원.
-- 영수증 사진 → 냉장고 일괄 추가도 같은 엔드포인트 재사용(mode:"receipt").
-```
-
-### 7-6. 6단계 — "뭐 해먹지?" + 마무리
-프롬프트 요지:
-```
-- Worker에 POST /suggest {fridgeItems, profile, mood?} 추가: 냉장고 재료로 만들 수 있는 메뉴 5개(제목, 필요한 추가 재료, 소요시간)를 JSON으로. 각 항목에 "레시피 만들기" 버튼 → /recipe 호출.
-- 홈 화면(레시피 탭 상단)에 유통기한 임박 재료와 "임박 재료로 추천" 버튼.
-- 서비스워커로 저장된 레시피 오프라인 열람.
-- 전체 수동 테스트 체크리스트 작성, README 최종 정리.
+Worker POST /normalize {items} → claude-sonnet-5-5로 표준 key(영문 스네이크케이스)·표준 단위 환산. 냉장고 추가·레시피 저장 시 자동 호출, 사용자가 key 수정 가능.
+레시피 상세 "냉장고 대조": 재료별 있음/부족(부족량)/없음. 매칭 실패 시 "직접 연결" 선택.
+쿡 모드 마지막 화면 "요리 완료": 사용량 조정 모달 → 냉장고 차감 + cookedLog 기록.
+장보기 탭: 부족 재료 한 번에 담기, 체크하면 냉장고로 이동(위치·유통기한 입력), 수동 추가, 냉장고에서 "떨어짐" 표시 시 자동 담기.
 ```
 
-### 7-7. 프롬프트 작성 시 지킬 원칙
-1. **한 단계 = 한 프롬프트 = 한 커밋.** 단계마다 실제로 열어서 써보고 다음 단계로 간다.
-2. **스키마는 1단계에서 packages/shared에 확정하고 이후 절대 바꾸지 않는다**(Recipe, FridgeItem). 바꾸면 이전 데이터가 깨진다.
-3. **런타임 프롬프트(앱이 Claude에 보내는 시스템 프롬프트)는 Worker 코드 안에 상수로 두고 파일 하나에 모은다.** 나중에 "레시피가 너무 서양식이다" 같은 불만은 그 파일만 고치면 된다.
-4. 각 프롬프트 끝에 "실패 케이스 처리(네트워크 오류, 401, JSON 파싱 실패)와 로딩 UI를 포함하라"를 반드시 넣는다.
-5. 각 프롬프트 끝에 "수동 테스트 절차를 적어라"를 넣어 검증 가능하게 한다.
+### 7-5. 5단계 — 링크 가져오기(유튜브·인스타) + 공유 진입
+```
+Worker POST /import/youtube {url}: YouTube Data API로 제목·설명·채널 → Gemini에 유튜브 URL 직접 입력해 조리 과정 서술 → Claude로 Recipe JSON. 환경변수 YOUTUBE_API_KEY, GEMINI_API_KEY.
+Worker POST /import/text {url?, text?, images?[]}: 캡션 텍스트·스크린샷·요리책 사진 → Claude 비전으로 Recipe JSON.
+apps/web "가져오기" 화면: URL 입력. 유튜브면 자동. 인스타면 즉시 "캡션 붙여넣기 / 스크린샷 올리기" 화면으로 전환하고 링크는 출처로 저장. 결과는 항상 편집 가능한 미리보기 후 저장.
+공유 진입: (a) manifest에 share_target 등록(Android, 텍스트·링크·이미지 수신 → 가져오기 화면), (b) iOS 단축어 파일(.shortcut) 또는 만드는 방법 문서: 공유 시트에서 링크를 받아 앱 URL ?url= 로 열기.
+```
+
+### 7-6. 6단계 — 사진으로 재료 등록 + Use It Up
+```
+Worker POST /pantry/photo {images[], mode: "fridge"|"receipt"} → Claude 비전으로 FridgeItem[] 후보(이름·수량·단위·추정 위치). 앱에서 체크박스로 골라 일괄 추가.
+Worker POST /suggest {fridgeItems, expiringSoon, exclude[], profile, mood?} → 메뉴 5개(제목, 부족 재료, 시간). "오늘 뭐 먹지" 탭: 임박 재료 카드, 제외 재료 칩, 추천 → "레시피 만들기" → /recipe.
+```
+
+### 7-7. 7단계 — 식단 캘린더 + 오프라인 + 마무리
+```
+주간 식단 캘린더(선택 기능): 날짜·끼니에 레시피 배치 → 일주일치 부족 재료를 장보기로 한 번에.
+서비스워커로 저장된 레시피·냉장고 목록 오프라인 열람(쓰기는 온라인 시 동기화).
+홈(레시피 탭 상단)에 유통기한 임박 배지.
+전체 수동 테스트 체크리스트, README(키 발급·배포·단축어 설치 안내) 최종 정리.
+```
+
+### 7-8. 프롬프트 작성 원칙
+1. 한 단계 = 한 프롬프트 = 한 커밋. 단계마다 실제로 폰에서 써보고 다음으로.
+2. 스키마는 1단계에서 확정, 이후 필드 추가만 허용.
+3. AI에 보내는 시스템 프롬프트는 Worker의 파일 하나에 모아 취향 조정을 쉽게.
+4. AI 결과는 반드시 "편집 가능한 미리보기 → 저장" 흐름을 거친다(정확도 편차 대응).
+5. 각 프롬프트 끝에 오류 처리·로딩 UI·수동 테스트 절차 요구를 넣는다.
 
 ---
 
-## 8. 시작 전에 준비할 것 (사람이 해야 하는 일)
+## 8. 시작 전 준비 (사람이 할 일)
 
 | 항목 | 어디서 | 비용 |
 |------|--------|------|
-| Anthropic API 키 + 월 지출 한도 설정 | console.anthropic.com | 사용량 과금 |
-| Cloudflare 계정 + Wrangler CLI | cloudflare.com | 무료 |
+| Anthropic API 키 + 월 지출 한도 | console.anthropic.com | 사용량 과금(월 수천 원) |
+| Cloudflare 계정 + Wrangler | cloudflare.com | 무료 |
 | YouTube Data API v3 키 | Google Cloud Console | 무료 |
 | Gemini API 키 | Google AI Studio | 무료 등급 |
-| Firebase 프로젝트 | Firebase 콘솔에서 새로 생성 | 무료 |
-
----
+| Firebase 프로젝트(신규) | Firebase 콘솔 | 무료 |
+| (선택) Apple 개발자 계정 | Capacitor 전환 시 | 연 $99 |
 
 ## 9. 다음 행동
 
-1. 4장의 기술 구성(①권장)과 키 보호 방식에 동의하면, 7-1 프롬프트를 실제 전문으로 작성해 1단계 제작을 시작한다.
-2. 인스타그램은 "링크만으로 자동"이 안 된다는 점을 받아들이고 캡션 붙여넣기 방식으로 갈지 결정한다.
-3. 8장의 키 4개를 준비한다(1단계는 Firebase만 있으면 시작 가능).
+1. 3장 기능 범위(필수/프리미엄/제외)와 4-1 공유 진입 방식(단축어 + Android 공유 대상)에 동의하면 7-1 프롬프트 전문을 작성해 제작을 시작한다.
+2. 1단계는 Firebase 프로젝트만 있으면 시작 가능하다.
+
+---
+
+## 참고 자료
+- [Best Recipe Manager Apps (2026) – Forkee](https://www.getforkee.com/blog/best-recipe-manager-apps/)
+- [Best recipe apps in 2026: 5 apps compared – RecipeCircle](https://recipecircle.nl/blog/top-5?lang=en)
+- [Paprika Alternatives in 2026 – Recipe Shelf](https://recipeshelf.ai/blog/paprika-alternatives)
+- [Paprika 4 Subscription: What Changes – CookBook](https://cookbookmanager.com/post/paprika-4-subscription)
+- [Paprika Recipe Manager 4: Everything We Know – EatHealthy365](https://eathealthy365.com/paprika-recipe-manager-4-everything-we-know/)
+- [Samsung Food: Meal Planner – App Store](https://apps.apple.com/us/app/samsung-food-meal-planner/id1133637674)
+- [Samsung Food Review: Pros and Cons – Plan to Eat](https://www.plantoeat.com/blog/2026/01/samsung-food-review-pros-and-cons/)
+- [What's Included in Your Samsung Food+ Subscription](https://support.samsungfood.com/hc/en-us/articles/32709269852052-What-s-Included-in-Your-Samsung-Food-Subscription)
+- [Samsung Food App 2026: Vision AI Features – MealThinker](https://mealthinker.com/blog/samsung-food-alternative)
+- [Crouton: Recipe Manager – App Store](https://apps.apple.com/us/app/crouton-recipe-manager/id1461650987)
+- [Pestle recipe app can now save dishes from TikTok – TechCrunch](https://techcrunch.com/2024/11/25/pestle-recipe-app-can-now-save-dishes-from-tiktok)
+- [Best App to Save TikTok Recipes: 2026 Comparison – RecetteClic](https://recetteclic.app/en/guides/best-app-to-save-tiktok-recipes)
+- [I tried 4 viral recipe apps – Android Police](https://www.androidpolice.com/i-tried-viral-recipe-apps-clear-winner/)
+- [SideChef Premium](https://www.sidechef.com/premium/)
+- [NYT Cooking – App Store](https://apps.apple.com/np/app/nyt-cooking-recipes-tips/id911422904)
+- [Best Meal Planning Apps with Pantry Tracking (2026) – MealThinker](https://mealthinker.com/blog/meal-planning-app-pantry-tracking)
+- [Best Food Inventory App in 2026 – Eatvora](https://www.eatvora.app/best/best-food-inventory-app)
+- [KitchenPal: Pantry Inventory – Google Play](https://play.google.com/store/apps/details?id=fr.icuisto.icuisto&hl=en_US)
+- [요리백과 만개의레시피 – Google Play](https://play.google.com/store/apps/details?id=com.ezhld.recipe&hl=en_US)
+- [우리의식탁 – Google Play](https://play.google.com/store/apps/details?id=com.culturehero.wifetable&hl=en_US)
+- [냉장고를부탁해 – Google Play](https://play.google.com/store/apps/details?id=com.tcf.take_care_refrigerator&hl=en_US)
+- [유통기한 언제지 – Google Play](https://play.google.com/store/apps/details?id=kr.co.ourneeds.app&hl=en_US)
+- [냉장고 유통기한 관리 앱 10선【2025년판】 – BitFlap](https://bitflap.app/ko/otto/articles/refrigerator-expiration-management-apps/)
+- [Cook Mode: How To Keep Your Screen Bright While Cooking – Bootstrapped Ventures](https://bootstrapped.ventures/cook-mode/)
+- [Cook Mode: Follow Recipes Step by Step with Built-in Timers – Drizzle Lemons](https://www.drizzlelemons.com/blog/cook-mode-step-by-step-recipe-view)
