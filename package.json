@@ -1,0 +1,13 @@
+{
+  "name": "family-cook",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --filter @cook/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "worker:dev": "pnpm --filter @cook/worker dev",
+    "worker:deploy": "pnpm --filter @cook/worker deploy"
+  }
+}

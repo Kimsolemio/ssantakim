@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isMember(familyId) {
+      return signedIn() && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members;
+    }
+
+    // 본인 문서만
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // 초대 코드 → familyId. 로그인한 누구나 조회 가능(코드를 아는 사람만 의미 있음), 생성은 해당 가족 구성원만
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.members;
+    }
+
+    match /families/{familyId} {
+      allow read: if isMember(familyId);
+      allow create: if signedIn() && request.resource.data.members == [request.auth.uid];
+      // 구성원이면 수정 가능. 비구성원은 자기 uid를 members에 추가하는 변경만 허용(초대 코드 참여)
+      allow update: if isMember(familyId)
+        || (signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+            && request.resource.data.members.hasAll(resource.data.members)
+            && request.resource.data.members.hasAll([request.auth.uid])
+            && request.resource.data.members.size() == resource.data.members.size() + 1);
+
+      match /{sub}/{docId} {
+        allow read, write: if isMember(familyId);
+      }
+    }
+  }
+}

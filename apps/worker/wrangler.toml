@@ -1,0 +1,8 @@
+name = "family-cook-api"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# 비밀값은 `wrangler secret put ANTHROPIC_API_KEY` 등으로 넣는다. (2단계부터)
+[vars]
+FIREBASE_PROJECT_ID = ""
+ALLOWED_ORIGIN = "http://localhost:5173"
