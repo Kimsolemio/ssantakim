@@ -3,6 +3,7 @@ import type { Recipe } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { Sheet } from "../../components/Sheet";
 import { IngredientList } from "./IngredientList";
+import { CookMode } from "../cook/CookMode";
 import type { FolderDoc } from "./useRecipes";
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
   onToggleFavorite: () => Promise<void>;
   onMoveFolder: (folderId: string | null) => Promise<void>;
   onDelete: () => Promise<void>;
+  onCooked: (servings: number) => Promise<void>;
 };
 
 export const SOURCE_LABEL: Record<Recipe["source"]["type"], string> = {
@@ -30,10 +32,11 @@ export function ServingsStepper({ value, onChange }: { value: number; onChange: 
   );
 }
 
-export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorite, onMoveFolder, onDelete }: Props) {
+export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorite, onMoveFolder, onDelete, onCooked }: Props) {
   const [servings, setServings] = useState(recipe.servingsBase);
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cooking, setCooking] = useState(false);
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
 
@@ -43,7 +46,7 @@ export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorit
         <button onClick={() => run(onToggleFavorite)} aria-label="즐겨찾기" className="px-2 py-2 text-2xl">{recipe.favorite ? "★" : "☆"}</button>
         <button onClick={() => setMenu(true)} aria-label="더보기" className="px-2 py-2 text-xl">⋯</button>
       </>}>
-      <div className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-4 p-4 pb-24">
         <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
           <span className="rounded-full bg-orange-100 px-2 py-0.5 text-orange-800">{SOURCE_LABEL[recipe.source.type]}</span>
           {recipe.timeMinutes != null && <span>⏱ {recipe.timeMinutes}분</span>}
@@ -86,8 +89,17 @@ export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorit
             </ul>
           </section>
         )}
-        <p className="text-center text-xs text-gray-400">쿡 모드(단계별 화면·타이머)는 3단계에서 추가됩니다</p>
+        {recipe.cookedLog.length > 0 && (
+          <p className="text-center text-xs text-gray-500">요리 기록 {recipe.cookedLog.length}회 · 마지막 {recipe.cookedLog[recipe.cookedLog.length - 1].date.slice(0, 10)}</p>
+        )}
       </div>
+
+      <button onClick={() => setCooking(true)}
+        className="fixed inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl bg-orange-500 py-3.5 text-center text-lg font-bold text-white shadow-lg active:scale-[0.99]"
+        style={{ bottom: "calc(var(--safe-bottom) + 16px)" }}>🍳 요리 시작</button>
+      {cooking && (
+        <CookMode recipe={recipe} servings={servings} onClose={() => setCooking(false)} onComplete={() => onCooked(servings)} />
+      )}
 
       {menu && (
         <Sheet title="레시피 관리" onClose={() => setMenu(false)}>

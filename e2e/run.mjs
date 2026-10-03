@@ -91,6 +91,35 @@ assert.equal(await amountOf("마늘"), "16쪽"); // 12*4/3
 assert.equal(await amountOf("소금"), "약간", "scalable=false 는 그대로");
 await mom.getByText(/자동 환산했어요/).waitFor();
 await mom.screenshot({ path: `${shots}/06-detail-scaled.png` });
+// ---------- 쿡 모드 (3단계) ----------
+await mom.getByText("🍳 요리 시작").click();
+await mom.getByText("1 / 5 단계").waitFor();
+assert.match(await mom.getByTestId("step-text").textContent(), /큰 냄비에 물 2L/);
+// 단계 재료: 4인분 환산된 스파게티면 400g, 소금 약간
+const cookMain = mom.locator("main");
+await cookMain.locator("li", { hasText: "스파게티면" }).getByText("400g").waitFor();
+await cookMain.locator("li", { hasText: "소금" }).getByText("약간", { exact: true }).waitFor();
+// 타이머 시작 → 상단 타이머 바에 9:00 근처로 카운트
+await mom.getByText("⏱ 9분 타이머 시작").click();
+await mom.getByTestId("timer-bar").waitFor();
+await mom.waitForTimeout(1500);
+assert.match(await mom.getByTestId("timer-bar").textContent(), /1단계.*8:5\d/);
+await mom.getByText("+1분").click();
+assert.match(await mom.getByTestId("timer-bar").textContent(), /9:5\d/);
+await mom.screenshot({ path: `${shots}/09-cook-step1.png` });
+// 다음 → 2단계, 타이머는 계속 표시
+await mom.getByText("다음 ›").click();
+await mom.getByText("2 / 5 단계").waitFor();
+await mom.getByTestId("timer-bar").waitFor();
+await cookMain.locator("li", { hasText: "마늘" }).getByText("16쪽").waitFor();
+await mom.getByText("‹ 이전").click();
+await mom.getByText("1 / 5 단계").waitFor();
+for (let i = 0; i < 5; i++) await mom.getByText(/다음 ›|마무리 ›/).click();
+await mom.getByText("요리 완료!").waitFor();
+await mom.screenshot({ path: `${shots}/10-cook-done.png` });
+await mom.getByText("요리 완료", { exact: true }).click();
+await mom.getByText(/요리 기록 1회/).waitFor({ timeout: 10000 });
+
 // 즐겨찾기
 await mom.getByLabel("즐겨찾기").click();
 await mom.locator("header").getByText("★").waitFor();

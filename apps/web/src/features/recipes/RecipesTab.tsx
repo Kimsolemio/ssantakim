@@ -101,7 +101,8 @@ export function RecipesTab() {
           onEdit={() => setEditing(open)}
           onToggleFavorite={() => updateRecipe(familyId, open.id, { favorite: !open.favorite })}
           onMoveFolder={(fid) => updateRecipe(familyId, open.id, { folderId: fid })}
-          onDelete={() => deleteRecipe(familyId, open.id)} />
+          onDelete={() => deleteRecipe(familyId, open.id)}
+          onCooked={(servings) => updateRecipe(familyId, open.id, { cookedLog: [...open.cookedLog, { date: new Date().toISOString(), by: user.uid, servings }] })} />
       )}
       {editing && (
         <RecipeEditor title="레시피 수정" initial={editing} onClose={() => setEditing(null)}

@@ -20,7 +20,7 @@ scripts/        아이콘 생성기 등
 |------|------|------|
 | 1 | 워크스페이스·스키마·로그인·가족 공유·냉장고 탭·PWA | ✅ 완료 |
 | 2 | Worker + 음식 이름 → AI 레시피 + 저장/폴더/스케일링 | ✅ 완료 |
-| 3 | 쿡 모드(단계별 화면·타이머·음성) | 예정 |
+| 3 | 쿡 모드(단계별 화면·타이머·음성) | ✅ 완료 |
 | 4 | 재료 정규화·냉장고 대조·요리 완료 차감·장보기 | 예정 |
 | 5 | 유튜브/인스타 가져오기 + 공유 진입 | 예정 |
 | 6 | 사진으로 재료 등록 + 오늘 뭐 먹지 | 예정 |
@@ -78,7 +78,7 @@ pnpm worker:deploy        # 끝나면 https://family-cook-api.<계정>.workers.d
 
 ```bash
 npx firebase-tools setup:emulators:firestore
-npx firebase-tools emulators:start --only auth,firestore --project demo-cook   # firebase.json 필요 (아래)
+npx firebase-tools emulators:start --only auth,firestore --project demo-cook   # 저장소 루트의 firebase.json 사용
 ```
 
 `apps/web/.env`에 `VITE_USE_EMULATORS=1`, `VITE_FIREBASE_PROJECT_ID=demo-cook`, 나머지 Firebase 값은 아무 문자열. 이 모드에서는 로그인 화면에서 `window.__cookTest.signInAs("me@test.local","이름")`으로 가짜 구글 로그인이 된다(자동 테스트용).
@@ -90,7 +90,7 @@ npx firebase-tools emulators:start --only auth,firestore --project demo-cook   #
 
 ```bash
 # 1) Firebase 에뮬레이터 (Java 필요, 처음 한 번 npx firebase-tools setup:emulators:firestore)
-npx firebase-tools emulators:start --only auth,firestore --project demo-cook --config e2e/firebase.json
+npx firebase-tools emulators:start --only auth,firestore --project demo-cook
 # 2) 가짜 AI Worker (고정 레시피를 돌려준다)
 node e2e/mock-worker.mjs
 # 3) 앱 (에뮬레이터 모드)
@@ -98,6 +98,19 @@ cp e2e/.env.emulator apps/web/.env && pnpm dev
 # 실행 (처음 한 번 npx playwright install chromium)
 node e2e/run.mjs
 ```
+
+## 3단계 수동 테스트 절차 (쿡 모드)
+
+1. 레시피 상세 → 하단 "🍳 요리 시작" → 어두운 전체화면, "1 / N 단계"와 큰 글씨 설명이 보인다.
+2. 그 단계에 들어가는 재료만 아래에 현재 인분 기준으로 표시된다.
+3. 시간이 있는 단계에서 "⏱ n분 타이머 시작" → 상단 타이머 바에 카운트다운. 다음 단계로 넘어가도 타이머는 계속 돈다. "+1분"으로 연장, ✕로 끈다.
+4. 타이머가 끝나면 소리와 진동(지원 기기)이 울리고 빨간색으로 깜빡인다.
+5. 좌우 스와이프 또는 이전/다음 버튼으로 이동. 진행 막대가 채워진다.
+6. 🔊 켜면 단계가 바뀔 때마다 읽어준다. 끄면 즉시 멈춘다.
+7. 🎤(크롬/안드로이드만 보임): "다음", "이전", "타이머", "다시"로 조작된다. iOS 사파리는 버튼이 숨겨진다.
+8. 요리 중 화면이 꺼지지 않는다(iOS 16.4+ 사파리, 크롬). 미지원 브라우저는 안내 문구가 뜬다.
+9. 마지막 "요리 완료" → 상세 화면에 "요리 기록 1회"가 남는다. "기록 없이 닫기"는 기록을 남기지 않는다.
+10. 뒤로가기/스와이프백으로 쿡 모드가 닫히고 앱은 유지된다.
 
 ## 2단계 수동 테스트 절차
 
