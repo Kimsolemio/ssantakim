@@ -16,7 +16,7 @@ export function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) =
           <li key={t.id} className="flex-1">
             <button onClick={() => onChange(t.id)}
               className={`flex w-full flex-col items-center gap-0.5 py-2 text-xs ${active === t.id ? "text-orange-600 font-semibold" : "text-gray-500"}`}>
-              <span className="text-xl">{t.icon}</span>{t.label}
+              <span className="text-xl">{t.icon}</span><span>{t.label}</span>
             </button>
           </li>
         ))}

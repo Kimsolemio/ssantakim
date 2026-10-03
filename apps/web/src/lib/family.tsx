@@ -13,6 +13,7 @@ type FamilyState = {
   createFamily: (name: string) => Promise<void>;
   joinFamily: (code: string) => Promise<void>;
   leaveToSwitch: () => Promise<void>;
+  updateProfile: (profile: FamilyProfile) => Promise<void>;
 };
 
 const FamilyCtx = createContext<FamilyState | null>(null);
@@ -78,8 +79,13 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     await updateDoc(doc(getDb(), "users", user.uid), { familyId: null });
   };
 
+  const updateProfile = async (profile: FamilyProfile) => {
+    if (!familyId) throw new Error("가족이 없습니다");
+    await updateDoc(doc(getDb(), "families", familyId), { profile: FamilyProfile.parse(profile) });
+  };
+
   return (
-    <FamilyCtx.Provider value={{ familyId, family, loading, createFamily, joinFamily, leaveToSwitch }}>
+    <FamilyCtx.Provider value={{ familyId, family, loading, createFamily, joinFamily, leaveToSwitch, updateProfile }}>
       {children}
     </FamilyCtx.Provider>
   );

@@ -9,5 +9,8 @@
     "typecheck": "pnpm -r typecheck",
     "worker:dev": "pnpm --filter @cook/worker dev",
     "worker:deploy": "pnpm --filter @cook/worker deploy"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

@@ -6,3 +6,5 @@ dev-dist/
 .wrangler/
 *.log
 .DS_Store
+.dev.vars
+e2e/shots/
