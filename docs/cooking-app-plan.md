@@ -75,11 +75,11 @@
 
 | 기능 | 판정 | 근거·방법 |
 |------|------|-----------|
-| 음식 이름 → 레시피 | ✅ | 우리의식탁이 이미 정식 기능. Claude API + 구조화 출력(JSON 스키마)으로 1회 호출. 건당 약 40원 |
-| 유튜브 링크 | ✅ | 서버(Cloudflare Worker)에서 YouTube Data API로 설명란 취득 + Gemini에 유튜브 URL 직접 입력해 영상 이해 → Claude로 정리 |
+| 음식 이름 → 레시피 | ✅ | 우리의식탁이 이미 정식 기능. Gemini API 무료 등급 + 구조화 출력(JSON 스키마)으로 1회 호출. 0원 |
+| 유튜브 링크 | ✅ | 서버(Cloudflare Worker)에서 YouTube Data API로 설명란 취득 + Gemini에 유튜브 URL 직접 입력해 영상 이해 → 같은 Gemini로 레시피 JSON 정리 |
 | 인스타 링크 | ⚠️ 표준 방식으로 가능 | 캡션 붙여넣기(Pestle 방식) + 스크린샷 비전 분석. 링크는 출처 보관용. 릴스 저장 후 영상 업로드는 선택 기능 |
 | 공유 시트 진입 | ⚠️ 방법 선택 필요 | 아래 4-1 참고 |
-| 사진·영수증으로 재료 등록 | ✅ | Claude 비전으로 이미지 → 재료 JSON. 국내 앱들이 이미 하는 기능 |
+| 사진·영수증으로 재료 등록 | ✅ | Gemini 비전으로 이미지 → 재료 JSON. 국내 앱들이 이미 하는 기능 |
 | 쿡 모드 | ✅ | Screen Wake Lock API(iOS 16.4+ 사파리 지원), 단계 텍스트에서 "10분" 자동 감지 → 타이머, SpeechSynthesis로 읽어주기 |
 | 인분 스케일링 | ✅ | 재료를 qty/unit로 구조화해 저장하면 곱셈. "약간", "적당량"은 스케일 제외 플래그 |
 | 냉장고·장보기·가족 공유 | ✅ | Firestore 실시간 동기화 |
@@ -105,16 +105,16 @@
         │  Firebase Auth(구글 로그인, 가족 초대 코드) + Firestore 실시간 동기화
         │
         └─▶ [Cloudflare Worker /api/*]  ── API 키 보관, Firebase 토큰 검증
-                 ├─ /recipe        음식 이름 → Claude(claude-opus-5-5, 구조화 출력)
-                 ├─ /import/youtube  YouTube Data API + Gemini(영상) → Claude(정리)
-                 ├─ /import/text     인스타 캡션·스크린샷·레시피 사진 → Claude(비전)
-                 ├─ /normalize     재료 표준화(claude-sonnet-5-5)
-                 ├─ /pantry/photo  냉장고 사진·영수증 → 재료 JSON(Claude 비전)
+                 ├─ /recipe        음식 이름 → Gemini Flash(구조화 출력, 무료)
+                 ├─ /import/youtube  YouTube Data API + Gemini(유튜브 URL 직접 입력, 영상 이해)
+                 ├─ /import/text     인스타 캡션·스크린샷·레시피 사진 → Gemini(비전)
+                 ├─ /normalize     재료 표준화(Gemini Flash-Lite)
+                 ├─ /pantry/photo  냉장고 사진·영수증 → 재료 JSON(Gemini 비전)
                  └─ /suggest       Use It Up 추천
 ```
 
-- 브라우저에 AI 키를 두지 않는다(도용 시 과금). Anthropic 콘솔에 월 지출 한도 설정.
-- 월 예상 비용: Claude 3,000~7,000원(사진 분석이 늘어 v1보다 소폭 증가), 나머지 0원.
+- 브라우저에 AI 키를 두지 않는다(도용되면 무료 한도를 남이 써버린다). Worker에 가족 이메일 허용 목록 설정.
+- 월 예상 비용: **0원** (Gemini 무료 등급: 분당 약 10회·하루 약 1,500회, 가족용에 충분). 품질이 아쉬우면 Worker의 ai.ts 하나만 바꿔 유료 모델로 교체 가능.
 
 ### 5-1. 데이터 모델 (벤치마크 반영해 확장)
 
@@ -157,6 +157,7 @@ MealPlan (선택)
 ## 7. 앱 제작용 프롬프트 작성 플랜 (재정립)
 
 > 진행 상태: 1단계 ✅ · 2단계 ✅ (Worker + AI 레시피 생성 + 저장/폴더/스케일링) · 3단계부터 예정
+> 비용 원칙(확정): **모든 API를 무료 등급으로만 쓴다.** Claude API는 무료 등급이 없어 AI는 Gemini API 무료 등급(Flash 모델)으로 통일했다. Cloudflare·Firebase·YouTube Data API·Gemini 모두 0원.
 
 6단계 → **7단계**. 벤치마크에서 필수로 확인된 쿡 모드·스케일링을 앞당기고, 공유 진입·사진 등록을 추가했다. 각 단계는 동작하는 결과물을 남기고 한 커밋으로 마무리한다.
 
@@ -169,8 +170,8 @@ MealPlan (선택)
 - DB/인증: Firebase(구글 로그인 + Firestore). 가족 데이터는 families/{familyId}/ 아래. 보안 규칙으로 자기 가족만 접근.
 - 사용자는 나와 가족뿐. 한국어 UI. 모바일 세로 화면 기준, 하단 탭(레시피 / 냉장고 / 장보기 / 오늘 뭐 먹지).
 - 벤치마크 UX: Samsung Food의 저장 흐름, Paprika의 스케일링·가족 공유, Crouton의 쿡 모드를 참고한다. 광고·영양정보·커뮤니티는 만들지 않는다.
-- AI 호출은 반드시 apps/worker를 거친다. 브라우저 코드에 Claude/Gemini/YouTube 키를 절대 넣지 않는다.
-- Claude 모델: claude-opus-5-5(레시피 생성·비전), claude-sonnet-5-5(재료 정규화). 구조화 출력(output_config.format)으로 JSON 스키마 강제, 스트리밍 사용.
+- AI 호출은 반드시 apps/worker를 거친다. 브라우저 코드에 Gemini/YouTube 키를 절대 넣지 않는다.
+- AI: Gemini API 무료 등급(gemini-2.5-flash, REST + fetch, SDK 없음). responseJsonSchema 구조화 출력으로 JSON 스키마 강제. 다른 제공자로 바꿀 수 있게 ai.ts 한 파일에 격리.
 - 완료 기준: 실제로 동작해야 하고, 네트워크 오류·401·JSON 파싱 실패 처리와 로딩 UI를 포함하며, 마지막에 수동 테스트 절차를 적는다.
 ```
 
@@ -185,8 +186,8 @@ PWA: manifest, 아이콘, apple 메타태그. Firestore 보안 규칙 파일 포
 
 ### 7-2. 2단계 — Worker + 음식 이름 → 레시피 + 저장/폴더/스케일링
 ```
-apps/worker: 환경변수 ANTHROPIC_API_KEY. Firebase ID 토큰 검증 미들웨어(실패 시 401).
-POST /recipe {dish, servings, profile} → Claude 구조화 출력으로 Recipe JSON. 시스템 프롬프트는 worker/src/prompts.ts 한 파일에 상수로 모은다. 규칙: 한국 가정에서 구하기 쉬운 재료, g/ml/개/큰술 단위, "약간"은 scalable:false, 재료 group(주재료/양념/고명), 각 step에 ingredientKeys와 minutes.
+apps/worker: 환경변수 GEMINI_API_KEY(무료). Firebase ID 토큰 검증 미들웨어(실패 시 401).
+POST /recipe {dish, servings, profile} → Gemini 구조화 출력(responseJsonSchema)으로 Recipe JSON. 시스템 프롬프트는 worker/src/prompts.ts 한 파일에 상수로 모은다. 규칙: 한국 가정에서 구하기 쉬운 재료, g/ml/개/큰술 단위, "약간"은 scalable:false, 재료 group(주재료/양념/고명), 각 step에 ingredientKeys와 minutes.
 apps/web "레시피" 탭: 검색창 → 생성 → 편집 가능한 미리보기 → 저장. 목록/폴더/태그/즐겨찾기/검색. 상세 화면에 인분 스테퍼(스케일링, scalable:false는 고정). 원본 출처 링크 항상 표시.
 ```
 
@@ -200,7 +201,7 @@ SpeechSynthesis로 현재 단계 읽어주기(켜기/끄기), 선택적으로 "�
 
 ### 7-4. 4단계 — 재료 정규화 + 냉장고 대조 + 요리 완료 차감 + 장보기
 ```
-Worker POST /normalize {items} → claude-sonnet-5-5로 표준 key(영문 스네이크케이스)·표준 단위 환산. 냉장고 추가·레시피 저장 시 자동 호출, 사용자가 key 수정 가능.
+Worker POST /normalize {items} → Gemini Flash-Lite로 표준 key(영문 스네이크케이스)·표준 단위 환산. 냉장고 추가·레시피 저장 시 자동 호출, 사용자가 key 수정 가능.
 레시피 상세 "냉장고 대조": 재료별 있음/부족(부족량)/없음. 매칭 실패 시 "직접 연결" 선택.
 쿡 모드 마지막 화면 "요리 완료": 사용량 조정 모달 → 냉장고 차감 + cookedLog 기록.
 장보기 탭: 부족 재료 한 번에 담기, 체크하면 냉장고로 이동(위치·유통기한 입력), 수동 추가, 냉장고에서 "떨어짐" 표시 시 자동 담기.
@@ -208,15 +209,15 @@ Worker POST /normalize {items} → claude-sonnet-5-5로 표준 key(영문 스네
 
 ### 7-5. 5단계 — 링크 가져오기(유튜브·인스타) + 공유 진입
 ```
-Worker POST /import/youtube {url}: YouTube Data API로 제목·설명·채널 → Gemini에 유튜브 URL 직접 입력해 조리 과정 서술 → Claude로 Recipe JSON. 환경변수 YOUTUBE_API_KEY, GEMINI_API_KEY.
-Worker POST /import/text {url?, text?, images?[]}: 캡션 텍스트·스크린샷·요리책 사진 → Claude 비전으로 Recipe JSON.
+Worker POST /import/youtube {url}: YouTube Data API로 제목·설명·채널 → Gemini에 유튜브 URL 직접 입력해 조리 과정을 Recipe JSON으로 정리. 환경변수 YOUTUBE_API_KEY, GEMINI_API_KEY.
+Worker POST /import/text {url?, text?, images?[]}: 캡션 텍스트·스크린샷·요리책 사진 → Gemini 비전으로 Recipe JSON.
 apps/web "가져오기" 화면: URL 입력. 유튜브면 자동. 인스타면 즉시 "캡션 붙여넣기 / 스크린샷 올리기" 화면으로 전환하고 링크는 출처로 저장. 결과는 항상 편집 가능한 미리보기 후 저장.
 공유 진입: (a) manifest에 share_target 등록(Android, 텍스트·링크·이미지 수신 → 가져오기 화면), (b) iOS 단축어 파일(.shortcut) 또는 만드는 방법 문서: 공유 시트에서 링크를 받아 앱 URL ?url= 로 열기.
 ```
 
 ### 7-6. 6단계 — 사진으로 재료 등록 + Use It Up
 ```
-Worker POST /pantry/photo {images[], mode: "fridge"|"receipt"} → Claude 비전으로 FridgeItem[] 후보(이름·수량·단위·추정 위치). 앱에서 체크박스로 골라 일괄 추가.
+Worker POST /pantry/photo {images[], mode: "fridge"|"receipt"} → Gemini 비전으로 FridgeItem[] 후보(이름·수량·단위·추정 위치). 앱에서 체크박스로 골라 일괄 추가.
 Worker POST /suggest {fridgeItems, expiringSoon, exclude[], profile, mood?} → 메뉴 5개(제목, 부족 재료, 시간). "오늘 뭐 먹지" 탭: 임박 재료 카드, 제외 재료 칩, 추천 → "레시피 만들기" → /recipe.
 ```
 
@@ -241,10 +242,9 @@ Worker POST /suggest {fridgeItems, expiringSoon, exclude[], profile, mood?} → 
 
 | 항목 | 어디서 | 비용 |
 |------|--------|------|
-| Anthropic API 키 + 월 지출 한도 | console.anthropic.com | 사용량 과금(월 수천 원) |
+| Gemini API 키 | Google AI Studio (aistudio.google.com/apikey) | 무료, 카드 불필요 |
 | Cloudflare 계정 + Wrangler | cloudflare.com | 무료 |
 | YouTube Data API v3 키 | Google Cloud Console | 무료 |
-| Gemini API 키 | Google AI Studio | 무료 등급 |
 | Firebase 프로젝트(신규) | Firebase 콘솔 | 무료 |
 | (선택) Apple 개발자 계정 | Capacitor 전환 시 | 연 $99 |
 

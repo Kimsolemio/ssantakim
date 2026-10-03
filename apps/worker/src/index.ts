@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { FamilyProfile } from "@cook/shared";
 import { verifyFirebaseIdToken, AuthError, type Verified } from "./auth";
-import { makeClient, generateRecipe, GenerationError } from "./claude";
+import { generateRecipe, GenerationError, DEFAULT_MODEL } from "./ai";
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
   ALLOWED_ORIGINS: string;   // 쉼표로 구분
   ALLOWED_EMAILS?: string;   // 쉼표로 구분. 비우면 로그인한 모든 사용자 허용
-  ANTHROPIC_API_KEY?: string; // wrangler secret
+  GEMINI_API_KEY?: string;   // wrangler secret (Google AI Studio 무료 키)
+  GEMINI_MODEL?: string;     // 기본 gemini-2.5-flash
 }
 
 class HttpError extends Error {
@@ -70,14 +71,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
   try {
     if (url.pathname === "/health" && request.method === "GET") {
-      return json({ ok: true, stage: 2, configured: { firebase: !!env.FIREBASE_PROJECT_ID, anthropic: !!env.ANTHROPIC_API_KEY } }, 200, cors);
+      return json({ ok: true, stage: 2, configured: { firebase: !!env.FIREBASE_PROJECT_ID, gemini: !!env.GEMINI_API_KEY }, model: env.GEMINI_MODEL || DEFAULT_MODEL }, 200, cors);
     }
 
     if (url.pathname === "/recipe" && request.method === "POST") {
       const user = await authenticate(request, env);
       const body = await readJson(request, RecipeRequest);
-      if (!env.ANTHROPIC_API_KEY) throw new HttpError(500, "Worker에 ANTHROPIC_API_KEY가 설정되지 않았습니다");
-      const result = await generateRecipe(makeClient(env.ANTHROPIC_API_KEY), body);
+      if (!env.GEMINI_API_KEY) throw new HttpError(500, "Worker에 GEMINI_API_KEY가 설정되지 않았습니다");
+      const result = await generateRecipe({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL || DEFAULT_MODEL }, body);
       console.log(JSON.stringify({ route: "recipe", uid: user.uid, dish: body.dish, model: result.model, usage: result.usage }));
       return json(result, 200, cors);
     }

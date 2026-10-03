@@ -49,26 +49,28 @@ pnpm typecheck
 ## AI 서버(Worker) 설정 — 2단계부터
 
 AI 호출은 Cloudflare Worker(`apps/worker`)가 대신 한다. API 키는 Worker에만 있고 브라우저에는 절대 없다.
+AI는 **Google Gemini API 무료 등급**을 쓴다(카드 등록 없음, 결제 없음).
 
-1. [console.anthropic.com](https://console.anthropic.com)에서 API 키 발급, **월 지출 한도** 설정
-2. Cloudflare 계정 생성 → `pnpm --filter @cook/worker exec wrangler login`
+1. [Google AI Studio](https://aistudio.google.com/apikey)에서 API 키 발급 (무료)
+2. Cloudflare 계정 생성(무료) → `pnpm --filter @cook/worker exec wrangler login`
 3. `apps/worker/wrangler.toml`의 `[vars]` 수정
    - `FIREBASE_PROJECT_ID`: Firebase 프로젝트 ID (토큰 검증용)
    - `ALLOWED_ORIGINS`: 앱 주소들 (쉼표 구분, 예: `http://localhost:5173,https://cook.example.pages.dev`)
    - `ALLOWED_EMAILS`: 가족 구글 계정 이메일 (쉼표 구분). **비워두면 구글 계정이 있는 누구나 AI를 호출할 수 있으니 꼭 채우자**
+   - `GEMINI_MODEL`: 기본 `gemini-2.5-flash`. AI Studio에서 무료로 표시되는 다른 Flash 모델로 바꿔도 된다
 4. 비밀값 등록 후 배포
 
 ```bash
-pnpm --filter @cook/worker exec wrangler secret put ANTHROPIC_API_KEY
+pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY
 pnpm worker:deploy        # 끝나면 https://family-cook-api.<계정>.workers.dev 주소가 나온다
 ```
 
 5. 그 주소를 `apps/web/.env`의 `VITE_WORKER_URL`에 넣고 프론트 다시 빌드·배포
-6. 확인: 브라우저에서 `https://.../health` → `{"ok":true,...,"configured":{"firebase":true,"anthropic":true}}`
+6. 확인: 브라우저에서 `https://.../health` → `{"ok":true,...,"configured":{"firebase":true,"gemini":true}}`
 
 로컬 개발: `apps/worker/.dev.vars.example`을 `.dev.vars`로 복사해 채우고 `pnpm worker:dev` (http://localhost:8787).
 
-사용 모델: 레시피 생성 `claude-opus-5-5` (레시피 1건 ≈ 40원). AI가 안전 정책으로 거절하면 같은 호출에서 대체 모델로 자동 재시도하도록(`fallbacks: "default"`) 켜 두었다. 모든 프롬프트는 `apps/worker/src/prompts.ts` 한 파일에 있다.
+무료 등급 한도(2026년 기준, 모델별로 다름): 분당 약 10회, 하루 약 1,500회. 가족용으로 충분하다. 한도에 걸리면 앱에 "무료 사용량 한도" 안내가 뜬다. 모든 프롬프트는 `apps/worker/src/prompts.ts` 한 파일에 있다. 다른 AI(예: Claude)로 바꾸고 싶으면 `apps/worker/src/ai.ts` 하나만 교체하면 된다.
 
 ## 로컬 에뮬레이터로 개발·테스트 (선택)
 
@@ -99,7 +101,7 @@ node e2e/run.mjs
 
 ## 2단계 수동 테스트 절차
 
-1. Worker `/health`가 `configured.anthropic: true`를 돌려준다.
+1. Worker `/health`가 `configured.gemini: true`를 돌려준다.
 2. 레시피 탭 → ✨ → "알리오올리오", 3인분, 추가 요청 "덜 맵게" → 레시피 만들기 → 20~60초 뒤 **확인·수정** 화면이 뜬다.
 3. 재료·순서·팁을 고쳐 보고 저장 → 상세 화면. 재료가 그룹(주재료/양념/고명)별로 보인다.
 4. 인분 +/−: 수량이 환산된다. "약간"(인분 고정) 재료는 그대로. 기준 인분 안내 문구가 뜬다.
@@ -107,7 +109,7 @@ node e2e/run.mjs
 6. 폴더 관리에서 폴더 추가 → 칩 필터로 걸러진다. 검색창에 재료 이름(예: 마늘)으로도 찾아진다.
 7. 가족 메뉴(우상단)에서 취향(맵기·알레르기·아이)을 저장 → 다음 생성에 반영된다(생성 시트 아래 안내 문구).
 8. 다른 가족 폰에서 같은 레시피가 보이고, 한쪽에서 수정하면 다른 쪽에 바로 반영된다.
-9. Worker 주소를 틀리게 넣으면 "서버에 연결할 수 없습니다", API 키가 틀리면 "AI API 키가 올바르지 않습니다"가 뜬다.
+9. Worker 주소를 틀리게 넣으면 "서버에 연결할 수 없습니다", Gemini 키가 틀리면 "AI API 키가 올바르지 않습니다"가 뜬다.
 10. 안드로이드 뒤로가기/iOS 스와이프백으로 상세·편집·시트가 닫히고 앱은 종료되지 않는다.
 
 ## 1단계 수동 테스트 절차
