@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dev-dist/
+.env
+.env.local
+.wrangler/
+*.log
+.DS_Store
+.dev.vars
+e2e/shots/

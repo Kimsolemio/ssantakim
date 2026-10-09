@@ -1,0 +1,12 @@
+name = "family-cook-api"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 비밀값(GEMINI_API_KEY)은 `pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY` 로 넣는다.
+# 아래 vars는 배포 시 자신의 값으로 바꾼다 (또는 Cloudflare 대시보드 > Settings > Variables).
+[vars]
+FIREBASE_PROJECT_ID = ""
+ALLOWED_ORIGINS = "http://localhost:5173"
+ALLOWED_EMAILS = ""
+GEMINI_MODEL = "gemini-2.5-flash"

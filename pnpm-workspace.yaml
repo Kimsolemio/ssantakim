@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+  - "@firebase/util"
+  - protobufjs
+ignoredBuiltDependencies:
+  - re2

@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isMember(familyId) {
+      return signedIn() && request.auth.uid in get(/databases/$(database)/documents/families/$(familyId)).data.members;
+    }
+    function validInvite(familyId, code) {
+      return code is string
+        && get(/databases/$(database)/documents/invites/$(code)).data.familyId == familyId
+        && get(/databases/$(database)/documents/families/$(familyId)).data.inviteCode == code;
+    }
+    function joinAuthorized(familyId) {
+      let proof = getAfter(/databases/$(database)/documents/families/$(familyId)/joinProofs/$(request.auth.uid)).data;
+      return validInvite(familyId, proof.code);
+    }
+
+    match /users/{uid} {
+      // This is a UI pointer, never a source of membership authorization.
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      // getAfter permits atomic family + invite creation; existing codes cannot be overwritten.
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['familyId'])
+        && getAfter(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.members == [request.auth.uid]
+        && getAfter(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.inviteCode == code;
+      allow delete: if isMember(resource.data.familyId);
+    }
+    match /families/{familyId} {
+      allow read: if isMember(familyId);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['name', 'inviteCode', 'members', 'createdAt', 'profile'])
+        && request.resource.data.keys().hasOnly(['name', 'inviteCode', 'members', 'createdAt', 'profile'])
+        && request.resource.data.members == [request.auth.uid]
+        && request.resource.data.inviteCode is string
+        && getAfter(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.familyId == familyId;
+      allow update: if signedIn() && (
+        (isMember(familyId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'profile']))
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+          && !(request.auth.uid in resource.data.members)
+          && request.resource.data.members is list
+          && request.resource.data.members.toSet() == resource.data.members.toSet().union([request.auth.uid].toSet())
+          && request.resource.data.members.size() == resource.data.members.size() + 1
+          && joinAuthorized(familyId))
+        // Idempotent repeat join still requires a valid invitation.
+        || (request.resource.data == resource.data && joinAuthorized(familyId))
+      );
+      match /joinProofs/{uid} {
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['code'])
+          && validInvite(familyId, request.resource.data.code)
+          && request.auth.uid in getAfter(/databases/$(database)/documents/families/$(familyId)).data.members;
+      }
+      // Explicit data collections avoid granting access to authorization records.
+      match /{sub}/{docId} {
+        allow read, write: if sub in ['fridge_items', 'recipes', 'folders', 'shopping_items', 'meal_plans']
+          && isMember(familyId);
+      }
+    }
+  }
+}
