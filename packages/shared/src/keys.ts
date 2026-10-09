@@ -16,7 +16,15 @@ export function provisionalKey(name: string): string {
 export function makeInviteCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
-  for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  // Rejection sampling avoids modulo bias for the 31-character alphabet.
+  const limit = 256 - (256 % alphabet.length);
+  while (out.length < 6) {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    for (const byte of bytes) {
+      if (byte < limit) out += alphabet[byte % alphabet.length];
+      if (out.length === 6) break;
+    }
+  }
   return out;
 }
 

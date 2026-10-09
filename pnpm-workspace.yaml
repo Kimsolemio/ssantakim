@@ -6,3 +6,5 @@ onlyBuiltDependencies:
   - workerd
   - "@firebase/util"
   - protobufjs
+ignoredBuiltDependencies:
+  - re2

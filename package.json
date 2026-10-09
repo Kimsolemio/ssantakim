@@ -8,9 +8,13 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "worker:dev": "pnpm --filter @cook/worker dev",
-    "worker:deploy": "pnpm --filter @cook/worker deploy"
+    "worker:deploy": "pnpm --filter @cook/worker deploy",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-family-cook \"node --test tests/firestore-security.test.mjs\""
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.33.0",
     "playwright": "^1.63.0"
   }
 }
