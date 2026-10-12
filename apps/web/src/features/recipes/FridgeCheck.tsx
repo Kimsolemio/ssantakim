@@ -110,7 +110,7 @@ export function LinkSheet({ match, fridge, onClose, onLink }: {
     <Sheet title={`${match.ingredient.name} 연결`} onClose={onClose}>
       <div className="flex max-h-[70vh] flex-col gap-2">
         {status === "missing" ? (
-          <p className="text-sm text-gray-600">냉장고에서 "{match.ingredient.name}"을(를) 못 찾았어요. 같은 재료가 다른 이름으로 들어 있다면 골라 주세요. 그 품목이 냉장고에 있는 동안은 다른 레시피에서도 "{match.ingredient.name}"(으)로 맞춰 봐요.</p>
+          <p className="text-sm text-gray-600">냉장고에서 "{match.ingredient.name}"을(를) 못 찾았어요. 같은 재료가 다른 이름으로 들어 있다면 골라 주세요. 고르면 이 레시피에서 그 품목을 "{match.ingredient.name}"(으)로 맞춰 봐요.</p>
         ) : status === "staple" ? (
           <p className="text-sm text-gray-600">"{match.ingredient.name}"은(는) 늘 있는 양념으로 설정돼 있어요 (가족 설정에서 바꿀 수 있어요). 냉장고 품목과 연결하면 그 양으로 맞춰 봐요.</p>
         ) : (

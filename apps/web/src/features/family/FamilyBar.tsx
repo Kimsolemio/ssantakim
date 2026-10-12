@@ -11,8 +11,8 @@ export function FamilyMenu() {
   if (!family) return null;
   return (
     <>
-      <button onClick={() => setOpen(true)} className="fixed right-4 z-20 rounded-full bg-white/90 px-3 py-1.5 text-sm shadow"
-        style={{ top: "calc(var(--safe-top) + 12px)" }}>👨‍👩‍👧 {family.name}</button>
+      {/* 화면 맨 위에만 있고 스크롤하면 같이 올라간다 (아래 내용 위에 떠서 가리지 않게) */}
+      <button onClick={() => setOpen(true)} className="absolute right-4 z-20 rounded-full bg-white/90 px-3 py-1.5 text-sm shadow" style={{ top: "calc(var(--safe-top) + 12px)" }}>👨‍👩‍👧 {family.name}</button>
       {open && (
         <Sheet title={family.name} onClose={() => setOpen(false)}>
           <div className="flex max-h-[75vh] flex-col gap-3 overflow-y-auto">

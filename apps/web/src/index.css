@@ -13,7 +13,10 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
-input, select, textarea, button { font: inherit; }
+/* 기본 글꼴 상속은 base 레이어에: 레이어 밖에 두면 Tailwind 글자 크기(text-xs 등)를 덮어써 버린다 */
+@layer base {
+  input, select, textarea, button { font: inherit; }
+}
 /* iOS 사파리는 16px보다 작은 입력 칸을 누르면 화면을 확대한다. 터치 기기에서는 입력 글자를 16px 이상으로 */
 @media (pointer: coarse) {
   input, select, textarea { font-size: max(16px, 1em); }

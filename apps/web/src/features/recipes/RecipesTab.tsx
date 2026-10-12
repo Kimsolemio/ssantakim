@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { RecipeDraft } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
-import { useRecipes, useFolders, createRecipe, updateRecipe, deleteRecipe, createFolder, deleteFolder, type RecipeDoc } from "./useRecipes";
+import { useRecipes, useFolders, createRecipe, updateRecipe, deleteRecipe, createFolder, deleteFolder, addCookedLog, type RecipeDoc } from "./useRecipes";
 import { GenerateSheet } from "./GenerateSheet";
 import { ImportSheet } from "./ImportSheet";
 import { useNav } from "../../lib/nav";
@@ -10,10 +10,11 @@ import type { SharedPayload } from "../../lib/share";
 import { RecipeEditor } from "./RecipeEditor";
 import { RecipeDetail, SOURCE_LABEL } from "./RecipeDetail";
 import { Sheet } from "../../components/Sheet";
-import { normalizeRecipeKeys } from "../../lib/normalize";
+import { fixRecipeKeysInBackground } from "../../lib/normalize";
 import { loadPending, savePending, clearPending } from "../../lib/drafts";
 
-type PendingDraft = { draft: RecipeDraft; note: string | null };
+type PendingDraft = { id: string; draft: RecipeDraft; note: string | null };
+const MAX_DRAFTS = 5;
 
 type Filter = { kind: "all" } | { kind: "fav" } | { kind: "folder"; id: string };
 
@@ -45,15 +46,26 @@ export function RecipesTab() {
     setOpenId(pendingRecipe);
   }, [pendingRecipe]); // eslint-disable-line react-hooks/exhaustive-deps
   const [draft, setDraftState] = useState<RecipeDraft | null>(null);
-  // 저장하지 않은 AI 초안은 이 기기에 보관해 두었다가 다시 열 수 있게 한다
-  const pendingName = `draft:${familyId ?? ""}`;
-  const [stored, setStored] = useState<PendingDraft | null>(() => (familyId ? loadPending<PendingDraft>(`draft:${familyId}`) : null));
-  const setDraft = (d: RecipeDraft | null, note: string | null = null) => {
-    setDraftState(d);
-    if (d) { savePending<PendingDraft>(pendingName, { draft: d, note }); setStored(null); }
+  // 저장하지 않은 AI 초안은 이 기기에 여러 개(최대 5개) 보관해 두었다가 다시 열 수 있게 한다
+  const pendingName = `drafts:${familyId ?? ""}`;
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [stored, setStored] = useState<PendingDraft[]>(() => loadPending<PendingDraft[]>(pendingName) ?? []);
+  useEffect(() => { setStored(loadPending<PendingDraft[]>(`drafts:${familyId ?? ""}`) ?? []); }, [familyId]);
+  const writeStored = (list: PendingDraft[]) => {
+    setStored(list);
+    if (list.length) savePending(pendingName, list); else clearPending(pendingName);
   };
-  const discardDraft = () => { clearPending(pendingName); setStored(null); };
-  useEffect(() => { setStored(familyId ? loadPending<PendingDraft>(`draft:${familyId}`) : null); }, [familyId]);
+  const upsertStored = (entry: PendingDraft) => {
+    const cur = loadPending<PendingDraft[]>(pendingName) ?? [];
+    writeStored([entry, ...cur.filter((x) => x.id !== entry.id)].slice(0, MAX_DRAFTS));
+  };
+  const removeStored = (id: string) => writeStored((loadPending<PendingDraft[]>(pendingName) ?? []).filter((x) => x.id !== id));
+  /** 새 AI 결과: 보관함에 넣고 편집기를 연다 */
+  const setDraft = (d: RecipeDraft, note: string | null = null) => {
+    const id = crypto.randomUUID();
+    upsertStored({ id, draft: d, note });
+    setDraftId(id); setDraftState(d);
+  };
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<RecipeDoc | null>(null);
   const [folderMenu, setFolderMenu] = useState(false);
@@ -95,14 +107,14 @@ export function RecipesTab() {
         <button className="shrink-0 rounded-full border border-dashed border-orange-300 px-3 py-1.5 text-sm text-orange-700" onClick={() => setFolderMenu(true)}>폴더 관리</button>
       </div>
 
-      {stored && !draft && (
-        <div className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="pending-draft">
-          <span className="min-w-0 flex-1">📝 저장하지 않은 레시피 초안: <b>{stored.draft.title}</b></span>
+      {!draft && stored.map((p) => (
+        <div key={p.id} className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="pending-draft">
+          <span className="min-w-0 flex-1">📝 저장하지 않은 초안: <b>{p.draft.title}</b></span>
           <button type="button" className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white"
-            onClick={() => { setDraftNote(stored.note); setDraftState(stored.draft); setStored(null); }}>이어서</button>
-          <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { if (confirm("이 초안을 버릴까요?")) discardDraft(); }}>버리기</button>
+            onClick={() => { setDraftNote(p.note); setDraftId(p.id); setDraftState(p.draft); }}>이어서</button>
+          <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { if (confirm(`"${p.draft.title}" 초안을 버릴까요?`)) removeStored(p.id); }}>버리기</button>
         </div>
-      )}
+      ))}
       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {loading && <p className="text-sm text-gray-500">불러오는 중…</p>}
       {!loading && recipes.length === 0 && (
@@ -147,12 +159,13 @@ export function RecipesTab() {
       )}
       {draft && (
         <RecipeEditor title="레시피 확인·수정" initial={draft} note={draftNote} fresh
-          onChange={(d) => savePending<PendingDraft>(pendingName, { draft: d, note: draftNote })}
-          onClose={() => { setDraftState(null); setStored(loadPending<PendingDraft>(pendingName)); }}
+          onChange={(d) => { if (draftId) upsertStored({ id: draftId, draft: d, note: draftNote }); }}
+          onClose={() => { setDraftState(null); setDraftId(null); setStored(loadPending<PendingDraft[]>(pendingName) ?? []); }}
           onSave={async (d) => {
             const id = await createRecipe(familyId, user.uid, d, filter.kind === "folder" ? filter.id : null);
-            discardDraft(); setDraftState(null); setOpenId(id);
-            void normalizeRecipeKeys(d).then((next) => next && updateRecipe(familyId, id, next));
+            if (draftId) removeStored(draftId);
+            setDraftState(null); setDraftId(null); setOpenId(id);
+            void fixRecipeKeysInBackground(familyId, id, d);
           }} />
       )}
       {open && (
@@ -161,14 +174,14 @@ export function RecipesTab() {
           onToggleFavorite={() => updateRecipe(familyId, open.id, { favorite: !open.favorite })}
           onMoveFolder={(fid) => updateRecipe(familyId, open.id, { folderId: fid })}
           onDelete={() => deleteRecipe(familyId, open.id)}
-          onCooked={(servings) => updateRecipe(familyId, open.id, { cookedLog: [...open.cookedLog, { date: new Date().toISOString(), by: user.uid, servings }] })} />
+          onCooked={(servings) => addCookedLog(familyId, open.id, { date: new Date().toISOString(), by: user.uid, servings })} />
       )}
       {editing && (
         <RecipeEditor title="레시피 수정" initial={editing} onClose={() => setEditing(null)}
           onSave={async (d) => {
             const id = editing.id;
             await updateRecipe(familyId, id, d); setEditing(null);
-            void normalizeRecipeKeys(d).then((next) => next && updateRecipe(familyId, id, next));
+            void fixRecipeKeysInBackground(familyId, id, d);
           }} />
       )}
       {folderMenu && (

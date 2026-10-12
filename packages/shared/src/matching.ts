@@ -8,8 +8,8 @@ import type { FridgeItem, Ingredient, StorageLocation, Unit } from "./schemas";
 
 const MASS: Partial<Record<Unit, number>> = { g: 1, kg: 1000 };
 const VOLUME: Partial<Record<Unit, number>> = { ml: 1, L: 1000, 큰술: 15, 작은술: 5, 컵: 200 };
-/** 낱개를 세는 말. "달걀 2알" = "달걀 2개", "대파 1대" = "대파 1개" */
-const PIECE: Partial<Record<Unit, number>> = { 개: 1, 알: 1, 대: 1 };
+/** 낱개를 세는 말. "대파 1대" = "대파 1개". ("알"은 마늘 한 쪽일 때도 있어 개와 같다고 보지 않는다) */
+const PIECE: Partial<Record<Unit, number>> = { 개: 1, 대: 1 };
 
 /** 같은 종류 단위끼리만 바꾼다 (무게끼리, 부피·숟가락끼리, 낱개끼리). 못 바꾸면 null */
 export function convertQty(qty: number, from: Unit, to: Unit): number | null {
@@ -44,21 +44,28 @@ export const isStandardKey = (k: string): boolean => /^[a-z][a-z0-9_]*$/.test(k)
 /** 같은 재료인데 AI가 가끔 다르게 붙이는 key */
 const KEY_ALIASES: Record<string, string> = {
   // 대파 = green_onion, 쪽파 = scallion 으로 따로 둔다 (요리에서 다르게 쓴다)
-  welsh_onion: "green_onion", large_green_onion: "green_onion", daepa: "green_onion", spring_onion: "scallion", chive: "scallion", jjokpa: "scallion",
+  // 부추(garlic_chive)는 쪽파와 다르다
+  welsh_onion: "green_onion", large_green_onion: "green_onion", daepa: "green_onion", spring_onion: "scallion", jjokpa: "scallion", buchu: "garlic_chive", chinese_chive: "garlic_chive", korean_chive: "garlic_chive",
   minced_garlic: "garlic", garlic_clove: "garlic", peeled_garlic: "garlic",
   cooking_oil: "vegetable_oil", canola_oil: "vegetable_oil", grapeseed_oil: "vegetable_oil", soybean_oil: "vegetable_oil",
   toasted_sesame_seed: "sesame_seed", ground_black_pepper: "black_pepper", korean_chili_flakes: "chili_flakes", gochugaru: "chili_flakes",
   mirin: "cooking_wine", rice_wine: "cooking_wine", corn_starch: "starch", potato_starch: "starch",
 };
 
-/** 복수형 정리 + 별칭. 표준 key가 아니면 그대로 */
+function singular(k: string): string {
+  if (k.length > 4 && k.endsWith("ies")) return k.slice(0, -3) + "y";
+  if (k.length > 4 && k.endsWith("oes")) return k.slice(0, -2);
+  if (k.length > 3 && k.endsWith("s") && !k.endsWith("ss") && !k.endsWith("us")) return k.slice(0, -1);
+  return k;
+}
+
+/** 복수형 정리 + 별칭 (별칭 결과도 다시 단수로). 표준 key가 아니면 그대로 */
 export function canonKey(key: string): string {
-  let k = key.trim().toLowerCase();
-  if (!isStandardKey(k)) return k;
-  if (k.length > 4 && k.endsWith("ies")) k = k.slice(0, -3) + "y";
-  else if (k.length > 4 && k.endsWith("oes")) k = k.slice(0, -2);
-  else if (k.length > 3 && k.endsWith("s") && !k.endsWith("ss") && !k.endsWith("us")) k = k.slice(0, -1);
-  return KEY_ALIASES[k] ?? k;
+  const raw = key.trim().toLowerCase();
+  if (!isStandardKey(raw)) return raw;
+  const one = singular(raw);
+  const alias = KEY_ALIASES[raw] ?? KEY_ALIASES[one];
+  return alias ? singular(alias) : one;
 }
 
 /** 손질·원산지 같은 앞말. "생강", "통조림"처럼 단어의 일부인 경우를 피하려고 한 글자 앞말은 최소화했다 */

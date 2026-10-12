@@ -27,6 +27,7 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, o
   const [memo, setMemo] = useState(initial?.memo ?? "");
   const [category, setCategory] = useState<FoodCategory | "auto">(initial?.category ?? "auto");
   const [busy, setBusy] = useState(false);
+  const [rebuy, setRebuy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
@@ -106,14 +107,14 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, o
           {busy ? "저장 중…" : "저장"}
         </button>
         {onUsedUp && (
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" disabled={busy} onClick={() => usedUp(true)} className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-700 ring-1 ring-orange-200">🛒 다 썼어요 · 또 살래요</button>
-            <button type="button" disabled={busy} onClick={() => usedUp(false)} className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-700 ring-1 ring-orange-200">🍽️ 다 썼어요</button>
+          <div className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-orange-200">
+            <button type="button" disabled={busy} onClick={() => usedUp(rebuy)} className="flex-1 rounded-lg bg-orange-100 py-2.5 font-semibold text-orange-900">🍽️ 다 먹었어요</button>
+            <label className="flex shrink-0 items-center gap-1.5 pr-1 text-sm text-gray-700"><input type="checkbox" className="h-5 w-5 accent-orange-500" checked={rebuy} onChange={(e) => setRebuy(e.target.checked)} />장보기에 다시 담기</label>
           </div>
         )}
         {onDelete && (
           <button type="button" disabled={busy} onClick={async () => { if (confirm("잘못 넣은 품목인가요? 삭제할까요?")) { setBusy(true); await onDelete(); onClose(); } }}
-            className="py-2 text-sm text-red-600">삭제</button>
+            className="py-2 text-sm text-gray-500 underline">잘못 넣었어요 · 삭제</button>
         )}
       </form>
     </Sheet>

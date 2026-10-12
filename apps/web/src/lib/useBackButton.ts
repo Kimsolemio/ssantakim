@@ -19,8 +19,12 @@ function installGlobal() {
   if (globalInstalled) return;
   globalInstalled = true;
   window.addEventListener("popstate", () => {
-    const layer = current()?.layer;
-    if (layer && !activeTokens.has(layer)) history.back();
+    // 레이어들의 처리(닫기, 또는 닫기 취소로 항목 다시 쌓기)가 끝난 뒤에 판단한다.
+    // 곧바로 back() 하면, 취소해서 다시 쌓은 뒤에 한 번 더 뒤로 가서 확인 창이 두 번 뜬다
+    setTimeout(() => {
+      const layer = current()?.layer;
+      if (layer && !activeTokens.has(layer)) history.back();
+    }, 0);
   });
 }
 

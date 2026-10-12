@@ -39,6 +39,7 @@ export function formatQty(qty: number | null): string {
 /** "200g", "2개", "1.5큰술", 기타 단위는 수량만 */
 export function formatAmount(ing: Pick<Ingredient, "qty" | "unit">): string {
   const q = formatQty(ing.qty);
-  if (ing.unit === "기타") return q;
-  return q ? `${q}${ing.unit}` : ing.unit;
+  // 수량을 모르면 단위만 덩그러니 보이지 않게 아무것도 쓰지 않는다 ("kg", "개" X)
+  if (!q || ing.unit === "기타") return q;
+  return `${q}${ing.unit}`;
 }

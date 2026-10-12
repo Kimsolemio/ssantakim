@@ -33,38 +33,46 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
   const [err, setErr] = useState<string | null>(null);
   const { family } = useFamily();
 
-  // 재료 이름을 바꾸면 예전 key(예전 이름의 것)를 버린다. 처음 key 는 단계의 ingredientKeys 를 고칠 때 쓴다
-  const [origKeys, setOrigKeys] = useState<(string | null)[]>(() => initial.ingredients.map((i) => i.key));
+  // 재료마다 처음 이름·key 를 기억한다. 이름이 처음과 달라지면 key 를 비우고(저장할 때 새로 만든다),
+  // 처음 이름으로 되돌리면 처음 key(AI가 정리한 것)를 되살린다. 단계의 ingredientKeys 를 고칠 때도 쓴다
+  const [origs, setOrigs] = useState<({ name: string; key: string } | null)[]>(() => initial.ingredients.map((i) => (i.key ? { name: i.name, key: i.key } : null)));
   const setIng = (i: number, patch: Partial<Ingredient>) =>
     setD((p) => ({ ...p, ingredients: p.ingredients.map((x, idx) => {
       if (idx !== i) return x;
-      const renamed = patch.name !== undefined && provisionalKey(patch.name) !== provisionalKey(x.name);
-      return { ...x, ...patch, ...(renamed ? { key: "" } : {}) };
+      if (patch.name === undefined) return { ...x, ...patch };
+      const o = origs[idx];
+      const same = o ? provisionalKey(patch.name) === provisionalKey(o.name) : false;
+      return { ...x, ...patch, key: same && o ? o.key : o ? "" : x.key && provisionalKey(patch.name) === provisionalKey(x.name) ? x.key : "" };
     }) }));
   const removeIng = (i: number) => {
     setD((p) => ({ ...p, ingredients: p.ingredients.filter((_, idx) => idx !== i) }));
-    setOrigKeys((k) => k.filter((_, idx) => idx !== i));
+    setOrigs((k) => k.filter((_, idx) => idx !== i));
   };
   const setStep = (i: number, patch: Partial<Step>) =>
     setD((p) => ({ ...p, steps: p.steps.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) }));
 
   const dirty = d !== initial || tagsText !== initial.tags.join(", ");
   useEffect(() => { if (dirty) onChange?.({ ...d, tags: tagsText.split(/[,，]/).map((t) => t.trim()).filter(Boolean) }); }, [d, tagsText]); // eslint-disable-line react-hooks/exhaustive-deps
-  const confirmClose = busy ? null
-    : fresh ? "저장하지 않고 닫을까요? (이 기기에 초안이 남아 있어 레시피 탭에서 다시 열 수 있어요)"
-    : dirty ? "고친 내용을 저장하지 않고 닫을까요?" : null;
+  // 새 AI 초안은 기기에 보관되므로 묻지 않는다 (레시피 탭에 "이어서"가 뜬다). 저장된 레시피를 고치다 닫을 때만 묻는다
+  const confirmClose = busy || fresh ? null : dirty ? "고친 내용을 저장하지 않고 닫을까요?" : null;
 
   const save = async () => {
     setErr(null);
     const keyed = d.ingredients.map((i) => ({ ...i, name: i.name.trim(), key: i.key.trim() || provisionalKey(i.name), note: i.note?.trim() || undefined }));
+    // 단계 연결 옮기기: 처음 key 를 쓰던 재료가 하나뿐일 때만 (대파 주재료·고명처럼 같은 key 가 둘이면 남은 쪽을 위해 그대로 둔다)
+    const origCount = new Map<string, number>();
+    origs.forEach((o) => { if (o) origCount.set(o.key, (origCount.get(o.key) ?? 0) + 1); });
     const keyMap = new Map<string, string>();
-    keyed.forEach((i, idx) => { const o = origKeys[idx]; if (o && o !== i.key) keyMap.set(o, i.key); });
+    keyed.forEach((i, idx) => { const o = origs[idx]; if (o && o.key !== i.key && origCount.get(o.key) === 1) keyMap.set(o.key, i.key); });
+    const finalKeys = new Set(keyed.filter((i) => i.name).map((i) => i.key));
     const cleaned: RecipeDraft = {
       ...d,
       title: d.title.trim(),
       tags: tagsText.split(/[,，]/).map((t) => t.trim().replace(/^#/, "")).filter(Boolean),
       ingredients: keyed.filter((i) => i.name),
-      steps: remapStepKeys(d.steps.filter((s) => s.text.trim()).map((s, idx) => ({ ...s, order: idx + 1, text: s.text.trim() })), keyMap),
+      // 옮긴 뒤에도 어떤 재료와도 맞지 않는 key 는 뺀다 (요리 모드에 엉뚱한 재료가 뜨지 않게)
+      steps: remapStepKeys(d.steps.filter((s) => s.text.trim()).map((s, idx) => ({ ...s, order: idx + 1, text: s.text.trim() })), keyMap)
+        .map((s) => ({ ...s, ingredientKeys: s.ingredientKeys.filter((k) => finalKeys.has(k)) })),
       tips: d.tips.map((t) => t.trim()).filter(Boolean),
     };
     const parsed = RecipeDraft.safeParse(cleaned);
@@ -130,7 +138,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
                 </div>
               </div>
             ))}
-            <button className="rounded-xl border border-dashed border-orange-300 py-2 text-sm text-orange-700" onClick={() => { setD({ ...d, ingredients: [...d.ingredients, emptyIngredient()] }); setOrigKeys((k) => [...k, null]); }}>+ 재료 추가</button>
+            <button className="rounded-xl border border-dashed border-orange-300 py-2 text-sm text-orange-700" onClick={() => { setD({ ...d, ingredients: [...d.ingredients, emptyIngredient()] }); setOrigs((k) => [...k, null]); }}>+ 재료 추가</button>
           </div>
         </section>
 

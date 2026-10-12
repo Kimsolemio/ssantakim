@@ -13,6 +13,7 @@ import { normalizeKeysInBackground, remapStepKeys } from "../../lib/normalize";
 import { useRecipeMatches, statusLabel, FridgeSummary, AddToShoppingSheet, LinkSheet } from "./FridgeCheck";
 import { updateRecipe, type FolderDoc } from "./useRecipes";
 import { AllergyBanner } from "./AllergyBanner";
+import { writeErrorMessage } from "../../lib/write";
 
 type Props = {
   recipe: Recipe;
@@ -87,10 +88,15 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
   };
   const applyUseUp = async (r: UseUpResult) => {
     if (!familyId) return;
-    await applyFridgeUpdates(familyId, r.updates);
+    // 시트를 연 사이 다른 가족이 지운 품목은 건너뛴다 (없는 문서를 고치면 전체가 실패한다)
+    const present = new Set(fridge.map((f) => f.id));
+    const updates = r.updates.filter((u) => present.has(u.id));
+    try { await applyFridgeUpdates(familyId, updates); }
+    catch (e) { throw new Error(writeErrorMessage(e)); }
     if (r.addUsedUpToShopping && r.usedUp.length) await addToShopping(r.usedUp.map((f) => ({ name: f.name, key: f.key, qty: null, unit: f.unit })), false);
     await onCooked(servings);
-    if (r.updates.length) say(`🧊 냉장고에서 ${r.updates.length}개를 정리했어요`);
+    const skipped = r.updates.length - updates.length;
+    if (updates.length) say(`🧊 냉장고에서 ${updates.length}개를 정리했어요${skipped ? ` (${skipped}개는 이미 누가 정리했어요)` : ""}`);
   };
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };

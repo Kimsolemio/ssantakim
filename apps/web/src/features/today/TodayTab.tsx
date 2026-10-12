@@ -3,7 +3,7 @@ import { DEFAULT_STAPLES, daysUntil, rankRecipesByFridge, type MenuSuggestion } 
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
 import { useNav } from "../../lib/nav";
-import { callWorker, workerConfigured, ApiError } from "../../lib/api";
+import { callWorker, getWorker, workerConfigured, ApiError } from "../../lib/api";
 import { loadPending, savePending } from "../../lib/drafts";
 import { normalizeKeysInBackground } from "../../lib/normalize";
 import { AiNotice } from "../../components/AiNotice";
@@ -59,6 +59,15 @@ export function TodayTab() {
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => { setSaved(loadPending<Saved>(`today:${familyId ?? ""}`)); }, [familyId]);
+  // 오늘 남은 AI 사용량 (Worker에 하루 한도가 켜져 있을 때만)
+  const [left, setLeft] = useState<number | null>(null);
+  const refreshUsage = () => {
+    if (!workerConfigured) return;
+    getWorker<{ today: { used: number; limit: number } | null }>("/usage")
+      .then((r) => setLeft(r.today ? Math.max(0, Math.floor(r.today.limit - r.today.used)) : null))
+      .catch(() => setLeft(null));
+  };
+  useEffect(refreshUsage, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => abort.current?.abort(), []);
   useEffect(() => {
     if (!busy) return;
@@ -87,7 +96,7 @@ export function TodayTab() {
     const items = [...fresh]
       .sort((a, b) => (a.d ?? 9999) - (b.d ?? 9999))
       .slice(0, 200)
-      .map(({ f, d }) => ({ name: f.name, qty: f.qty, unit: f.unit, daysLeft: d, location: f.location }));
+      .map(({ f, d }) => ({ name: f.name, qty: f.qty, unit: f.unit, daysLeft: d, estimated: f.expiresEstimated === true, location: f.location }));
     const mood = [...moods.map((m) => m.replace(/^\S+\s/, "")), moodText.trim()].filter(Boolean).join(", ") || null;
     try {
       const res = await callWorker<SuggestResponse>("/suggest", {
@@ -98,7 +107,7 @@ export function TodayTab() {
       if (res.suggestions.length === 0) setErr("조건에 맞는 메뉴를 찾지 못했어요. 꼭 쓰기·빼기 재료를 줄여 보세요");
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "추천을 받지 못했어요");
-    } finally { setBusy(false); }
+    } finally { setBusy(false); refreshUsage(); }
   };
 
   const make = (s: MenuSuggestion) => {
@@ -210,8 +219,10 @@ export function TodayTab() {
             <input className="min-w-0 flex-1 rounded-xl border border-orange-200 px-3 py-2 text-base" placeholder="예: 오이, 가지" value={excludeText} onChange={(e) => setExcludeText(e.target.value)} aria-label="빼고 싶은 재료" />
             <button className="shrink-0 rounded-xl bg-orange-100 px-3 font-semibold text-orange-800">추가</button>
           </div>
-          {exclude.length > 0 && (
+          {(exclude.length > 0 || (profile && profile.allergies.length + profile.dislikes.length > 0)) && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {profile?.allergies.map((n) => <span key={`a-${n}`} className="rounded-full bg-red-50 px-2.5 py-1 text-sm text-red-700" title="가족 설정의 알레르기">🔒 {n}</span>)}
+              {profile?.dislikes.map((n) => <span key={`d-${n}`} className="rounded-full bg-gray-50 px-2.5 py-1 text-sm text-gray-500" title="가족 설정의 싫어하는 재료">🔒 {n}</span>)}
               {exclude.map((n) => <button key={n} type="button" onClick={() => setExclude((l) => l.filter((x) => x !== n))} className="rounded-full bg-gray-100 px-2.5 py-1 text-sm text-gray-700" aria-label={`${n} 빼기 취소`}>🚫 {n} ✕</button>)}
             </div>
           )}
@@ -228,6 +239,7 @@ export function TodayTab() {
         ) : (
           <button type="button" disabled={!workerConfigured || fridgeLoading} onClick={() => suggest(false)} className="rounded-xl bg-orange-500 py-3 text-lg font-semibold text-white disabled:opacity-40">✨ 메뉴 5개 추천받기</button>
         )}
+        {left != null && <p className="-mt-1 text-center text-xs text-gray-500" data-testid="usage-left">오늘 남은 AI 사용 {left}회</p>}
         {fresh.length === 0 && !fridgeLoading && <p className="text-xs text-gray-500">냉장고가 비어 있어요. 늘 있는 양념과 흔한 재료로 만들 메뉴를 추천해요.</p>}
         <AiNotice what="냉장고 목록과 가족 취향(알레르기 포함)" />
       </section>

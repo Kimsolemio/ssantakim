@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, writeBatch, updateDoc, deleteDoc, deleteField } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query, writeBatch, updateDoc, deleteDoc, deleteField, setDoc, increment } from "firebase/firestore";
 import { ShoppingItem, convertQty, guessFood, provisionalKey, roundQty, sameFood } from "@cook/shared";
 import { getDb } from "../../lib/firebase";
+import { settle } from "../../lib/write";
 
 export type ShoppingDoc = ShoppingItem & { id: string };
 export type ShoppingInput = Pick<ShoppingItem, "name" | "qty" | "unit"> & Partial<Pick<ShoppingItem, "key" | "fromRecipeId" | "recipeTitle" | "memo" | "category" | "emoji">>;
@@ -41,7 +42,8 @@ export async function addShoppingItems(familyId: string, uid: string, inputs: Sh
     if (same) {
       if (same.qty != null && input.qty != null) {
         const c = convertQty(input.qty, input.unit, same.unit);
-        if (c != null) { same.qty = roundQty(same.qty + c, same.unit); batch.update(doc(col(familyId), same.id), { qty: same.qty }); }
+        // 덮어쓰지 않고 더한다 (그사이 다른 가족이 같은 줄의 양을 바꿔도 둘 다 반영)
+        if (c != null) { same.qty = roundQty(same.qty + c, same.unit); batch.update(doc(col(familyId), same.id), { qty: increment(roundQty(c, same.unit)) }); }
       }
       merged++;
       continue;
@@ -58,12 +60,12 @@ export async function addShoppingItems(familyId: string, uid: string, inputs: Sh
     pending.push({ id: ref.id, ...data });
     added.push({ id: ref.id, name: data.name });
   }
-  await batch.commit();
+  await settle(batch.commit());
   return { added, merged };
 }
 
 export async function setShoppingChecked(familyId: string, id: string, checked: boolean) {
-  await updateDoc(doc(col(familyId), id), { checked });
+  await settle(updateDoc(doc(col(familyId), id), { checked }));
 }
 /** 고치기. 이름이 바뀌면 key 를 새로 만들고, 지운 메모는 필드째 지운다. 돌려주는 값: 이름이 바뀌었는가 */
 export async function updateShoppingItem(familyId: string, id: string, patch: Partial<ShoppingItem>, current?: Pick<ShoppingItem, "name">): Promise<boolean> {
@@ -71,15 +73,21 @@ export async function updateShoppingItem(familyId: string, id: string, patch: Pa
   const renamed = !!current && typeof patch.name === "string" && provisionalKey(patch.name) !== provisionalKey(current.name);
   if (renamed) data.key = provisionalKey(patch.name!);
   if ("memo" in patch && !patch.memo) data.memo = deleteField();
-  await updateDoc(doc(col(familyId), id), data);
+  await settle(updateDoc(doc(col(familyId), id), data));
   return renamed;
 }
 export async function deleteShoppingItem(familyId: string, id: string) {
-  await deleteDoc(doc(col(familyId), id));
+  await settle(deleteDoc(doc(col(familyId), id)));
+}
+
+/** 지운 것 되돌리기: 같은 id 로 다시 쓴다 */
+export async function restoreShoppingItem(familyId: string, item: ShoppingDoc) {
+  const { id, ...data } = item;
+  await settle(setDoc(doc(col(familyId), id), data));
 }
 export async function deleteShoppingItems(familyId: string, ids: string[]) {
   if (ids.length === 0) return;
   const batch = writeBatch(getDb());
   for (const id of ids) batch.delete(doc(col(familyId), id));
-  await batch.commit();
+  await settle(batch.commit());
 }

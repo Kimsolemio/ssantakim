@@ -44,8 +44,11 @@ function Tile({ it, isNew, delay, dim, size, onClick }: { it: FridgeDoc; isNew: 
       style={isNew ? ({ "--delay": `${delay}ms` } as React.CSSProperties) : undefined}>
       <span className={`${size === "md" ? "text-[26px]" : "text-[19px]"} leading-none drop-shadow-sm`} aria-hidden>{emoji}</span>
       <span className={`mt-0.5 w-full truncate text-center ${size === "md" ? "text-[11px]" : "text-[9.5px]"} font-semibold leading-tight text-slate-800`}>{it.name}</span>
+      {/* 얼마 남았는지 한눈에 (눌러 보지 않아도) */}
+      {amount && <span className={`w-full truncate text-center ${size === "md" ? "text-[10px]" : "text-[9px]"} leading-tight text-slate-500`}>{amount}</span>}
       {exp && <span className={`absolute -right-1.5 -top-2 rounded-full px-1 text-[10px] font-bold leading-[15px] shadow-sm ${exp.cls}`}>{exp.label}</span>}
-      {isNew && <span className="absolute -left-1 -top-1.5 rounded-full bg-orange-500 px-1 text-[8px] font-bold leading-[14px] text-white">NEW</span>}
+      {/* NEW는 아래 왼쪽: 위 오른쪽의 기한 배지와 겹치지 않게 */}
+      {isNew && <span className="absolute -bottom-1.5 -left-1 rounded-full bg-orange-500 px-1 text-[9px] font-bold leading-[14px] text-white">NEW</span>}
     </button>
   );
 }
@@ -184,6 +187,9 @@ export function FridgeVisual({ items, recentIds, dimmedIds, onItemClick, openSig
         </div>
       </div>
 
+      {items.some((it) => it.expiresEstimated) && (
+        <p className="text-center text-[11px] text-gray-500" data-testid="estimate-legend">"~D-3"처럼 ~가 붙은 기한은 보통 보관 기간으로 어림한 날짜예요. 눌러서 포장 날짜로 고칠 수 있어요.</p>
+      )}
       <button type="button" onClick={() => setOpen((o) => !o)} className="text-xs text-gray-500 underline" data-testid="fridge-toggle">
         {open ? "🚪 문 닫기 (임박 메모 보기)" : "🚪 문 열기"}
       </button>

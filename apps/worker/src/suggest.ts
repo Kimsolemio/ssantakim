@@ -9,7 +9,7 @@ import { parseAiJson } from "./recipe";
 const SCHEMA = suggestResultJsonSchema();
 
 export type SuggestInput = {
-  items: { name: string; qty?: number | null; unit?: string; daysLeft?: number | null; location?: string }[];
+  items: { name: string; qty?: number | null; unit?: string; daysLeft?: number | null; estimated?: boolean; location?: string }[];
   mustUse: string[];
   exclude: string[];
   mood?: string | null;

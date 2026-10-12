@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatAmount, planDeductions, roundQty, type IngredientMatch } from "@cook/shared";
 import { Sheet } from "../../components/Sheet";
-import type { FridgeDoc } from "../fridge/useFridge";
+import type { FridgeDoc, FridgeUpdate } from "../fridge/useFridge";
 import { itemLook } from "../fridge/FridgeVisual";
 
 type Row = {
@@ -16,7 +16,7 @@ type Row = {
 };
 
 export type UseUpResult = {
-  updates: { id: string; qty?: number | null; remove?: boolean }[];
+  updates: FridgeUpdate[];
   usedUp: FridgeDoc[];
   addUsedUpToShopping: boolean;
 };
@@ -65,7 +65,7 @@ export function UseUpSheet({ matches, servings, onClose, onApply, onSkip }: {
       if (use <= 0) continue;
       const left = roundQty(r.item.qty - use, r.item.unit);
       if (left <= 0) { updates.push({ id: r.item.id, remove: true }); usedUp.push(r.item); }
-      else updates.push({ id: r.item.id, qty: left });
+      else updates.push({ id: r.item.id, use });
     }
     return { updates, usedUp, addUsedUpToShopping: toShopping };
   };
@@ -92,7 +92,7 @@ export function UseUpSheet({ matches, servings, onClose, onApply, onSkip }: {
                 <div className="flex items-center gap-2">
                   <input type="checkbox" className="h-5 w-5 accent-orange-500" aria-label={`${r.item.name} 빼기`} checked={r.checked} onChange={(e) => set(i, { checked: e.target.checked })} />
                   <span aria-hidden>{itemLook(r.item).emoji}</span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{r.item.name}<span className="ml-1 text-xs font-normal text-gray-500">{formatAmount({ qty: r.item.qty, unit: r.item.unit })} 있음</span></span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{r.item.name}<span className="ml-1 text-xs font-normal text-gray-500">{formatAmount({ qty: r.item.qty, unit: r.item.unit }) ? `${formatAmount({ qty: r.item.qty, unit: r.item.unit })} 있음` : "양 모름"}</span></span>
                 </div>
                 <div className="mt-1.5 flex items-center gap-2 pl-7 text-sm">
                   {r.item.qty == null ? (

@@ -236,3 +236,23 @@ describe("usage limits", () => {
     expect(j.guard).toEqual({ allowList: 2, perMinute: false, daily: false });
   });
 });
+
+describe("usage refund", () => {
+  it("gives the daily usage back when the AI call fails", async () => {
+    stubFetch(() => jsonResponse({ type: "error", error: { type: "overloaded_error", message: "busy" } }, 529));
+    const m = new Map<string, string>();
+    const kv = { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); } } as unknown as KVNamespace;
+    const r = await recipeReq({ ...baseEnv, ANTHROPIC_API_KEY: "k", USAGE: kv });
+    expect(r.status).toBeGreaterThanOrEqual(500);
+    expect([...m.values()].every((v) => v === "0")).toBe(true);
+  });
+});
+
+describe("too long input", () => {
+  it("says the text is too long instead of a generic error", async () => {
+    stubFetch(() => jsonResponse({}, 500));
+    const r = await recipeReq({ ...baseEnv, ANTHROPIC_API_KEY: "k" }, { dish: "가".repeat(101) });
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ code: "too_long" });
+  });
+});

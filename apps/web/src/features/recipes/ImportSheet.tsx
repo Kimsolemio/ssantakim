@@ -111,9 +111,10 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   );
 
   return (
-    <FullScreen title="링크·사진으로 가져오기" onClose={() => { abort.current?.abort(); onClose(); }}>
+    <FullScreen title="링크·사진으로 가져오기" onClose={() => { abort.current?.abort(); onClose(); }}
+      confirmClose={busy ? "레시피를 정리하는 중이에요. 그만둘까요?" : null}>
       <div className="flex flex-col gap-3 p-4">
-        {!workerConfigured && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버 주소(VITE_WORKER_URL)가 설정되지 않았습니다.</p>}
+        {!workerConfigured && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버가 아직 연결되지 않았어요. 앱을 설치한 사람에게 알려 주세요 (README "Worker 배포").</p>}
         <div className="flex overflow-hidden rounded-xl border border-orange-200" role="tablist">
           {tab("link", "🔗 링크")}
           {tab("paste", "📋 캡션·사진")}
@@ -133,7 +134,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
               {"clipboard" in navigator && <button type="button" onClick={pasteFromClipboard} className="shrink-0 rounded-xl bg-white px-3 text-sm">붙여넣기</button>}
             </div>
             <ul className="rounded-xl bg-white p-3 text-xs leading-relaxed text-gray-600">
-              <li>▶️ 유튜브: 설명란의 레시피를 정리해요{" "}(설명란에 없으면 영상 분석은 Gemini 키가 있을 때만)</li>
+              <li>▶️ 유튜브: 설명란의 레시피를 정리해요{" "}(설명란에 없으면 영상까지 보는 기능은 설정된 경우에만)</li>
               <li>📝 블로그·레시피 사이트: 본문을 읽어 정리해요 (네이버 블로그 포함)</li>
               <li>📸 인스타그램: 링크만으로는 못 읽어요 → "캡션·사진" 탭에서 캡션이나 스크린샷을 올려 주세요</li>
             </ul>
@@ -142,7 +143,8 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
         ) : (
           <>
             {info && <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-900" data-testid="import-info">{info}</p>}
-            <textarea className={field + " min-h-[140px] leading-relaxed"} placeholder="인스타 캡션, 블로그 본문, 메모한 레시피를 붙여넣어 주세요" value={text} onChange={(e) => setText(e.target.value)} aria-label="캡션·본문" />
+            <textarea className={field + " min-h-[140px] leading-relaxed"} placeholder="인스타 캡션, 블로그 본문, 메모한 레시피를 붙여넣어 주세요" value={text} onChange={(e) => setText(e.target.value.slice(0, 8000))} aria-label="캡션·본문" maxLength={8000} />
+            {text.length > 7000 && <p className="-mt-1 text-right text-xs text-amber-700">{text.length.toLocaleString()} / 8,000자 (재료와 순서 부분만 남기면 더 정확해요)</p>}
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" disabled={images.length >= 4} onClick={() => fileRef.current?.click()} className="rounded-xl bg-white px-3 py-2 text-sm font-semibold disabled:opacity-40">📷 스크린샷·사진 추가 ({images.length}/4)</button>
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="import-files" />
@@ -165,7 +167,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
             {mode === "link" && <button type="button" onClick={() => toPaste(null)} className="ml-2 underline">캡션·사진으로 하기</button>}
           </div>
         )}
-        {!busy && <AiNotice what={mode === "link" ? "링크의 글(유튜브는 영상)" : "붙여넣은 글과 사진"} />}
+        {!busy && <AiNotice what={mode === "link" ? "링크의 글" : "붙여넣은 글과 사진"} video={mode === "link"} />}
         {miss && (
           <div className="flex flex-col gap-2 rounded-2xl bg-white p-4 text-sm" data-testid="import-miss">
             <p className="font-semibold">레시피를 찾지 못했어요</p>

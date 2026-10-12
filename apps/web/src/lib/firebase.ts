@@ -17,6 +17,16 @@ const config = {
 };
 
 export const firebaseConfigured = Boolean(config.apiKey && config.projectId && config.appId);
+
+/**
+ * 아이폰 홈 화면 앱(사파리)은 다른 사이트의 저장소를 막아서, 앱 주소와 로그인 주소(authDomain)가 다르면
+ * 리다이렉트 로그인이 끝나지 않는다. 배포 주소에서 둘이 다르면 로그인 화면에 알린다 (README "아이폰 로그인").
+ */
+export function authDomainMismatch(): string | null {
+  const host = location.hostname;
+  if (!config.authDomain || host === "localhost" || host === "127.0.0.1" || env.VITE_USE_EMULATORS === "1") return null;
+  return config.authDomain === location.host ? null : config.authDomain;
+}
 /** 로컬 Firebase 에뮬레이터 사용 (개발·테스트 전용) */
 export const useEmulators = env.VITE_USE_EMULATORS === "1";
 

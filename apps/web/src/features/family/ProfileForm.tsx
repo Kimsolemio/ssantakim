@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FamilyProfile } from "@cook/shared";
+import { FamilyProfile, isKnownAllergy } from "@cook/shared";
 
 type Props = { initial: FamilyProfile; onSave: (p: FamilyProfile) => Promise<void> };
 
@@ -27,6 +27,11 @@ export function ProfileForm({ initial, onSave }: Props) {
       </div>
       <label className="flex items-center gap-2"><input type="checkbox" checked={p.kidsFriendly} onChange={(e) => setP({ ...p, kidsFriendly: e.target.checked })} />아이가 함께 먹어요</label>
       <input className={small} placeholder="알레르기 (쉼표로: 땅콩, 새우)" value={allergies} onChange={(e) => setAllergies(e.target.value)} />
+      {split(allergies).some((a) => !isKnownAllergy(a)) && (
+        <p className="text-xs text-amber-700" data-testid="allergy-unknown">
+          ⚠️ {split(allergies).filter((a) => !isKnownAllergy(a)).join(", ")}: 숨은 성분 목록이 없어서 그 이름이 들어간 재료만 찾아요. 소스·가공식품은 포장 표시를 꼭 확인해 주세요.
+        </p>
+      )}
       <input className={small} placeholder="싫어하는 재료 (쉼표로: 고수, 오이)" value={dislikes} onChange={(e) => setDislikes(e.target.value)} />
       <label className="text-xs text-gray-500">늘 있는 양념 (냉장고에 없어도 "있음"으로 봐요)
         <input className={small + " mt-1 w-full"} placeholder="소금, 설탕, 간장" value={staples} onChange={(e) => setStaples(e.target.value)} /></label>

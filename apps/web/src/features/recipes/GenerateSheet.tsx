@@ -59,17 +59,18 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish, initial
   const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-3 text-base outline-none focus:border-orange-400";
 
   return (
-    <Sheet title="AI 레시피 만들기" onClose={() => { abort.current?.abort(); onClose(); }}>
+    <Sheet title="AI 레시피 만들기" onClose={() => { abort.current?.abort(); onClose(); }}
+      confirmClose={busy ? "레시피를 만드는 중이에요. 그만둘까요? (이미 쓴 AI 사용량은 돌아오지 않을 수 있어요)" : null}>
       {!workerConfigured && (
-        <p className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버 주소가 설정되지 않았습니다. <code>apps/web/.env</code>의 <code>VITE_WORKER_URL</code>을 채우세요.</p>
+        <p className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버가 아직 연결되지 않았어요. 앱을 설치한 사람에게 알려 주세요 (README "Worker 배포").</p>
       )}
       <form onSubmit={submit} className="flex flex-col gap-3">
-        <input className={field} placeholder="예: 알리오올리오, 김치찌개, 닭볶음탕" value={dish} onChange={(e) => setDish(e.target.value)} autoFocus disabled={busy} />
+        <input className={field} placeholder="예: 알리오올리오, 김치찌개, 닭볶음탕" value={dish} onChange={(e) => setDish(e.target.value)} autoFocus disabled={busy} maxLength={100} />
         <div className="flex items-center justify-between rounded-xl bg-white px-3 py-2">
           <span className="text-sm text-gray-600">인분</span>
           <ServingsStepper value={servings} onChange={setServings} />
         </div>
-        <input className={field} placeholder="추가 요청 (선택: 덜 맵게, 에어프라이어로, 15분 안에)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} />
+        <input className={field} placeholder="추가 요청 (선택: 덜 맵게, 에어프라이어로, 15분 안에)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} maxLength={500} />
         {profile && (
           <p className="text-xs text-gray-500">가족 취향 반영: {profile.spicyLevel}{profile.kidsFriendly ? " · 아이 있음" : ""}{profile.allergies.length ? ` · 알레르기 ${profile.allergies.join(", ")}` : ""}</p>
         )}

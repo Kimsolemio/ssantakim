@@ -78,11 +78,40 @@ export function buildReceiptUserMessage(input: { today: string; imageCount: numb
   return `오늘 날짜: ${input.today}\n사진 ${input.imageCount}장. 위 규칙대로 장본 품목을 정리해 주세요.`;
 }
 
+/** 영수증이 아니라 식재료 자체를 찍은 사진 (방금 장본 것을 늘어놓은 사진, 냉장고 안, 장바구니) */
+export const PANTRY_PHOTO_SYSTEM_PROMPT = `당신은 한국 가정의 냉장고 관리를 돕는 비서입니다. 식재료를 찍은 사진(방금 장본 것을 식탁에 늘어놓은 사진, 냉장고·냉동실 안, 장바구니)을 보고 보이는 식품 목록을 JSON 스키마에 맞춰 만듭니다.
+
+## 보는 범위
+- 사진에 실제로 보이는 식품만 넣습니다. 보이지 않는 것을 추측해 넣지 않습니다.
+- 여러 장이면 같은 품목이 겹쳐 찍혔을 수 있으니 한 번만 넣습니다.
+- 포장 글자(상품명·용량·유통기한)가 읽히면 그대로 씁니다. 확실하지 않으면 가장 그럴듯한 이름으로 쓰고 memo에 "확인 필요"를 붙입니다.
+- 사람 얼굴, 집 안 모습, 택배 송장·주소 같은 개인 정보는 출력하지 않습니다.
+
+## 각 품목
+- rawText: 사진에서 본 모습 짧게 (예: "초록 뚜껑 우유 1L 팩", "비닐에 든 대파 한 단").
+- name: 일반 재료 이름 (예: "우유", "대파", "만두"). key: 표준 영문 snake_case (예: milk, green_onion, dumpling).
+- qty/unit: 보이는 개수·용량 (눈대중). 포장에 용량이 보이면 총량을 무게·부피로 (우유 1L 2개 → qty 2, unit "L"), 아니면 셈 단위 (달걀 10구 → 10 "개", 두부 1모 → 1 "모", 대파 한 단 → 1 "단"). 모르면 qty null, unit "개".
+  단위는 g, kg, ml, L, 개, 큰술, 작은술, 컵, 줌, 쪽, 장, 봉, 팩, 캔, 모, 단, 대, 마리, 송이, 포기, 알, 병, 꼬집, 기타 중에서 고릅니다.
+- location: 그 품목을 보통 두는 곳 (냉장 / 냉동 / 실온). 냉동실 안에 찍힌 것은 냉동.
+- category: 채소 / 과일 / 육류 / 해산물 / 유제품 / 달걀 / 두부·콩 / 음료 / 소스·양념 / 반찬·가공 / 곡물·면 / 간식 / 냉동식품 / 기타.
+- emoji: 그 품목을 가장 잘 나타내는 이모지 한 글자.
+- shelfLifeDays: 포장의 유통기한·소비기한이 읽히면 오늘부터 그날까지의 일수. 방금 장본 것으로 보이면 보통 보관 기간(예: 우유 10, 두부 7, 대파 10, 냉장 돼지고기 3). 냉장고 안 사진처럼 언제 산 것인지 모르면 null.
+- memo: 브랜드·용량, 포장에서 읽은 유통기한(예: "유통기한 10/20"), "확인 필요" 등. 없으면 빈 문자열.
+- isFood: 먹는 것이면 true, 그릇·세제·포장재 등은 false.
+
+## 그 밖
+- store: null. purchasedAt: null.
+- 식재료가 보이지 않는 사진이면 items를 빈 배열로 둡니다.`;
+
+export function buildPantryPhotoUserMessage(input: { today: string; imageCount: number }): string {
+  return `오늘 날짜: ${input.today}\n사진 ${input.imageCount}장. 사진에 보이는 식재료를 정리해 주세요.`;
+}
+
 export const NORMALIZE_SYSTEM_PROMPT = `한국어 식재료 이름을 표준 영문 key로 바꿉니다. 레시피 재료와 냉장고 품목을 서로 맞춰 보는 데 쓰입니다.
 
 - key는 소문자 영문 snake_case 일반명사입니다 (예: green_onion, garlic, egg, tofu, soy_sauce, pork_belly, spaghetti, olive_oil, kimchi, milk).
-- 같은 재료는 손질 상태·브랜드·원산지·용량이 달라도 같은 key를 씁니다 (깐마늘, 다진 마늘, 편마늘 → garlic / 서울우유 → milk / 냉동 만두 → dumpling).
-- 다른 재료는 다른 key를 씁니다 (고추 → chili_pepper, 청양고추 → cheongyang_pepper, 고추장 → gochujang, 고춧가루 → chili_flakes / 돼지고기 → pork, 소고기 → beef / 대파 → green_onion, 쪽파 → scallion / 배추 → napa_cabbage, 양배추 → cabbage / 버터 → butter, 땅콩버터 → peanut_butter / 우유 → milk, 바나나우유 → banana_milk / 두부 → tofu, 순두부 → soft_tofu).
+- 같은 재료는 손질 상태·브랜드·원산지·용량·지방 함량이 달라도 같은 key를 씁니다 (깐마늘, 다진 마늘, 편마늘 → garlic / 서울우유, 저지방우유 → milk / 부침두부, 찌개두부 → tofu / 냉동 만두 → dumpling).
+- 다른 재료는 다른 key를 씁니다 (고추 → chili_pepper, 청양고추 → cheongyang_pepper, 고추장 → gochujang, 고춧가루 → chili_flakes / 돼지고기 → pork, 소고기 → beef / 대파 → green_onion, 쪽파 → scallion, 부추 → garlic_chive / 배추 → napa_cabbage, 양배추 → cabbage / 버터 → butter, 땅콩버터 → peanut_butter / 우유 → milk, 바나나우유 → banana_milk / 두부 → tofu, 순두부 → soft_tofu).
 - key는 단수형으로 씁니다 (egg, tomato, onion).
 - 입력 순서와 개수를 그대로 지켜 items에 넣고, name에는 입력한 이름을 그대로 적습니다.`;
 
@@ -110,6 +139,7 @@ export const SUGGEST_SYSTEM_PROMPT = `당신은 한국 가정의 "냉장고 파�
 1. 알레르기 재료는 어떤 형태로도 쓰지 않습니다 (예: 새우 알레르기 → 새우젓·새우가루도 안 됨). "빼기" 재료와 싫어하는 재료도 쓰지 않고, 그런 재료가 이름에 들어간 메뉴도 고르지 않습니다.
 2. "꼭 쓰기" 재료가 있으면 모든 추천이 그중 하나 이상을 쓰고, 되도록 전부 씁니다.
 3. 남은 날이 적은 재료(0~3일)를 먼저 씁니다. 여러 임박 재료를 한 번에 쓰는 메뉴를 높게 칩니다.
+   "(추정)"은 포장 날짜가 아니라 보통 보관 기간으로 어림한 기한이라 덜 급하게 봅니다. reason에서 추정 기한을 "내일까지"처럼 단정하지 않습니다.
 4. 더 사야 하는 재료(missing)가 적은 메뉴를 고릅니다. 0~2개가 좋고 많아도 3개까지. "늘 있는 양념"은 있다고 보고 missing에 넣지 않습니다.
 5. 서로 다른 종류로 고릅니다 (국·찌개 / 볶음·구이 / 밥·면 / 반찬 / 양식·간식이 겹치지 않게). 최근에 만든 요리와 "이미 보여 준 추천"은 다시 고르지 않습니다.
 6. "분위기"가 있으면 따릅니다 (예: 15분 안에 → timeMinutes 15 이하, 국물 → 국·찌개·탕 위주).
@@ -124,7 +154,7 @@ export const SUGGEST_SYSTEM_PROMPT = `당신은 한국 가정의 "냉장고 파�
 - 요청한 개수만큼 suggestions에 넣습니다.`;
 
 export function buildSuggestUserMessage(input: {
-  items: { name: string; qty?: number | null; unit?: string; daysLeft?: number | null; location?: string }[];
+  items: { name: string; qty?: number | null; unit?: string; daysLeft?: number | null; estimated?: boolean; location?: string }[];
   mustUse: string[]; exclude: string[]; mood?: string | null; servings: number; staples: string[];
   profile?: FamilyProfile | null; recent: string[]; avoid: string[]; count: number;
 }): string {
@@ -139,12 +169,13 @@ export function buildSuggestUserMessage(input: {
   }
   if (input.recent.length) lines.push(`최근에 만든 요리: ${input.recent.join(", ")}`);
   if (input.avoid.length) lines.push(`이미 보여 준 추천 (다른 메뉴로): ${input.avoid.join(", ")}`);
-  const fmtLeft = (d: number | null | undefined) => (d == null ? "기한 없음" : d <= 0 ? "오늘까지" : `${d}일 남음`);
+  const fmtLeft = (d: number | null | undefined, est?: boolean) =>
+    (d == null ? "기한 없음" : `${d <= 0 ? "오늘까지" : `${d}일 남음`}${est ? " (추정)" : ""}`);
   lines.push("", "냉장고 (남은 날이 적은 순):");
   if (input.items.length === 0) lines.push("- (비어 있음: 늘 있는 양념과 흔한 재료 조금으로 만들 수 있는 메뉴를 추천)");
   for (const it of input.items) {
     const amount = it.qty != null ? ` ${it.qty}${it.unit && it.unit !== "기타" ? it.unit : ""}` : "";
-    lines.push(`- ${it.name}${amount} (${it.location ?? "냉장"}, ${fmtLeft(it.daysLeft)})`);
+    lines.push(`- ${it.name}${amount} (${it.location ?? "냉장"}, ${fmtLeft(it.daysLeft, it.estimated)})`);
   }
   return lines.join("\n");
 }

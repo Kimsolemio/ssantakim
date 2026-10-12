@@ -155,10 +155,16 @@ describe("matching", () => {
     const low = [fr({ id: "s", name: "간장", key: "soy_sauce", qty: 1, unit: "큰술" })];
     expect(matchIngredient(ing({ name: "간장", key: "soy_sauce", qty: 3, unit: "큰술" }), low, { staples }).status).toBe("short");
   });
-  it("counts eggs in 개 and 알 together", () => {
-    expect(convertQty(2, "알", "개")).toBe(2);
-    const m = matchIngredient(ing({ name: "달걀", key: "egg", qty: 2, unit: "개" }), [fr({ id: "e", name: "계란", key: "egg", qty: 10, unit: "알" })]);
-    expect(m.status).toBe("enough");
+  it("counts 개 and 대 together but not 알 (마늘 한 알 ≠ 마늘 한 통)", () => {
+    expect(convertQty(2, "대", "개")).toBe(2);
+    expect(convertQty(2, "알", "개")).toBeNull();
+    const m = matchIngredient(ing({ name: "마늘", key: "garlic", qty: 5, unit: "알" }), [fr({ id: "g", name: "마늘", key: "garlic", qty: 1, unit: "개" })]);
+    expect(m.status).toBe("unknown_amount");
+  });
+  it("normalizes key aliases and plurals together", () => {
+    expect(sameFood({ key: "gochugaru", name: "a" }, { key: "chili_flakes", name: "b" })).toBe(true);
+    expect(sameFood({ key: "korean_chili_flakes", name: "a" }, { key: "chili_flake", name: "b" })).toBe(true);
+    expect(sameFood({ key: "chives", name: "부추" }, { key: "scallion", name: "쪽파" })).toBe(false);
   });
   it("classifies enough / short / unknown / missing", () => {
     const fridge = [fr({ id: "a", name: "스파게티면", key: "spaghetti", qty: 500, unit: "g" }), fr({ id: "b", name: "깐마늘", key: "garlic", qty: 200, unit: "g" }),
@@ -204,6 +210,14 @@ describe("allergy check", () => {
     expect(findAllergens(ings, ["복숭아"])).toEqual([]);
     // 사전에 없는 알레르기도 이름으로 찾는다
     expect(findAllergens([{ name: "키위 2개" }], ["키위"])).toHaveLength(1);
+    const sea = [{ name: "바지락" }, { name: "오징어" }, { name: "멸치" }, { name: "홍합" }, { name: "골뱅이" }, { name: "해물믹스" }];
+    expect(findAllergens(sea, ["해산물"]).map((h) => h.ingredient)).toEqual(["바지락", "오징어", "멸치", "홍합", "골뱅이", "해물믹스"]);
+    expect(findAllergens([{ name: "국수" }, { name: "빵가루" }, { name: "간장" }], ["밀가루"])).toHaveLength(3);
+    expect(findAllergens([{ name: "요리용 크림" }, { name: "모차렐라 치즈" }], ["우유 알레르기"])).toHaveLength(2);
+    expect(findAllergens([{ name: "마요" }, { name: "계란 지단" }], ["달걀"])).toHaveLength(2);
+    expect(findAllergens([{ name: "크래미" }], ["게"])).toHaveLength(1);
+    expect(findAllergens([{ name: "막국수" }, { name: "소바" }], ["메밀"])).toHaveLength(2);
+    expect(findAllergens([{ name: "쯔유" }, { name: "가쓰오부시" }], ["생선"])).toHaveLength(2);
   });
   it("finds disliked ingredients", () => {
     expect(findDislikes([{ name: "오이" }, { name: "고수" }], ["고수"]).map((h) => h.ingredient)).toEqual(["고수"]);
@@ -239,5 +253,18 @@ describe("today: rank saved recipes by fridge", () => {
       r("B", [["김치", "kimchi"]]),
     ], fridge, { today });
     expect(list.map((x) => x.recipe.title)).toEqual(["B", "A"]);
+  });
+});
+
+import { allergyTerm, isKnownAllergy } from "../src";
+
+describe("allergy wording", () => {
+  it("understands '땅콩 알레르기' style input", () => {
+    expect(allergyTerm("땅콩 알레르기")).toBe("땅콩");
+    expect(allergyTerm("새우 알러지 있음")).toBe("새우");
+    expect(findAllergens([{ name: "땅콩버터" }], ["땅콩 알레르기"])).toHaveLength(1);
+    expect(isKnownAllergy("갑각류 알레르기")).toBe(true);
+    expect(isKnownAllergy("키위")).toBe(false);
+    expect(formatAmount({ qty: null, unit: "kg" })).toBe("");
   });
 });

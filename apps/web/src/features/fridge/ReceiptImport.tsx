@@ -8,7 +8,8 @@ import type { FridgeInput } from "./useFridge";
 import { useFamily } from "../../lib/family";
 import { loadPending, savePending, clearPending } from "../../lib/drafts";
 
-type PendingReceipt = { scan: ReceiptScan; cands: Candidate[] };
+type PendingReceipt = { scan: ReceiptScan; cands: Candidate[]; mode?: ScanMode };
+export type ScanMode = "receipt" | "photo";
 
 type ScanResponse = { scan: ReceiptScan; provider: string; model: string; usage: { input: number; output: number } };
 
@@ -35,7 +36,10 @@ export type Candidate = {
 };
 
 const MAX_IMAGES = 4;
-const WAITING = ["영수증을 읽는 중…", "품목을 하나씩 확인하는 중…", "보관 위치를 정하는 중…", "유통기한을 계산하는 중…", "거의 다 됐어요…"];
+const WAITING: Record<ScanMode, string[]> = {
+  receipt: ["영수증을 읽는 중…", "품목을 하나씩 확인하는 중…", "보관 위치를 정하는 중…", "유통기한을 계산하는 중…", "거의 다 됐어요…"],
+  photo: ["사진 속 식재료를 찾는 중…", "포장 글자를 읽는 중…", "개수를 세는 중…", "보관 위치를 정하는 중…", "거의 다 됐어요…"],
+};
 
 /** 영수증 날짜가 오늘 이후거나 너무 오래되면 오늘 기준으로 계산한다 */
 export function purchaseBase(purchasedAt: string | null, today: string): string {
@@ -44,14 +48,15 @@ export function purchaseBase(purchasedAt: string | null, today: string): string 
   return d !== null && d <= 0 && d >= -60 ? purchasedAt : today;
 }
 
-export function toCandidates(scan: ReceiptScan, today: string): Candidate[] {
+export function toCandidates(scan: ReceiptScan, today: string, mode: ScanMode = "receipt"): Candidate[] {
   const base = purchaseBase(scan.purchasedAt, today);
   return scan.items.map((it, i) => ({
     id: `c${i}`,
     checked: it.isFood,
     name: it.name, key: it.key, qty: it.qty, unit: it.unit, location: it.location,
     expiresAt: it.shelfLifeDays != null ? addDays(base, it.shelfLifeDays) : null,
-    estimated: it.shelfLifeDays != null,
+    // 사진에서 포장의 유통기한을 읽었으면(메모에 적힘) 추정이 아니다
+    estimated: it.shelfLifeDays != null && !(mode === "photo" && /유통기한|소비기한|까지/.test(it.memo)),
     emoji: it.emoji || "📦", category: it.category, memo: it.memo, rawText: it.rawText, isFood: it.isFood,
     aiName: it.name, aiKey: it.key,
   }));
@@ -73,6 +78,7 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
   const [tick, setTick] = useState(0);
   const [saving, setSaving] = useState(false);
   const [showNonFood, setShowNonFood] = useState(false);
+  const [mode, setMode] = useState<ScanMode>("receipt");
   const abort = useRef<AbortController | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -81,7 +87,7 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
   const { familyId } = useFamily();
   const pendingName = `receipt:${familyId ?? ""}`;
   const [stored, setStored] = useState<PendingReceipt | null>(() => loadPending<PendingReceipt>(pendingName));
-  useEffect(() => { if (step === "review" && scan) savePending<PendingReceipt>(pendingName, { scan, cands }); }, [step, scan, cands, pendingName]);
+  useEffect(() => { if (step === "review" && scan) savePending<PendingReceipt>(pendingName, { scan, cands, mode }); }, [step, scan, cands, mode, pendingName]);
 
   useEffect(() => () => { abort.current?.abort(); images.forEach((im) => URL.revokeObjectURL(im.previewUrl)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -113,10 +119,10 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
     abort.current = new AbortController();
     try {
       const res = await callWorker<ScanResponse>("/pantry/receipt", {
-        today, images: images.map((im) => ({ mediaType: im.mediaType, data: im.data })),
+        today, mode, images: images.map((im) => ({ mediaType: im.mediaType, data: im.data })),
       }, abort.current.signal);
       setScan(res.scan);
-      setCands(toCandidates(res.scan, today));
+      setCands(toCandidates(res.scan, today, mode));
       setStored(null);
       setStep("review");
     } catch (e) {
@@ -132,14 +138,14 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
   const confirm = async () => {
     setSaving(true); setErr(null);
     try {
-      clearPending(pendingName);
       await onConfirm(chosen.map((c) => ({
         name: c.name.trim(), key: c.key, qty: c.qty, unit: c.unit, location: c.location, expiresAt: c.expiresAt, expiresEstimated: c.estimated && !!c.expiresAt,
         memo: c.memo.trim() || undefined, category: c.category, emoji: c.emoji, source: "receipt",
         purchasedAt: scan ? purchaseBase(scan.purchasedAt, today) : today,
       })));
+      clearPending(pendingName);
     } catch (e) {
-      if (scan) savePending<PendingReceipt>(pendingName, { scan, cands });
+      if (scan) savePending<PendingReceipt>(pendingName, { scan, cands, mode });
       setErr(e instanceof Error ? e.message : "저장하지 못했습니다");
       setSaving(false);
     }
@@ -177,22 +183,32 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
   );
 
   return (
-    <FullScreen title="영수증으로 채우기" onClose={() => { abort.current?.abort(); onClose(); }}
-      confirmClose={step === "review" && !saving ? "읽은 품목을 냉장고에 넣지 않고 닫을까요? (다음에 열면 이어서 볼 수 있어요)" : step === "loading" ? "영수증을 읽는 중이에요. 그만둘까요?" : null}>
+    <FullScreen title={mode === "photo" ? "사진으로 채우기" : "영수증으로 채우기"} onClose={() => { abort.current?.abort(); onClose(); }}
+      confirmClose={step === "loading" ? "영수증을 읽는 중이에요. 그만둘까요?" : null}>
       {step === "pick" && (
         <div className="flex flex-col gap-4 p-4">
           {stored && (
             <div className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="pending-receipt">
               <span className="min-w-0 flex-1">🧾 넣지 않은 영수증 결과 {stored.cands.filter((c) => c.isFood).length}개가 남아 있어요{stored.scan.store ? ` (${stored.scan.store})` : ""}</span>
               <button type="button" className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white"
-                onClick={() => { setScan(stored.scan); setCands(stored.cands); setStored(null); setStep("review"); }}>이어서</button>
-              <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { clearPending(pendingName); setStored(null); }}>버리기</button>
+                onClick={() => { setScan(stored.scan); setCands(stored.cands); setMode(stored.mode ?? "receipt"); setStored(null); setStep("review"); }}>이어서</button>
+              <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { if (window.confirm("이 영수증 결과를 버릴까요?")) { clearPending(pendingName); setStored(null); } }}>버리기</button>
             </div>
           )}
-          <p className="text-sm text-gray-600">장본 영수증 사진이나 쿠팡·마켓컬리 같은 주문내역 캡처를 올리면 AI가 품목을 읽어 냉장고에 넣어 드려요. 긴 영수증은 나눠 찍어 최대 {MAX_IMAGES}장까지 올릴 수 있어요.</p>
-          {!workerConfigured && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버 주소(VITE_WORKER_URL)가 설정되지 않았습니다.</p>}
+          <div className="flex overflow-hidden rounded-xl border border-orange-200" role="tablist" aria-label="무엇을 찍었나요">
+            {([["receipt", "🧾 영수증·주문내역"], ["photo", "📸 식재료 사진"]] as const).map(([m, label]) => (
+              <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
+                className={`flex-1 py-2 text-sm font-semibold ${mode === m ? "bg-orange-500 text-white" : "bg-white text-gray-600"}`}>{label}</button>
+            ))}
+          </div>
+          {mode === "receipt" ? (
+            <p className="text-sm text-gray-600">장본 영수증 사진이나 쿠팡·마켓컬리 같은 주문내역 캡처를 올리면 AI가 품목을 읽어 냉장고에 넣어 드려요. 긴 영수증은 나눠 찍어 최대 {MAX_IMAGES}장까지 올릴 수 있어요.</p>
+          ) : (
+            <p className="text-sm text-gray-600">장본 것을 식탁에 늘어놓고 찍거나 냉장고 안을 찍으면 보이는 식재료를 찾아 드려요. 포장 글자(유통기한)가 보이게 찍으면 더 정확해요. 개수는 눈대중이라 확인해 주세요.</p>
+          )}
+          {!workerConfigured && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버가 아직 연결되지 않았어요. 앱을 설치한 사람에게 알려 주세요 (README "Worker 배포").</p>}
           <div className="grid grid-cols-2 gap-2">
-            <button type="button" disabled={preparing || images.length >= MAX_IMAGES} onClick={() => cameraRef.current?.click()} className="rounded-2xl bg-white py-5 text-center font-semibold disabled:opacity-40">📷<br />영수증 찍기</button>
+            <button type="button" disabled={preparing || images.length >= MAX_IMAGES} onClick={() => cameraRef.current?.click()} className="rounded-2xl bg-white py-5 text-center font-semibold disabled:opacity-40">📷<br />{mode === "photo" ? "식재료 찍기" : "영수증 찍기"}</button>
             <button type="button" disabled={preparing || images.length >= MAX_IMAGES} onClick={() => galleryRef.current?.click()} className="rounded-2xl bg-white py-5 text-center font-semibold disabled:opacity-40">🖼️<br />사진·캡처 고르기</button>
           </div>
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="receipt-camera" />
@@ -211,8 +227,8 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
           )}
           {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
           <button disabled={images.length === 0 || preparing || !workerConfigured} onClick={analyze}
-            className="rounded-xl bg-orange-500 py-3.5 text-lg font-semibold text-white disabled:opacity-40">🧾 분석하기</button>
-          <AiNotice what="영수증 사진" />
+            className="rounded-xl bg-orange-500 py-3.5 text-lg font-semibold text-white disabled:opacity-40">{mode === "photo" ? "📸 식재료 찾기" : "🧾 분석하기"}</button>
+          <AiNotice what={mode === "photo" ? "식재료 사진" : "영수증 사진"} />
           <p className="text-center text-xs text-gray-400">사진은 앱에 저장하지 않아요. 카드번호·적립번호 부분은 가리고 찍으면 더 안전해요.</p>
         </div>
       )}
@@ -220,7 +236,7 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
       {step === "loading" && (
         <div className="flex flex-col items-center justify-center gap-4 p-10 text-center">
           <div className="text-6xl motion-safe:animate-bounce">🧾</div>
-          <p className="text-lg font-semibold">{WAITING[Math.min(Math.floor(tick / 6), WAITING.length - 1)]}</p>
+          <p className="text-lg font-semibold">{WAITING[mode][Math.min(Math.floor(tick / 6), WAITING[mode].length - 1)]}</p>
           <p className="text-sm text-gray-500">{tick}초 · 보통 15~40초 걸려요</p>
           <button onClick={() => abort.current?.abort()} className="text-sm text-gray-500 underline">취소</button>
         </div>
@@ -229,8 +245,10 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
       {step === "review" && (
         <div className="flex flex-col gap-3 p-4 pb-28">
           <div className="rounded-2xl bg-orange-50 p-3 text-sm text-orange-900">
-            {scan?.store ?? "가게 정보 없음"}{scan?.purchasedAt ? ` · ${scan.purchasedAt}` : ""} · 식품 {food.length}개 찾음
-            <p className="mt-1 text-xs text-orange-800/80">유통기한은 AI가 보통 보관 기간으로 추정한 값이에요. 포장에 적힌 날짜가 있으면 고쳐 주세요.</p>
+            {mode === "photo" ? `사진에서 식재료 ${food.length}개 찾음` : <>{scan?.store ?? "가게 정보 없음"}{scan?.purchasedAt ? ` · ${scan.purchasedAt}` : ""} · 식품 {food.length}개 찾음</>}
+            <p className="mt-1 text-xs text-orange-800/80">{mode === "photo"
+              ? "개수는 눈대중이고, 기한은 포장에서 읽었거나(메모에 표시) 보통 보관 기간으로 어림했어요. 냉장고 속 사진이라 언제 샀는지 모르면 비워 뒀어요."
+              : "유통기한은 AI가 보통 보관 기간으로 추정한 값이에요. 포장에 적힌 날짜가 있으면 고쳐 주세요."}</p>
           </div>
           {cands.length === 0 && <p className="rounded-2xl bg-white p-6 text-center text-gray-500">사진에서 장본 품목을 찾지 못했어요. 더 밝고 가깝게 찍어 다시 시도해 보세요.</p>}
           <ul className="flex flex-col gap-2">{food.map(row)}</ul>

@@ -17,7 +17,14 @@ export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
   const wake = useWakeLock(true);
   const { enabled: tts, setEnabled: setTts, speak, stop: stopSpeak } = useSpeak();
   const touch = useRef<{ x: number; y: number } | null>(null);
-  useBackButton(true, onClose);
+  // 돌고 있는 타이머가 있으면 실수로 닫지 않게 묻는다
+  const running = timers.filter((t) => !t.done).length;
+  const tryClose = () => {
+    if (running > 0 && !window.confirm(`타이머 ${running}개가 돌고 있어요. 요리 모드를 닫을까요?`)) return false;
+    stopSpeak(); onClose();
+    return true;
+  };
+  useBackButton(true, tryClose);
 
   const scaled = scaleIngredients(recipe.ingredients, recipe.servingsBase, servings);
   const step = idx < steps.length ? steps[idx] : null;
@@ -59,7 +66,7 @@ export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#1F2937] text-white" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <header className="flex items-center gap-2 px-2" style={{ paddingTop: "var(--safe-top)" }}>
-        <button onClick={() => { stopSpeak(); onClose(); }} aria-label="쿡 모드 닫기" className="px-3 py-3 text-2xl leading-none text-gray-300">✕</button>
+        <button onClick={tryClose} aria-label="쿡 모드 닫기" className="px-3 py-3 text-2xl leading-none text-gray-300">✕</button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-gray-300">{recipe.title} · {servings}인분</p>
           <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-600">

@@ -9,7 +9,7 @@ import { normalizeKeysInBackground } from "../../lib/normalize";
 import { Sheet } from "../../components/Sheet";
 import { addFridgeItems, type FridgeInput } from "../fridge/useFridge";
 import {
-  useShopping, addShoppingItems, setShoppingChecked, deleteShoppingItem, deleteShoppingItems, updateShoppingItem, type ShoppingDoc,
+  useShopping, addShoppingItems, setShoppingChecked, deleteShoppingItem, deleteShoppingItems, updateShoppingItem, restoreShoppingItem, type ShoppingDoc,
 } from "./useShopping";
 
 /** "우유 2", "삼겹살 600g", "두부 1모" → 이름·수량·단위. 숫자 앞에 띄어쓰기가 있을 때만 수량으로 본다 ("비타500"은 이름) */
@@ -32,6 +32,18 @@ export function ShoppingTab() {
   const [moving, setMoving] = useState(false);
   const [editing, setEditing] = useState<ShoppingDoc | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 지운 것 되돌리기 (확인 창 대신)
+  const [undo, setUndo] = useState<{ items: ShoppingDoc[]; label: string } | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const t = setTimeout(() => setUndo(null), 6000);
+    return () => clearTimeout(t);
+  }, [undo]);
+  const removeWithUndo = (list: ShoppingDoc[], label: string) => {
+    if (!familyId || list.length === 0) return;
+    setUndo({ items: list, label });
+    void (list.length === 1 ? deleteShoppingItem(familyId, list[0].id) : deleteShoppingItems(familyId, list.map((x) => x.id)));
+  };
   // 체크하면 서버 반영을 기다리지 않고 바로 화면에 보인다 (반영되면 서버 값으로 돌아간다)
   const [optimistic, setOptimistic] = useState<Record<string, boolean>>({});
   const view = useMemo(() => items.map((i) => (i.id in optimistic ? { ...i, checked: optimistic[i.id] } : i)), [items, optimistic]);
@@ -84,7 +96,7 @@ export function ShoppingTab() {
         </span>
         <span className={`shrink-0 text-sm ${it.checked ? "text-gray-400" : "text-gray-600"}`}>{formatAmount({ qty: it.qty, unit: it.unit })}</span>
       </button>
-      <button type="button" aria-label={`${it.name} 지우기`} onClick={() => deleteShoppingItem(familyId, it.id)} className="px-1 text-gray-300">✕</button>
+      <button type="button" aria-label={`${it.name} 지우기`} onClick={() => removeWithUndo([it], `${it.name}을(를) 지웠어요`)} className="px-2 py-1 text-gray-400">✕</button>
     </li>
   );
 
@@ -117,7 +129,7 @@ export function ShoppingTab() {
         <section>
           <div className="mb-1 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-500">장바구니에 담음 {done.length}</h2>
-            <button type="button" className="text-xs text-gray-400 underline" onClick={() => { if (confirm("담은 항목을 냉장고에 넣지 않고 지울까요?")) void deleteShoppingItems(familyId, done.map((d) => d.id)); }}>지우기</button>
+            <button type="button" className="text-xs text-gray-400 underline" onClick={() => removeWithUndo(done, `담은 항목 ${done.length}개를 지웠어요`)}>냉장고에 안 넣고 지우기</button>
           </div>
           <ul className="overflow-hidden rounded-2xl bg-white divide-y divide-orange-50">{done.map(row)}</ul>
         </section>
@@ -132,11 +144,20 @@ export function ShoppingTab() {
       {moving && (
         <MoveToFridgeSheet items={done} onClose={() => setMoving(false)}
           onConfirm={async (inputs, movedIds) => {
-            const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => dropIntoFridge(ids, `🎉 장본 것 ${ids.length}개를 냉장고에 넣었어요`));
-            // 시트를 연 뒤 다른 가족이 새로 체크한 항목은 지우지 않는다 (실제로 옮긴 것만)
-            await deleteShoppingItems(familyId, movedIds);
+            // 냉장고에 넣기와 장보기에서 지우기를 한 묶음으로. 시트를 연 뒤 다른 가족이 새로 체크한 항목은 지우지 않는다
+            const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => dropIntoFridge(ids, `🎉 장본 것 ${ids.length}개를 냉장고에 넣었어요`), movedIds);
             void normalizeKeysInBackground(familyId, "fridge_items", ids.map((id, i) => ({ id, name: inputs[i].name, key: inputs[i].key })));
           }} />
+      )}
+      {undo && (
+        <div role="status" className="fixed inset-x-0 z-30 mx-auto flex w-fit max-w-[92%] items-center gap-3 rounded-full bg-slate-900/90 py-2 pl-4 pr-2 text-sm text-white shadow-lg"
+          style={{ bottom: "calc(var(--safe-bottom) + 140px)" }}>
+          <span>{undo.label}</span>
+          <button type="button" className="rounded-full bg-white/15 px-3 py-1 font-semibold" onClick={() => {
+            const items = undo.items; setUndo(null);
+            void Promise.all(items.map((x) => restoreShoppingItem(familyId, x)));
+          }}>되돌리기</button>
+        </div>
       )}
       {editing && (
         <EditShoppingSheet item={editing} onClose={() => setEditing(null)}

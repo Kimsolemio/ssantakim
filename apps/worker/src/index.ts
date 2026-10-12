@@ -7,7 +7,7 @@ import { scanReceipt } from "./receipt";
 import { normalizeNames } from "./normalize";
 import { importFromUrl, importFromText } from "./import";
 import { suggestMenus } from "./suggest";
-import { checkAllowed, chargeUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
+import { checkAllowed, chargeUsage, refundUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
 
 export interface Env extends AiEnv, GuardEnv {
   FIREBASE_PROJECT_ID: string;
@@ -18,7 +18,7 @@ export interface Env extends AiEnv, GuardEnv {
 }
 
 class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public code?: string) { super(message); }
 }
 
 function corsHeaders(env: Env, request: Request): Record<string, string> {
@@ -50,11 +50,18 @@ async function authenticate(request: Request, env: Env): Promise<Verified> {
   return user;
 }
 
-/** 로그인 → 본문 검사 → 사용량 차감 순서. 잘못된 요청은 사용량을 쓰지 않는다 */
-async function begin<T>(request: Request, env: Env, route: string, schema: z.ZodType<T>, maxBytes?: number): Promise<{ user: Verified; body: T }> {
+/** 요청 하나의 상태: AI 호출이 실패하면 차감한 사용량을 돌려주기 위해 */
+type Ctx = { refund: (() => Promise<void>) | null };
+
+/**
+ * 로그인 → 본문 검사 → 사용량 차감 순서. 잘못된 요청은 사용량을 쓰지 않고,
+ * 차감한 뒤 실패하면(AI 오류, 인스타 링크, 페이지 못 읽음 등) handle 의 catch 가 돌려준다.
+ */
+async function begin<T>(ctx: Ctx, request: Request, env: Env, route: string, schema: z.ZodType<T>, maxBytes?: number, cost?: (body: T) => number): Promise<{ user: Verified; body: T }> {
   const user = await authenticate(request, env);
   const body = await readJson(request, schema, maxBytes);
-  await chargeUsage(env, user.uid, route);
+  const charged = await chargeUsage(env, user.uid, route, Date.now(), cost?.(body));
+  ctx.refund = () => refundUsage(env, user.uid, charged);
   return { user, body };
 }
 
@@ -66,7 +73,11 @@ async function readJson<T>(request: Request, schema: z.ZodType<T>, maxBytes = 1_
   let body: unknown;
   try { body = JSON.parse(text); } catch { throw new HttpError(400, "JSON 본문이 필요합니다"); }
   const parsed = schema.safeParse(body);
-  if (!parsed.success) throw new HttpError(400, `요청 형식 오류: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message}`);
+  if (!parsed.success) {
+    const i = parsed.error.issues[0];
+    if (i?.code === "too_big" && (i as { origin?: string }).origin === "string") throw new HttpError(400, `입력이 너무 길어요 (${i.path.join(".")}). 줄여서 다시 보내 주세요`, "too_long");
+    throw new HttpError(400, `요청 형식 오류: ${i?.path.join(".")} ${i?.message}`);
+  }
   return parsed.data;
 }
 
@@ -89,6 +100,8 @@ const ImageInput = z.object({
 const ReceiptRequest = z.object({
   images: z.array(ImageInput).min(1, "사진이 필요합니다").max(4, "사진은 4장까지 올릴 수 있습니다"),
   today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  /** receipt: 영수증·주문내역, photo: 식재료를 찍은 사진 (냉장고 안, 장본 것) */
+  mode: z.enum(["receipt", "photo"]).default("receipt"),
 });
 
 const ImportUrlRequest = z.object({ url: z.string().trim().min(8).max(2000) });
@@ -105,6 +118,8 @@ const SuggestRequest = z.object({
     qty: z.number().nonnegative().nullable().optional(),
     unit: z.string().max(10).optional(),
     daysLeft: z.number().int().min(-3650).max(3650).nullable().optional(),
+    /** 기한이 포장 표시가 아니라 추정값인가 */
+    estimated: z.boolean().optional(),
     location: StorageLocation.optional(),
   })).max(200, "냉장고 품목은 200개까지 보낼 수 있습니다"),
   mustUse: z.array(Name).max(10).default([]),
@@ -125,11 +140,12 @@ async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const cors = corsHeaders(env, request);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  const ctx: Ctx = { refund: null };
 
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "normalize", "import/url", "import/text", "suggest"],
+        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "pantry/photo", "normalize", "import/url", "import/text", "suggest"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
         ai: describeAi(env),
         guard: { allowList: allowList(env).includes("*") ? "everyone" : allowList(env).length, perMinute: !!env.AI_LIMIT, daily: !!env.USAGE },
@@ -142,42 +158,43 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     if (url.pathname === "/recipe" && request.method === "POST") {
-      const { user, body } = await begin(request, env, "/recipe", RecipeRequest);
+      const { user, body } = await begin(ctx, request, env, "/recipe", RecipeRequest);
       const result = await generateRecipe(selectProvider(env), body);
       console.log(JSON.stringify({ route: "recipe", uid: user.uid, dish: body.dish, provider: result.provider, model: result.model, usage: result.usage }));
       return json(result, 200, cors);
     }
 
     if (url.pathname === "/pantry/receipt" && request.method === "POST") {
-      const { user, body } = await begin(request, env, "/pantry/receipt", ReceiptRequest, 12_000_000);
+      const { user, body } = await begin(ctx, request, env, "/pantry/receipt", ReceiptRequest, 12_000_000);
       const result = await scanReceipt(selectProvider(env), body);
-      console.log(JSON.stringify({ route: "pantry/receipt", uid: user.uid, images: body.images.length, items: result.scan.items.length, provider: result.provider, model: result.model, usage: result.usage }));
+      console.log(JSON.stringify({ route: "pantry/receipt", uid: user.uid, mode: body.mode, images: body.images.length, items: result.scan.items.length, provider: result.provider, model: result.model, usage: result.usage }));
       return json(result, 200, cors);
     }
 
     if (url.pathname === "/normalize" && request.method === "POST") {
-      const { user, body } = await begin(request, env, "/normalize", NormalizeRequest);
+      const { user, body } = await begin(ctx, request, env, "/normalize", NormalizeRequest);
       const result = await normalizeNames(selectProvider(env), body.names);
       console.log(JSON.stringify({ route: "normalize", uid: user.uid, count: body.names.length, provider: result.provider, model: result.model }));
       return json(result, 200, cors);
     }
 
     if (url.pathname === "/import/url" && request.method === "POST") {
-      const { user, body } = await begin(request, env, "/import/url", ImportUrlRequest);
+      const { user, body } = await begin(ctx, request, env, "/import/url", ImportUrlRequest);
       const r = await importFromUrl(env, body.url);
       console.log(JSON.stringify({ route: "import/url", uid: user.uid, via: r.via, hasRecipe: r.result.hasRecipe, provider: r.provider, model: r.model }));
       return json(r, 200, cors);
     }
 
     if (url.pathname === "/import/text" && request.method === "POST") {
-      const { user, body } = await begin(request, env, "/import/text", ImportTextRequest, 12_000_000);
+      // 사진이 있으면 영수증처럼 더 무겁다
+      const { user, body } = await begin(ctx, request, env, "/import/text", ImportTextRequest, 12_000_000, (b) => ((b.images?.length ?? 0) > 0 ? 2 : 1));
       const r = await importFromText(env, body);
       console.log(JSON.stringify({ route: "import/text", uid: user.uid, via: r.via, images: body.images?.length ?? 0, hasRecipe: r.result.hasRecipe, provider: r.provider }));
       return json(r, 200, cors);
     }
 
     if (url.pathname === "/suggest" && request.method === "POST") {
-      const { user, body } = await begin(request, env, "/suggest", SuggestRequest);
+      const { user, body } = await begin(ctx, request, env, "/suggest", SuggestRequest);
       const r = await suggestMenus(selectProvider(env), body);
       console.log(JSON.stringify({ route: "suggest", uid: user.uid, items: body.items.length, got: r.suggestions.length, dropped: r.dropped, provider: r.provider, model: r.model, usage: r.usage }));
       return json(r, 200, cors);
@@ -185,7 +202,9 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     throw new HttpError(404, "not found");
   } catch (e) {
-    if (e instanceof HttpError) return json({ error: e.message }, e.status, cors);
+    // 사용량을 차감한 뒤 AI·페이지 읽기가 실패했으면 돌려준다
+    if (ctx.refund && !(e instanceof GuardError)) await ctx.refund().catch((err) => console.warn("refund failed", err));
+    if (e instanceof HttpError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     if (e instanceof GuardError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     if (e instanceof GenerationError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     console.error(e);

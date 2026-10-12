@@ -388,7 +388,8 @@ await mom.getByTestId("pending-draft").waitFor({ state: "detached" });
 
 await mom.locator("nav").getByText("냉장고", { exact: true }).click();
 await mom.getByTestId("zone-crisper").getByLabel(/^사과/).click();
-await mom.getByText("🛒 다 썼어요 · 또 살래요").click();
+await mom.getByLabel("장보기에 다시 담기").check();
+await mom.getByText("🍽️ 다 먹었어요").click();
 await mom.getByText(/사과을\(를\) 다 써서 장보기에 담았어요/).waitFor();
 assert.equal(await mom.getByTestId("zone-crisper").getByLabel(/^사과/).count(), 0);
 await mom.getByTestId("open-receipt").click();
@@ -401,7 +402,16 @@ await mom.getByTestId("pending-receipt").getByText(/넣지 않은 영수증 결�
 await mom.getByTestId("pending-receipt").getByText("이어서").click();
 assert.equal(await mom.getByTestId("receipt-row").count(), 14);
 await mom.getByText("다시 찍기").click();
-await mom.getByLabel("뒤로").click();
+// 식재료 사진 모드 (냉장고 안·장본 것을 찍은 사진)
+await mom.getByRole("tab", { name: "📸 식재료 사진" }).click();
+await mom.getByTestId("receipt-files").setInputFiles({ name: "food.png", mimeType: "image/png", buffer: fakeReceipt });
+await mom.getByText("📸 식재료 찾기").click();
+await mom.getByText(/사진에서 식재료 3개 찾음/).waitFor({ timeout: 15000 });
+await mom.screenshot({ path: `${shots}/25-food-photo-review.png` });
+await mom.getByText("🧊 냉장고에 넣기 (3개)").click();
+await mom.getByText(/🎉 3개를 냉장고에 넣었어요/).waitFor();
+await mom.getByTestId("zone-crisper").getByLabel(/^양배추 0\.5포기/).waitFor();
+assert.doesNotMatch(await mom.getByLabel(/^달걀 10개/).first().getAttribute("aria-label"), /추정/, "포장에서 읽은 기한은 추정이 아니다");
 await mom.locator("nav").getByText("장보기", { exact: true }).click();
 await mom.getByTestId("shopping-row").filter({ hasText: "사과" }).waitFor();
 await mom.locator("nav").getByText("레시피", { exact: true }).click();
@@ -415,6 +425,7 @@ await mackerel.click();
 assert.equal(await mackerel.getAttribute("aria-pressed"), "true");
 // 저장된 레시피 중 지금 만들 수 있는 것 (알리오올리오: 스파게티면·마늘·올리브유·소금이 냉장고에)
 await mom.getByTestId("fit-row").filter({ hasText: "알리오올리오" }).getByText("재료가 다 있어요").waitFor();
+await mom.getByTestId("usage-left").getByText("오늘 남은 AI 사용 36회").waitFor();
 await mom.getByRole("button", { name: "⚡ 15분 안에" }).click();
 await mom.getByLabel("빼고 싶은 재료").fill("오이");
 await mom.getByRole("button", { name: "추가", exact: true }).click();

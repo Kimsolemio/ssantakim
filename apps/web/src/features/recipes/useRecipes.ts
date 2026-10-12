@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy,
+  collection, onSnapshot, addDoc, setDoc, updateDoc, deleteDoc, doc, query, orderBy, arrayUnion,
 } from "firebase/firestore";
 import { Recipe, RecipeDraft } from "@cook/shared";
 import { getDb } from "../../lib/firebase";
+import { settle } from "../../lib/write";
 
 export type RecipeDoc = Recipe & { id: string };
 export type Folder = { name: string; createdAt: string };
@@ -51,12 +52,18 @@ export async function createRecipe(familyId: string, uid: string, draft: RecipeD
     ...draft, folderId, favorite: false, photoUrl: null, cookedLog: [],
     createdAt: new Date().toISOString(), createdBy: uid,
   });
-  const ref = await addDoc(collection(getDb(), "families", familyId, "recipes"), recipe);
+  const ref = doc(collection(getDb(), "families", familyId, "recipes"));
+  await settle(setDoc(ref, recipe));
   return ref.id;
 }
 
 export async function updateRecipe(familyId: string, id: string, patch: Partial<Recipe>) {
-  await updateDoc(doc(getDb(), "families", familyId, "recipes", id), patch);
+  await settle(updateDoc(doc(getDb(), "families", familyId, "recipes", id), patch));
+}
+
+/** 요리 기록 추가. 배열을 통째로 덮어쓰지 않아 두 사람이 동시에 기록해도 둘 다 남는다 */
+export async function addCookedLog(familyId: string, id: string, entry: Recipe["cookedLog"][number]) {
+  await settle(updateDoc(doc(getDb(), "families", familyId, "recipes", id), { cookedLog: arrayUnion(entry) }));
 }
 
 export async function deleteRecipe(familyId: string, id: string) {

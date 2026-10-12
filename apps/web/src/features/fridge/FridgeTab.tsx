@@ -7,7 +7,8 @@ import { FridgeVisual, itemLook } from "./FridgeVisual";
 import { ReceiptImport } from "./ReceiptImport";
 import { useNav } from "../../lib/nav";
 import { normalizeKeysInBackground } from "../../lib/normalize";
-import { useShopping, deleteShoppingItems, addShoppingItems } from "../shopping/useShopping";
+import { useShopping, addShoppingItems } from "../shopping/useShopping";
+import { writeErrorMessage } from "../../lib/write";
 import { sameFood } from "@cook/shared";
 import { FridgeItemForm } from "./FridgeItemForm";
 
@@ -100,7 +101,7 @@ export function FridgeTab() {
       </header>
       <div className="flex gap-2">
         <button onClick={() => setImporting(true)} data-testid="open-receipt"
-          className="flex-1 rounded-xl bg-orange-500 py-3 font-semibold text-white shadow active:scale-[0.99]">🧾 영수증·캡처로 채우기</button>
+          className="flex-1 rounded-xl bg-orange-500 py-3 font-semibold text-white shadow active:scale-[0.99]">🧾 영수증·사진으로 채우기</button>
         <div className="flex overflow-hidden rounded-xl border border-orange-200 bg-white text-sm" role="tablist" aria-label="보기 방식">
           <button role="tab" aria-selected={view === "visual"} onClick={() => setView("visual")} className={`px-3 ${view === "visual" ? "bg-orange-100 font-semibold text-orange-800" : "text-gray-500"}`}>🧊 냉장고</button>
           <button role="tab" aria-selected={view === "list"} onClick={() => setView("list")} className={`px-3 ${view === "list" ? "bg-orange-100 font-semibold text-orange-800" : "text-gray-500"}`}>☰ 목록</button>
@@ -162,14 +163,14 @@ export function FridgeTab() {
                 setView("visual");
                 setRecent(new Set(ids));
                 setOpenSignal((n) => n + 1);
-                setImporting(false);
-                showToast(`🎉 ${ids.length}개를 냉장고에 넣었어요${bought.length ? ` · 장보기 ${bought.length}개 완료` : ""}`);
-              });
-              await deleteShoppingItems(familyId, bought.map((b) => b.id));
+              }, bought.map((b) => b.id));
+              // 저장이 끝난 뒤에 닫는다 (실패하면 영수증 화면에 남아 결과를 지킨다)
+              setImporting(false);
+              showToast(`🎉 ${ids.length}개를 냉장고에 넣었어요${bought.length ? ` · 장보기 ${bought.length}개 완료` : ""}`);
               void normalizeKeysInBackground(familyId, "fridge_items", ids.map((id, i) => ({ id, name: inputs[i].name, key: inputs[i].key })));
             } catch (e) {
               setRecent(new Set());
-              showToast(`저장하지 못했어요: ${e instanceof Error ? e.message : String(e)}`);
+              throw new Error(writeErrorMessage(e));
             }
           }} />
       )}

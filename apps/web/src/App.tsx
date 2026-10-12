@@ -22,7 +22,7 @@ function Tabs() {
     if (shared) openImport(shared);
   }, [openImport]);
   return (
-    <div className="mx-auto max-w-lg" style={{ paddingTop: "var(--safe-top)" }}>
+    <div className="relative mx-auto max-w-lg" style={{ paddingTop: "var(--safe-top)" }}>
       <FamilyMenu />
       {tab === "fridge" && <FridgeTab />}
       {tab === "recipes" && <RecipesTab />}

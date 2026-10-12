@@ -89,3 +89,16 @@ describe("/pantry/receipt", () => {
     expect((await r.json() as any).error).toMatch(/형식에 맞지 않습니다/);
   });
 });
+
+describe("/pantry/receipt mode=photo", () => {
+  it("uses the food-photo prompt and drops store/date", async () => {
+    const calls = stubFetch(() => jsonResponse(claudeMessage(JSON.stringify(SAMPLE_SCAN))));
+    const r = await post({ today: "2026-10-12", mode: "photo", images: [{ mediaType: "image/jpeg", data: FAKE_IMAGE }] });
+    expect(r.status).toBe(200);
+    const j = await r.json() as any;
+    expect(j.scan.store).toBeNull();
+    expect(j.scan.purchasedAt).toBeNull();
+    expect(calls[0].body.system[0]?.text ?? calls[0].body.system).toMatch(/식재료를 찍은 사진/);
+    expect(JSON.stringify(calls[0].body.messages)).toContain("사진에 보이는 식재료");
+  });
+});
