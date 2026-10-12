@@ -13,6 +13,10 @@ import { normalizeKeysInBackground, remapStepKeys } from "../../lib/normalize";
 import { useRecipeMatches, statusLabel, FridgeSummary, AddToShoppingSheet, LinkSheet } from "./FridgeCheck";
 import { updateRecipe, type FolderDoc } from "./useRecipes";
 import { writeErrorMessage } from "../../lib/write";
+import { AskSheet } from "../assist/AskSheet";
+import { AdaptSheet } from "../assist/AdaptSheet";
+import { SubstitutePanel } from "../assist/SubstitutePanel";
+import { DEFAULT_STAPLES, type RecipeDraft } from "@cook/shared";
 
 type Props = {
   recipe: Recipe;
@@ -25,6 +29,8 @@ type Props = {
   onMoveFolder: (folderId: string | null) => Promise<void>;
   onDelete: () => Promise<void>;
   onCooked: (servings: number) => Promise<void>;
+  /** 레시피 바꾸기 결과 (확인·수정 화면으로) */
+  onAdapted?: (draft: RecipeDraft, summary: string) => void;
 };
 
 export const SOURCE_LABEL: Record<Recipe["source"]["type"], string> = {
@@ -42,7 +48,7 @@ export function ServingsStepper({ value, onChange }: { value: number; onChange: 
   );
 }
 
-export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onToggleFavorite, onMoveFolder, onDelete, onCooked }: Props) {
+export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onToggleFavorite, onMoveFolder, onDelete, onCooked, onAdapted }: Props) {
   const [servings, setServings] = useState(recipe.servingsBase);
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,6 +57,8 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
   const [shopSheet, setShopSheet] = useState(false);
   const [linking, setLinking] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [adapting, setAdapting] = useState(false);
   const { familyId, family } = useFamily();
   const { user } = useAuth();
   const { items: fridge, loading: fridgeLoading } = useFridge(familyId);
@@ -116,6 +124,18 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
         {recipe.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">{recipe.tags.map((t) => <span key={t} className="rounded-full bg-white px-2 py-0.5 text-xs text-gray-600">#{t}</span>)}</div>
         )}
+        {recipe.source.refs && recipe.source.refs.length > 0 && (
+          <details className="rounded-2xl bg-white px-4 py-2 text-sm" data-testid="recipe-refs">
+            <summary className="cursor-pointer text-gray-600">🔎 웹에서 참고한 레시피 {recipe.source.refs.length}개</summary>
+            <ul className="mt-1 flex flex-col gap-1">
+              {recipe.source.refs.map((r) => <li key={r.url}><a className="text-orange-700 underline" href={r.url} target="_blank" rel="noreferrer">{r.title || new URL(r.url).hostname}</a></li>)}
+            </ul>
+          </details>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => setAsking(true)} className="rounded-xl bg-white py-2.5 text-sm font-semibold text-gray-700 ring-1 ring-orange-100">💬 AI 셰프에게 묻기</button>
+          <button type="button" onClick={() => setAdapting(true)} className="rounded-xl bg-white py-2.5 text-sm font-semibold text-gray-700 ring-1 ring-orange-100">✨ 레시피 바꾸기</button>
+        </div>
 
         <section>
           <div className="mb-2 flex items-center justify-between">
@@ -164,7 +184,8 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
         className="fixed inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl bg-orange-500 py-3.5 text-center text-lg font-bold text-white shadow-lg active:scale-[0.99]"
         style={{ bottom: "calc(var(--safe-bottom) + 16px)" }}>🍳 요리 시작</button>
       {cooking && (
-        <CookMode recipe={recipe} servings={servings} onClose={() => setCooking(false)} onComplete={() => setUseUp(matches)} />
+        <CookMode recipe={recipe} recipeKey={recipeId ?? recipe.title} servings={servings} fridgeNames={fridge.map((f) => f.name)}
+          onClose={() => setCooking(false)} onComplete={() => setUseUp(matches)} />
       )}
       {useUp && (
         <UseUpSheet matches={useUp} servings={servings} onClose={() => setUseUp(null)} onApply={applyUseUp} onSkip={() => onCooked(servings)} />
@@ -173,7 +194,19 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
         <AddToShoppingSheet matches={matches} recipeTitle={recipe.title} onClose={() => setShopSheet(false)} onConfirm={(items) => addToShopping(items, true)} />
       )}
       {linking != null && matches[linking] && (
-        <LinkSheet match={matches[linking]} fridge={fridge} onClose={() => setLinking(null)} onLink={(f) => link(linking, f)} />
+        <LinkSheet match={matches[linking]} fridge={fridge} onClose={() => setLinking(null)} onLink={(f) => link(linking, f)}
+          extra={(matches[linking].status === "missing" || matches[linking].status === "short") ? (
+            <SubstitutePanel title={recipe.title} all={recipe.ingredients.map((i) => i.name)} missing={matches[linking].ingredient}
+              fridge={fridge.map((f) => f.name)} staples={family?.profile.staples ?? [...DEFAULT_STAPLES]} />
+          ) : undefined} />
+      )}
+      {asking && (
+        <AskSheet recipe={recipe} recipeKey={recipeId ?? recipe.title} servings={servings} fridge={fridge.map((f) => f.name)} onClose={() => setAsking(false)} />
+      )}
+      {adapting && (
+        <AdaptSheet recipe={recipe} servings={servings} fridge={fridge.map((f) => f.name)} profile={family?.profile ?? null}
+          onClose={() => setAdapting(false)}
+          onResult={(d, summary) => { setAdapting(false); onAdapted?.(d, summary); }} />
       )}
       {notice && (
         <div role="status" className="pointer-events-none fixed inset-x-0 z-50 mx-auto w-fit max-w-[90%] rounded-full bg-slate-900/90 px-4 py-2 text-sm text-white shadow-lg"

@@ -36,6 +36,18 @@ ${RECIPE_FORMAT_RULES}
 - spicyLevel(순한맛/보통/매운맛)에 맞춰 고추·고춧가루 양을 조절합니다. kidsFriendly=true 이면 맵기와 자극적인 양념을 줄입니다.
 - 사용자의 추가 요청이 있으면 그것을 가장 우선합니다.`;
 
+/** "인기 레시피 찾아보고 만들기": 웹에서 먼저 자료를 모은다 (결과는 다음 호출에서 레시피로 정리) */
+export const RECIPE_RESEARCH_PROMPT = `당신은 한국 가정의 집밥을 돕는 요리 연구가입니다. 요청한 음식의 레시피를 웹에서 찾아 비교하고, 맛있게 만드는 핵심을 메모합니다.
+
+- 한국어 레시피 사이트·블로그(만개의레시피, 네이버 블로그, 유명 요리 유튜버 레시피 글 등)를 검색해 평이 좋은 레시피 2~3개를 고릅니다.
+- 메모에는 재료와 대략의 양, 순서의 핵심, 레시피들이 공통으로 강조하는 요령(불 세기·시간·넣는 순서), 서로 다른 점을 적습니다.
+- 자료에 없는 것을 지어내지 않습니다. 광고·쇼핑 링크는 무시합니다.
+- 마크다운 없이 짧은 문장 위주로 1,500자 이내.`;
+
+export function buildRecipeResearchMessage(dish: string, servings: number, notes?: string | null): string {
+  return `요리: ${dish}\n인분: ${servings}${notes?.trim() ? `\n추가 요청: ${notes.trim()}` : ""}\n이 요리의 인기 레시피를 찾아 비교해 주세요.`;
+}
+
 export function buildRecipeUserMessage(input: {
   dish: string; servings: number; profile?: FamilyProfile | null; notes?: string | null;
 }): string {
@@ -181,3 +193,77 @@ export function buildSuggestUserMessage(input: {
   }
   return lines.join("\n");
 }
+
+
+/** 요리 중 질문 (쿡 모드·레시피 상세의 "AI 셰프에게 묻기") */
+export const ASK_SYSTEM_PROMPT = `당신은 한국 가정의 부엌 옆에 서 있는 친절한 요리 선생님입니다. 지금 요리하고 있는 레시피와 단계를 보고 질문에 답합니다.
+
+- 답은 바로 따라 할 수 있게 짧고 구체적으로 (2~5문장). 불 세기, 시간, 눈으로 보는 신호(색·소리·질감), 양을 숫자로.
+- 재료가 없거나 바꾸고 싶다는 질문이면 냉장고에 있는 재료부터 대신 쓸 것을 고르고, 양과 맛 차이를 알려 줍니다.
+- 음식이 상했는지, 덜 익었는지 같은 안전 질문은 확실하지 않으면 버리거나 더 익히라고 분명히 말합니다.
+- 레시피와 상관없는 질문이면 한 문장으로 짧게 답하고 요리로 돌아오게 합니다.
+- followups: 이어서 궁금해할 만한 짧은 질문 2~3개 (예: "면수는 얼마나 넣어요?").`;
+
+export function buildAskUserMessage(input: {
+  recipe: { title: string; servingsBase: number; ingredients: { name: string; qty: number | null; unit: string; note?: string }[]; steps: { order: number; text: string; minutes: number | null }[] };
+  servings: number; step?: number | null; question: string; history: { q: string; a: string }[]; fridge: string[];
+}): string {
+  const r = input.recipe;
+  const ings = r.ingredients.map((i) => `- ${i.name}${i.qty != null ? ` ${i.qty}${i.unit === "기타" ? "" : i.unit}` : ""}${i.note ? ` (${i.note})` : ""}`).join("\n");
+  const steps = r.steps.map((s) => `${s.order}. ${s.text}${s.minutes ? ` (${s.minutes}분)` : ""}`).join("\n");
+  const lines = [
+    `레시피: ${r.title} (기준 ${r.servingsBase}인분, 지금 ${input.servings}인분으로 만드는 중)`,
+    `재료 (기준 인분):\n${ings}`,
+    `조리 순서:\n${steps}`,
+  ];
+  if (input.step != null) lines.push(`지금 하고 있는 단계: ${input.step}단계`);
+  if (input.fridge.length) lines.push(`냉장고에 있는 것: ${input.fridge.join(", ")}`);
+  if (input.history.length) lines.push(`앞서 나눈 대화:\n${input.history.map((h) => `Q: ${h.q}\nA: ${h.a}`).join("\n")}`);
+  lines.push(`질문: ${input.question}`);
+  return lines.join("\n\n");
+}
+
+/** 레시피 바꾸기 (덜 맵게, 에어프라이어로, 냉장고 재료로 …) */
+export const ADAPT_SYSTEM_PROMPT = `당신은 한국 가정의 집밥을 돕는 요리 선생님입니다. 주어진 레시피를 요청대로 바꿔 새 레시피를 JSON 스키마에 맞춰 씁니다.
+
+- 요청과 상관없는 부분은 원래 레시피를 최대한 그대로 둡니다 (재료 이름·key·순서).
+- 바꾼 재료·양·단계는 실제로 맛과 식감이 맞게 조정합니다 (예: 덜 맵게 → 고춧가루·청양고추 줄이고 단맛·감칠맛 보완, 에어프라이어로 → 온도·시간·뒤집기 단계).
+- "냉장고 재료로" 요청이면 냉장고 목록에 있는 재료로 최대한 대체하고, 대체한 재료는 note에 "원래: ○○"를 적습니다.
+- title은 원래 이름에 바꾼 점을 짧게 붙입니다 (예: "김치찌개 (덜 맵게)").
+- servingsBase는 요청한 인분으로 맞추고 양도 그 인분 기준으로 씁니다.
+- source는 {"type": "generated"}.
+- summary: 무엇을 바꿨는지 한두 문장.
+
+${RECIPE_FORMAT_RULES}`;
+
+export function buildAdaptUserMessage(input: { recipe: unknown; instruction: string; servings: number; fridge: string[]; profile?: FamilyProfile | null }): string {
+  const lines = [`바꿀 점: ${input.instruction}`, `인분: ${input.servings}`];
+  if (input.fridge.length) lines.push(`냉장고에 있는 것: ${input.fridge.join(", ")}`);
+  if (input.profile) lines.push(`가족: 맵기 ${input.profile.spicyLevel}, 아이 ${input.profile.kidsFriendly ? "있음" : "없음"}, 싫어하는 재료 [${input.profile.dislikes.join(", ") || "없음"}]`);
+  lines.push(`원래 레시피(JSON):\n${JSON.stringify(input.recipe)}`);
+  return lines.join("\n");
+}
+
+/** 없는 재료 대체 */
+export const SUBSTITUTE_SYSTEM_PROMPT = `당신은 한국 가정의 집밥을 돕는 요리 선생님입니다. 레시피에 필요한데 집에 없는 재료를 무엇으로 대신할지 알려 줍니다.
+
+- 재료마다 대체 후보 1~3개를 맛이 가장 비슷한 순서로. 냉장고 목록에 있는 것을 먼저 고르고 fromFridge를 true로 둡니다 (냉장고 목록에 없으면 false).
+- amount: 원래 양 기준으로 대신 넣을 양 (예: "1큰술", "반 개"). how: 넣는 법이나 맛 차이를 한 문장으로.
+- 빼고 만들어도 맛이 크게 무너지지 않으면 skippable true.
+- 대신할 게 마땅치 않으면 options를 빈 배열로 두고 skippable로 판단합니다.`;
+
+export function buildSubstituteUserMessage(input: { title: string; all: string[]; missing: { name: string; qty: number | null; unit: string }[]; fridge: string[]; staples: string[] }): string {
+  return [
+    `레시피: ${input.title}`,
+    `레시피 재료 전체: ${input.all.join(", ")}`,
+    `집에 없는 재료: ${input.missing.map((m) => `${m.name}${m.qty != null ? ` ${m.qty}${m.unit === "기타" ? "" : m.unit}` : ""}`).join(", ")}`,
+    `냉장고에 있는 것: ${input.fridge.join(", ") || "(없음)"}`,
+    `늘 있는 양념: ${input.staples.join(", ") || "(없음)"}`,
+  ].join("\n");
+}
+
+
+/** 링크 가져오기: Worker가 못 읽은 페이지를 Claude가 직접 읽을 때 */
+export const PAGE_READ_PROMPT = `주어진 주소의 웹 페이지를 web_fetch 로 읽고, 그 안의 레시피를 있는 그대로 옮겨 적습니다.
+- 요리 이름, 인분, 재료와 양, 조리 순서, 팁만 적습니다. 광고·댓글·다른 글 목록은 뺍니다.
+- 페이지에 레시피가 없으면 "레시피 없음"과 그 이유를 한 줄로 적습니다. 지어내지 않습니다.`;

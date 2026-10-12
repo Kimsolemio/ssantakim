@@ -16,6 +16,7 @@ export async function normalizeNames(ai: AiProvider, names: string[]): Promise<N
     schema: SCHEMA,
     effort: "low",
     maxTokens: 4000,
+    cache: true,
   });
   const parsed = parseAiJson(out.text, NormalizedNames);
   const items = names.map((name, i) => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { formatAmount, scaleIngredients, matchIngredients, type IngredientMatch, type MatchStatus, type Recipe, type Unit } from "@cook/shared";
 import { Sheet } from "../../components/Sheet";
 import type { FridgeDoc } from "../fridge/useFridge";
@@ -93,11 +93,13 @@ export function AddToShoppingSheet({ matches, recipeTitle, onClose, onConfirm }:
 }
 
 /** 없다고 나온 재료를 냉장고 품목과 직접 연결 (이름이 너무 달라 못 찾은 경우) */
-export function LinkSheet({ match, fridge, onClose, onLink }: {
+export function LinkSheet({ match, fridge, onClose, onLink, extra }: {
   match: IngredientMatch<FridgeDoc>;
   fridge: FridgeDoc[];
   onClose: () => void;
   onLink: (item: FridgeDoc) => Promise<void>;
+  /** 없는 재료일 때 아래에 붙이는 것 (AI 대체 재료 찾기) */
+  extra?: ReactNode;
 }) {
   const [q, setQ] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -116,6 +118,7 @@ export function LinkSheet({ match, fridge, onClose, onLink }: {
         ) : (
           <p className="text-sm text-gray-600">지금 맞춰진 품목: {match.items.map((i) => i.name).join(", ")}. 다른 품목을 연결할 수도 있어요.</p>
         )}
+        {extra}
         <input className="rounded-xl border border-orange-200 bg-white px-3 py-2 text-base" placeholder="냉장고에서 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
         {err && <p className="text-sm text-red-600">{err}</p>}
         <ul className="flex flex-col gap-1 overflow-y-auto">

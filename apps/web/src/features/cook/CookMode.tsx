@@ -5,11 +5,13 @@ import { useBackButton } from "../../lib/useBackButton";
 import { useTimers, formatRemaining } from "./useTimers";
 import { useWakeLock } from "./useWakeLock";
 import { useSpeak, useVoiceCommands, ttsSupported, voiceSupported } from "./useSpeech";
+import { AskSheet } from "../assist/AskSheet";
 
-type Props = { recipe: Recipe; servings: number; onClose: () => void; onComplete: () => Promise<void> | void };
+type Props = { recipe: Recipe; recipeKey: string; servings: number; fridgeNames: string[]; onClose: () => void; onComplete: () => Promise<void> | void };
 
 /** 쿡 모드: 한 화면에 한 단계, 큰 글씨, 단계 재료, 타이머, 읽어주기 */
-export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
+export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, onComplete }: Props) {
+  const [asking, setAsking] = useState(false);
   const steps = recipe.steps;
   const [idx, setIdx] = useState(0); // steps.length === 완료 화면
   const [busy, setBusy] = useState(false);
@@ -74,6 +76,7 @@ export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
             <div className="h-full bg-orange-500 transition-all" style={{ width: `${(Math.min(idx + 1, steps.length) / steps.length) * 100}%` }} />
           </div>
         </div>
+        <button onClick={() => setAsking(true)} aria-label="AI 셰프에게 묻기" className="rounded-full bg-gray-700 px-3 py-1.5 text-sm text-gray-100">💬 묻기</button>
         {ttsSupported && (
           <button onClick={() => { const v = !tts; setTts(v); if (!v) stopSpeak(); else if (step) speak(step.text); }} aria-label="읽어주기"
             className={`rounded-full px-3 py-1.5 text-sm ${tts ? "bg-orange-500 text-white" : "bg-gray-700 text-gray-200"}`}>🔊</button>
@@ -146,6 +149,7 @@ export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
           <button onClick={tryClose} className="flex-[2] rounded-2xl bg-gray-700 py-4 text-lg font-semibold">기록 없이 닫기</button>
         )}
       </footer>
+      {asking && <AskSheet recipe={recipe} recipeKey={recipeKey} servings={servings} step={step?.order ?? null} fridge={fridgeNames} onClose={() => setAsking(false)} top />}
     </div>
   );
 }

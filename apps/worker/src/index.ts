@@ -7,6 +7,7 @@ import { scanReceipt } from "./receipt";
 import { normalizeNames } from "./normalize";
 import { importFromUrl, importFromText, precheckImportUrl } from "./import";
 import { suggestMenus } from "./suggest";
+import { adaptRecipe, askChef, suggestSubstitutes } from "./assist";
 import { checkAllowed, chargeUsage, refundUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
 
 export interface Env extends AiEnv, GuardEnv {
@@ -88,6 +89,8 @@ const RecipeRequest = z.object({
   servings: z.number().positive().max(50).default(2),
   profile: FamilyProfile.transform((p) => ({ ...p, dislikes: p.dislikes.slice(0, 30), staples: p.staples.slice(0, 40) })).nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
+  /** 웹에서 인기 레시피를 찾아보고 만들기 (Claude 웹 검색) */
+  research: z.boolean().default(false),
 });
 
 /** 사진 한 장: base64 (data: 접두사 없이). Claude는 장당 5MB까지 받는다 */
@@ -146,6 +149,43 @@ const SuggestRequest = z.object({
   count: z.number().int().min(1).max(8).default(5),
 });
 
+/** 레시피를 AI에 다시 보낼 때 (물어보기·바꾸기) 크기를 제한한 모양 */
+const RecipeIn = z.object({
+  title: oneLine(100),
+  servingsBase: z.number().positive().max(50),
+  ingredients: z.array(z.object({
+    name: oneLine(60), key: z.string().max(80).default(""), qty: z.number().nonnegative().nullable(), unit: z.string().max(10),
+    note: z.string().max(200).optional(), group: z.string().max(10).optional(), optional: z.boolean().optional(), scalable: z.boolean().optional(),
+  })).max(60),
+  steps: z.array(z.object({ order: z.number().int(), text: z.string().max(1000), minutes: z.number().nullable().default(null), ingredientKeys: z.array(z.string().max(80)).max(30).default([]) })).max(40),
+  timeMinutes: z.number().nullable().optional(),
+  difficulty: z.string().max(10).optional(),
+  tags: z.array(z.string().max(30)).max(10).default([]),
+  tips: z.array(z.string().max(300)).max(10).default([]),
+});
+const AskRequest = z.object({
+  recipe: RecipeIn,
+  servings: z.number().positive().max(50),
+  step: z.number().int().positive().max(40).nullable().optional(),
+  question: oneLine(300).pipe(z.string().min(1, "질문을 적어 주세요")),
+  history: z.array(z.object({ q: oneLine(300), a: z.string().max(1500) })).transform((h) => h.slice(-6)).default([]),
+  fridge: names(150).default([]),
+});
+const AdaptRequest = z.object({
+  recipe: RecipeIn,
+  instruction: oneLine(200).pipe(z.string().min(1, "어떻게 바꿀지 적어 주세요")),
+  servings: z.number().int().positive().max(20),
+  fridge: names(150).default([]),
+  profile: ProfileIn.nullable().optional(),
+});
+const SubstituteRequest = z.object({
+  title: oneLine(100),
+  all: names(60),
+  missing: z.array(z.object({ name: Name, qty: z.number().nonnegative().nullable(), unit: z.string().max(10) })).min(1).transform((a) => a.slice(0, 8)),
+  fridge: names(150).default([]),
+  staples: names(40, 30).default([]),
+});
+
 const NormalizeRequest = z.object({
   names: z.array(z.string().trim().min(1).max(60)).min(1).max(40, "한 번에 40개까지 정리할 수 있습니다"),
 });
@@ -159,7 +199,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "pantry/photo", "normalize", "import/url", "import/text", "suggest"],
+        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "pantry/photo", "normalize", "import/url", "import/text", "suggest", "ask", "adapt", "substitute"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
         ai: describeAi(env),
         guard: { allowList: allowList(env).includes("*") ? "everyone" : allowList(env).length, perMinute: !!env.AI_LIMIT, daily: !!env.USAGE },
@@ -172,9 +212,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     if (url.pathname === "/recipe" && request.method === "POST") {
-      const { user, body } = await begin(ctx, request, env, "/recipe", RecipeRequest);
+      // 웹 검색까지 하면 두 번 부르므로 2
+      const { user, body } = await begin(ctx, request, env, "/recipe", RecipeRequest, undefined, (b) => (b.research ? 2 : 1));
       const result = await generateRecipe(selectProvider(env), body);
-      console.log(JSON.stringify({ route: "recipe", uid: user.uid, dish: body.dish, provider: result.provider, model: result.model, usage: result.usage }));
+      console.log(JSON.stringify({ route: "recipe", uid: user.uid, dish: body.dish, research: body.research, refs: result.recipe.source.refs?.length ?? 0, provider: result.provider, model: result.model, usage: result.usage }));
       return json(result, 200, cors);
     }
 
@@ -187,7 +228,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     if (url.pathname === "/normalize" && request.method === "POST") {
       const { user, body } = await begin(ctx, request, env, "/normalize", NormalizeRequest);
-      const result = await normalizeNames(selectProvider(env), body.names);
+      const result = await normalizeNames(selectProvider(env, undefined, "fast"), body.names);
       console.log(JSON.stringify({ route: "normalize", uid: user.uid, count: body.names.length, provider: result.provider, model: result.model }));
       return json(result, 200, cors);
     }
@@ -204,6 +245,27 @@ async function handle(request: Request, env: Env): Promise<Response> {
       const { user, body } = await begin(ctx, request, env, "/import/text", ImportTextRequest, 12_000_000, (b) => ((b.images?.length ?? 0) > 0 ? 2 : 1));
       const r = await importFromText(env, body);
       console.log(JSON.stringify({ route: "import/text", uid: user.uid, via: r.via, images: body.images?.length ?? 0, hasRecipe: r.result.hasRecipe, provider: r.provider }));
+      return json(r, 200, cors);
+    }
+
+    if (url.pathname === "/ask" && request.method === "POST") {
+      const { user, body } = await begin(ctx, request, env, "/ask", AskRequest);
+      const r = await askChef(selectProvider(env, undefined, "fast"), body);
+      console.log(JSON.stringify({ route: "ask", uid: user.uid, provider: r.provider, model: r.model, usage: r.usage }));
+      return json(r, 200, cors);
+    }
+
+    if (url.pathname === "/adapt" && request.method === "POST") {
+      const { user, body } = await begin(ctx, request, env, "/adapt", AdaptRequest);
+      const r = await adaptRecipe(selectProvider(env), body);
+      console.log(JSON.stringify({ route: "adapt", uid: user.uid, provider: r.provider, model: r.model, usage: r.usage }));
+      return json(r, 200, cors);
+    }
+
+    if (url.pathname === "/substitute" && request.method === "POST") {
+      const { user, body } = await begin(ctx, request, env, "/substitute", SubstituteRequest);
+      const r = await suggestSubstitutes(selectProvider(env, undefined, "fast"), body);
+      console.log(JSON.stringify({ route: "substitute", uid: user.uid, provider: r.provider, model: r.model, usage: r.usage }));
       return json(r, 200, cors);
     }
 

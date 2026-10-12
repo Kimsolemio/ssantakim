@@ -368,7 +368,7 @@ await mom.locator("li", { hasText: "인스타 떡볶이" }).waitFor();
 
 // ---------- 비판 검토 반영: 저장 안 한 초안, 다 썼어요, 영수증 결과 보관 ----------
 await mom.getByText("✨ 음식 이름으로").click();
-assert.match(await mom.getByTestId("ai-notice").textContent(), /Google\(Gemini 무료 등급\)/, "어느 AI로 가는지 알린다");
+assert.match(await mom.getByTestId("ai-notice").textContent(), /Anthropic\(Claude\)/, "어느 AI로 가는지 알린다");
 await mom.getByPlaceholder(/알리오올리오/).fill("새우볶음밥");
 await mom.getByRole("button", { name: "레시피 만들기", exact: true }).click();
 await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
@@ -461,6 +461,48 @@ await mom.getByLabel("뒤로").click();
 await mom.locator("nav").getByText("장보기", { exact: true }).click();
 await mom.getByTestId("shopping-row").filter({ hasText: "애호박" }).getByText("두부 된장찌개").waitFor();
 await mom.locator("nav").getByText("레시피", { exact: true }).click();
+
+// ---------- Claude 활용: 인기 레시피 찾아보기, AI 셰프에게 묻기, 레시피 바꾸기, 대체 재료 ----------
+await mom.getByText("✨ 음식 이름으로").click();
+await mom.getByPlaceholder(/알리오올리오/).fill("크림파스타");
+await mom.getByLabel(/인기 레시피 찾아보고 만들기/).check();
+await mom.getByRole("button", { name: "레시피 만들기", exact: true }).click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+await mom.getByText("저장", { exact: true }).click();
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+await mom.getByTestId("recipe-refs").getByText(/웹에서 참고한 레시피 1개/).waitFor();
+// 물어보기
+await mom.getByText("💬 AI 셰프에게 묻기").click();
+await mom.getByTestId("ask-sheet").getByRole("button", { name: "불 세기·시간 맞아요?" }).click();
+await mom.getByTestId("ask-answer").getByText(/중불에서 1분 더/).waitFor({ timeout: 10000 });
+await mom.getByTestId("ask-sheet").getByRole("button", { name: "면수는 얼마나?" }).waitFor();
+await mom.screenshot({ path: `${shots}/26-ask-chef.png` });
+await mom.getByRole("button", { name: "닫기", exact: true }).click();
+// 바꾸기 → 새 레시피로 확인 화면
+await mom.getByText("✨ 레시피 바꾸기").click();
+await mom.getByTestId("adapt-sheet").getByRole("button", { name: "덜 맵게" }).click();
+await mom.getByText("✨ 이렇게 바꾸기").click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue(), "크림파스타 (덜 맵게)");
+await mom.getByTestId("import-note").getByText(/AI가 바꿨어요: 고춧가루를 줄이고/).waitFor();
+await mom.screenshot({ path: `${shots}/27-adapted-recipe.png` }); // 상세 위에 확인 화면이 보여야 한다
+await mom.getByLabel("뒤로").last().click(); // 초안은 보관된다
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+// 없는 재료 → 대체 재료 찾기 (Claude)
+await mom.getByTestId("ingredient-row").filter({ hasText: "페페론치노" }).locator("[data-status]").click();
+await mom.getByTestId("substitute-button").click();
+await mom.getByTestId("substitute-result").getByText("매운맛을 대신해요").waitFor({ timeout: 10000 });
+await mom.getByRole("button", { name: "닫기", exact: true }).click();
+// 쿡 모드에서도 묻기 (요리 모드 위에 뜬다)
+await mom.getByText("🍳 요리 시작").click();
+await mom.getByLabel("AI 셰프에게 묻기").click();
+await mom.getByLabel("질문").fill("소금은 얼마나?");
+await mom.getByRole("button", { name: "묻기", exact: true }).click();
+await mom.getByTestId("ask-answer").getByText(/\(1단계\) 중불에서/).waitFor({ timeout: 10000 });
+await mom.getByRole("button", { name: "닫기", exact: true }).click();
+await mom.getByLabel("쿡 모드 닫기").click();
+await mom.getByLabel("뒤로").click();
+await mom.getByTestId("pending-draft").filter({ hasText: "크림파스타 (덜 맵게)" }).getByText("버리기").click();
 
 // ---------- 사용자 2: 초대 코드로 참여 → 같은 데이터 ----------
 const dad = await newUserTracked("dad@test.local", "아빠");

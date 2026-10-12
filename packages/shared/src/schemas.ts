@@ -47,6 +47,8 @@ export const RecipeSource = z.object({
   url: z.string().url().optional(),
   channel: z.string().optional(),
   title: z.string().optional(),
+  /** 웹 검색으로 참고한 레시피들 (AI 생성 + "인기 레시피 찾아보기") */
+  refs: z.array(z.object({ url: z.string().url(), title: z.string().nullable() })).optional(),
 });
 export type RecipeSource = z.infer<typeof RecipeSource>;
 
@@ -202,3 +204,32 @@ export const SuggestResult = z.object({
   suggestions: z.array(MenuSuggestion),
 });
 export type SuggestResult = z.infer<typeof SuggestResult>;
+
+/** 요리하다 AI 셰프에게 물어본 답 */
+export const AskResult = z.object({
+  answer: z.string().min(1),          // 짧고 바로 쓸 수 있는 답 (2~5문장)
+  followups: z.array(z.string()),     // 이어서 물어볼 만한 질문 2~3개 (짧게)
+});
+export type AskResult = z.infer<typeof AskResult>;
+
+/** 레시피 바꾸기 결과 */
+export const AdaptResult = z.object({
+  summary: z.string(),                // 무엇을 바꿨는지 한두 문장
+  recipe: RecipeDraft,
+});
+export type AdaptResult = z.infer<typeof AdaptResult>;
+
+/** 없는 재료 대체 제안 */
+export const SubstituteResult = z.object({
+  items: z.array(z.object({
+    ingredient: z.string(),           // 원래 재료 이름
+    options: z.array(z.object({
+      name: z.string().min(1),        // 대신 쓸 재료
+      fromFridge: z.boolean(),        // 지금 냉장고에 있는 것인가
+      amount: z.string(),             // 얼마나 (예: "1큰술", "반 개")
+      how: z.string(),                // 쓰는 법·맛 차이 한 문장
+    })),
+    skippable: z.boolean(),           // 빼고 만들어도 되는가
+  })),
+});
+export type SubstituteResult = z.infer<typeof SubstituteResult>;

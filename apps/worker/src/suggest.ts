@@ -72,6 +72,7 @@ export async function suggestMenus(ai: AiProvider, input: SuggestInput): Promise
     schema: SCHEMA,
     effort: "low",
     maxTokens: 6000,
+    cache: true,
   });
   const parsed = parseAiJson(out.text, SuggestResult);
   const { list, dropped } = cleanSuggestions(parsed.suggestions, input, staples);

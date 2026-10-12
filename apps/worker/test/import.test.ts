@@ -47,7 +47,7 @@ describe("/import/url — YouTube", () => {
     expect(j.via).toBe("youtube_description");
     expect(j.result.recipe.source).toEqual({ type: "youtube", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", channel: "요리채널", title: "10분 알리오올리오" });
     const ai = calls.find((c) => isClaude(c.url))!;
-    expect(ai.body.system).toContain("지어내지 않습니다");
+    expect(ai.body.system[0].text).toContain("지어내지 않습니다");
     expect(ai.body.messages[0].content[0].text).toContain("설명란:\n재료: 스파게티 200g");
     expect(calls.some((c) => c.url.includes("youtube.com/watch"))).toBe(false);
   });
@@ -159,6 +159,32 @@ describe("/import/url — Instagram and web", () => {
     const b = await post("/import/url", { url: "https://empty.example.com/a" });
     expect(b.status).toBe(422); expect(await b.json()).toMatchObject({ code: "empty_page" });
     expect((await post("/import/url", { url: "https://pdf.example.com/a" })).status).toBe(422);
+  });
+});
+
+describe("/import/url — Claude reads pages the Worker cannot", () => {
+  it("falls back to Claude web_fetch, then structures the recipe", async () => {
+    const calls = stub([
+      { match: (u) => u.startsWith("https://blocked.example.com/"), reply: () => new Response("forbidden", { status: 403 }) },
+      { match: isClaude, reply: (c) => c.body.tools
+        ? jsonResponse(claudeMessage("김치볶음밥 2인분. 재료: 김치 200g, 밥 2공기, 대파 1대. 1. 대파를 볶는다 2. 김치를 볶는다 3. 밥을 넣는다", {
+            content: [
+              { type: "server_tool_use", id: "srvtoolu_1", name: "web_fetch", input: { url: "https://blocked.example.com/r/1" } },
+              { type: "web_fetch_tool_result", tool_use_id: "srvtoolu_1", content: { type: "web_fetch_result", url: "https://blocked.example.com/r/1", content: { type: "document", source: { type: "text", media_type: "text/plain", data: "…" } } } },
+              { type: "text", text: "김치볶음밥 2인분. 재료: 김치 200g, 밥 2공기, 대파 1대. 1. 대파를 볶는다 2. 김치를 볶는다 3. 밥을 넣는다" },
+            ],
+          }))
+        : jsonResponse(claudeMessage(found())) },
+    ]);
+    const r = await post("/import/url", { url: "https://blocked.example.com/r/1" });
+    expect(r.status).toBe(200);
+    const j = await r.json() as any;
+    expect(j.result.hasRecipe).toBe(true);
+    expect(j.result.recipe.source).toMatchObject({ type: "web", url: "https://blocked.example.com/r/1" });
+    const research = calls.find((c) => isClaude(c.url) && c.body.tools)!;
+    expect(research.body.tools[0]).toMatchObject({ type: "web_fetch_20260318", name: "web_fetch", allowed_callers: ["direct"] });
+    expect(research.body.output_config.format).toBeUndefined();
+    expect(research.body.messages[0].content).toContain("https://blocked.example.com/r/1");
   });
 });
 

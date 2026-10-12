@@ -1,7 +1,7 @@
 import { ImportResult, importResultJsonSchema, type RecipeSource } from "@cook/shared";
 import { GenerationError, lazyFetch, selectProvider, type AiEnv, type AiPart, type AiProvider, type ImageMediaType, type ProviderName } from "./ai";
 import { geminiProvider } from "./ai/gemini";
-import { IMPORT_SYSTEM_PROMPT } from "./prompts";
+import { IMPORT_SYSTEM_PROMPT, PAGE_READ_PROMPT } from "./prompts";
 import { parseAiJson } from "./recipe";
 import {
   htmlToText, isSafePublicUrl, jsonLdRecipeText, linkKind, metaContent, naverBlogMobileUrl, readLimited, youtubeId, youtubePageInfo,
@@ -123,14 +123,32 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
 
   // 블로그·레시피 사이트
   const target = kind === "naver_blog" ? naverBlogMobileUrl(url) ?? url : url;
+  const ai = selectProvider(env);
+  /** Worker가 못 읽은 페이지는 Claude가 직접 읽게 한다 (Claude 웹 읽기 도구). Gemini면 그냥 실패를 알린다 */
+  const viaClaude = async (why: GenerationError): Promise<ImportResponse> => {
+    if (!ai.research) throw why;
+    let r: Awaited<ReturnType<NonNullable<typeof ai.research>>>;
+    try {
+      r = await ai.research({
+        system: PAGE_READ_PROMPT,
+        prompt: `이 주소의 레시피를 읽어 주세요: ${target}${target !== url ? `\n(원래 주소: ${url})` : ""}`,
+        searches: 0, fetches: 2, maxTokens: 6000,
+      });
+    } catch (e) {
+      console.warn("claude web_fetch failed", e instanceof Error ? e.message : e);
+      throw why;
+    }
+    if (r.text.replace(/\s/g, "").length < 40 || /^레시피 없음/.test(r.text.trim())) throw why;
+    return runImport(ai, [{ type: "text", text: `웹 페이지 (AI가 직접 읽음)\n주소: ${url}\n\n${r.text.slice(0, 15000)}` }], { type: "web", url }, "page");
+  };
   let res: Response;
   try {
     res = await safeFetch(target, f, { headers: { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9", Accept: "text/html,application/xhtml+xml" } });
   } catch (e) {
-    if (e instanceof GenerationError) throw e;
-    throw new GenerationError("페이지를 열지 못했습니다. 주소를 확인하거나 본문을 복사해 붙여넣어 주세요.", 502, "fetch_failed");
+    if (e instanceof GenerationError && e.status === 400) throw e;
+    return viaClaude(new GenerationError("페이지를 열지 못했습니다. 주소를 확인하거나 본문을 복사해 붙여넣어 주세요.", 502, "fetch_failed"));
   }
-  if (!res.ok) throw new GenerationError(`페이지를 열지 못했습니다 (${res.status}). 본문을 복사해 붙여넣어 주세요.`, 502, "fetch_failed");
+  if (!res.ok) return viaClaude(new GenerationError(`페이지를 열지 못했습니다 (${res.status}). 본문을 복사해 붙여넣어 주세요.`, 502, "fetch_failed"));
   const ct = res.headers.get("content-type") ?? "";
   if (ct && !/html|text\/plain/i.test(ct)) throw new GenerationError("웹 페이지가 아닌 주소입니다", 422, "not_html");
   const html = await readLimited(res, 2_000_000);
@@ -140,9 +158,9 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
   const text = ld ?? [metaContent(html, "og:description"), htmlToText(html, 15000)].filter(Boolean).join("\n\n");
   // 구조화된 레시피(JSON-LD)는 짧아도 완전하다. 일반 본문만 최소 길이를 본다
   if (!ld && text.replace(/\s/g, "").length < 60) {
-    throw new GenerationError("페이지에서 글을 찾지 못했어요. 본문을 복사해 붙여넣거나 스크린샷을 올려 주세요.", 422, "empty_page");
+    return viaClaude(new GenerationError("페이지에서 글을 찾지 못했어요. 본문을 복사해 붙여넣거나 스크린샷을 올려 주세요.", 422, "empty_page"));
   }
-  return runImport(selectProvider(env), [{ type: "text", text: `웹 페이지\n제목: ${title ?? "(없음)"}\n주소: ${url}\n\n${ld ? "구조화된 레시피 정보:\n" : "본문:\n"}${text}` }], source, ld ? "jsonld" : "page");
+  return runImport(ai, [{ type: "text", text: `웹 페이지\n제목: ${title ?? "(없음)"}\n주소: ${url}\n\n${ld ? "구조화된 레시피 정보:\n" : "본문:\n"}${text}` }], source, ld ? "jsonld" : "page");
 }
 
 export async function importFromText(env: ImportEnv, input: { text?: string | null; images?: { mediaType: ImageMediaType; data: string }[]; url?: string | null }): Promise<ImportResponse> {

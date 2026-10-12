@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { FamilyProfile, RecipeDraft } from "@cook/shared";
 import { Sheet } from "../../components/Sheet";
 import { AiNotice } from "../../components/AiNotice";
+import { useAiInfo } from "../../lib/aiInfo";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { ServingsStepper } from "./RecipeDetail";
 
@@ -25,6 +26,10 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish, initial
   const [dish, setDish] = useState(initialDish ?? "");
   const [servings, setServings] = useState(initialServings ?? profile?.defaultServings ?? 2);
   const [notes, setNotes] = useState(initialNotes ?? "");
+  // 웹에서 인기 레시피를 찾아보고 만들기 (Claude 웹 검색). 고른 값은 기억해 둔다
+  const [research, setResearch] = useState(() => { try { return localStorage.getItem("cook:research") === "1"; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem("cook:research", research ? "1" : "0"); } catch { /* 무시 */ } }, [research]);
+  const aiInfo = useAiInfo();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -43,7 +48,7 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish, initial
     setErr(null); setBusy(true); setTick(0);
     abort.current = new AbortController();
     try {
-      const res = await callWorker<RecipeResponse>("/recipe", { dish: dish.trim(), servings, profile, notes: notes.trim() || null }, abort.current.signal);
+      const res = await callWorker<RecipeResponse>("/recipe", { dish: dish.trim(), servings, profile, notes: notes.trim() || null, research: research && aiInfo.webSearch }, abort.current.signal);
       onResult(res.recipe);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "레시피를 만들지 못했습니다");
@@ -74,6 +79,12 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish, initial
         <input className={field} placeholder="추가 요청 (선택: 덜 맵게, 에어프라이어로, 15분 안에)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} maxLength={500} />
         {profile && (
           <p className="text-xs text-gray-500">가족 취향 반영: {profile.spicyLevel}{profile.kidsFriendly ? " · 아이 있음" : ""}{profile.dislikes.length ? ` · 피할 재료 ${profile.dislikes.join(", ")}` : ""}</p>
+        )}
+        {aiInfo.webSearch && (
+          <label className="flex items-start gap-2 rounded-xl bg-white px-3 py-2.5 text-sm">
+            <input type="checkbox" className="mt-0.5 h-5 w-5 accent-orange-500" checked={research} onChange={(e) => setResearch(e.target.checked)} disabled={busy} />
+            <span><b>🔎 인기 레시피 찾아보고 만들기</b><br /><span className="text-xs text-gray-500">웹에서 평이 좋은 레시피를 비교해 정리해요. 30초쯤 더 걸리고 AI를 2회 써요. 참고한 글은 레시피에 남아요.</span></span>
+          </label>
         )}
         <AiNotice what="요리 이름과 가족 취향" />
         {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}

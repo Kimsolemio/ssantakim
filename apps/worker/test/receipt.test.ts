@@ -46,7 +46,7 @@ describe("/pantry/receipt", () => {
     expect(content[2].type).toBe("text");
     expect(content[2].text).toContain("오늘 날짜: 2026-10-12");
     expect(content[2].text).toContain("사진 2장");
-    expect(calls[0].body.system).toContain("영수증");
+    expect(calls[0].body.system[0].text).toContain("영수증");
     const schema = calls[0].body.output_config.format.schema;
     expect(schema.properties.items.items.properties.category.enum).toContain("냉동식품");
   });

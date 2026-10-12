@@ -157,6 +157,16 @@ export function RecipesTab() {
           onResult={(d, note) => { setImporting(false); setDraftNote(note); setDraft(d, note); }}
           onMakeWithAi={(dish) => { setImporting(false); setGenerating({ dish }); }} />
       )}
+      {open && (
+        <RecipeDetail recipe={open} recipeId={open.id} folders={folders} onClose={() => setOpenId(null)}
+          onEdit={() => setEditing(open)}
+          onToggleFavorite={() => updateRecipe(familyId, open.id, { favorite: !open.favorite })}
+          onMoveFolder={(fid) => updateRecipe(familyId, open.id, { folderId: fid })}
+          onDelete={() => deleteRecipe(familyId, open.id)}
+          onCooked={(servings) => addCookedLog(familyId, open.id, { date: new Date().toISOString(), by: user.uid, servings })}
+          onAdapted={(d, summary) => { setDraftNote(`AI가 바꿨어요: ${summary}`); setDraft(d, `AI가 바꿨어요: ${summary}`); }} />
+      )}
+      {/* 상세 위에 뜨도록 상세 다음에 둔다 (레시피 바꾸기 결과) */}
       {draft && (
         <RecipeEditor title="레시피 확인·수정" initial={draft} note={draftNote} fresh
           onChange={(d) => { if (draftId) upsertStored({ id: draftId, draft: d, note: draftNote }); }}
@@ -167,14 +177,6 @@ export function RecipesTab() {
             setDraftState(null); setDraftId(null); setOpenId(id);
             void fixRecipeKeysInBackground(familyId, id, d);
           }} />
-      )}
-      {open && (
-        <RecipeDetail recipe={open} recipeId={open.id} folders={folders} onClose={() => setOpenId(null)}
-          onEdit={() => setEditing(open)}
-          onToggleFavorite={() => updateRecipe(familyId, open.id, { favorite: !open.favorite })}
-          onMoveFolder={(fid) => updateRecipe(familyId, open.id, { folderId: fid })}
-          onDelete={() => deleteRecipe(familyId, open.id)}
-          onCooked={(servings) => addCookedLog(familyId, open.id, { date: new Date().toISOString(), by: user.uid, servings })} />
       )}
       {editing && (
         <RecipeEditor title="레시피 수정" initial={editing} onClose={() => setEditing(null)}

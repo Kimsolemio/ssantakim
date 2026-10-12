@@ -46,7 +46,7 @@ let calls = 0;
 createServer((req, res) => {
   const cors = { "Access-Control-Allow-Origin": req.headers.origin ?? "*", "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,OPTIONS" };
   if (req.method === "OPTIONS") { res.writeHead(204, cors); return res.end(); }
-  if (req.url === "/health") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, ai: { provider: process.env.MOCK_PROVIDER ?? "gemini", model: "mock" } })); }
+  if (req.url === "/health") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, ai: { provider: process.env.MOCK_PROVIDER ?? "claude", model: "mock", fastModel: "mock-fast", webSearch: true }, configured: { gemini: false } })); }
   let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
     const auth = req.headers.authorization ?? "";
     if (!auth.startsWith("Bearer ") || auth.length < 40) { res.writeHead(401, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ error: "로그인이 필요합니다" })); }
@@ -55,7 +55,8 @@ createServer((req, res) => {
       console.log("mock /recipe", JSON.stringify({ dish: b.dish, servings: b.servings, profile: b.profile, notes: b.notes }));
       if (b.dish === "실패테스트") { res.writeHead(502, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ error: "AI 호출 실패 (테스트)" })); }
       const f = (b.servings ?? 2) / 2; // 실제 AI처럼 요청 인분 기준 분량으로
-      const r = { ...recipe, title: b.dish, servingsBase: b.servings, ingredients: recipe.ingredients.map((i) => ({ ...i, qty: i.qty == null ? null : i.qty * f })) };
+      const r = { ...recipe, title: b.dish, servingsBase: b.servings, ingredients: recipe.ingredients.map((i) => ({ ...i, qty: i.qty == null ? null : i.qty * f })),
+        ...(b.research ? { source: { type: "generated", refs: [{ url: "https://www.10000recipe.com/recipe/1", title: "참고 레시피 (mock)" }] } } : {}) };
       setTimeout(() => { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ recipe: r, model: "mock", usage: { input: 1, output: 1 } })); }, 800);
       return;
     }
@@ -77,6 +78,17 @@ createServer((req, res) => {
       if (!(b.text && b.text.trim()) && !(b.images?.length)) return send(400, { error: "글이나 사진이 필요합니다" });
       const insta = String(b.url ?? "").includes("instagram.com");
       return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make(insta ? "인스타 떡볶이" : "메모 떡볶이", insta ? { type: "instagram", url: b.url } : { type: b.text ? "text" : "photo" }) }, via: b.text ? "caption" : "photo", provider: "mock", model: "mock" }), 700);
+    }
+    if (req.url === "/ask" || req.url === "/adapt" || req.url === "/substitute") {
+      const b = JSON.parse(body || "{}");
+      console.log("mock " + req.url, JSON.stringify({ q: b.question, step: b.step, instruction: b.instruction, missing: b.missing, history: b.history?.length }));
+      const out = req.url === "/ask"
+        ? { answer: `(${b.step ?? "-"}단계) 중불에서 1분 더 익히세요. 질문: ${b.question}`, followups: ["면수는 얼마나?", "소금은 언제?"] }
+        : req.url === "/adapt"
+          ? { summary: "고춧가루를 줄이고 단맛을 조금 더했어요", recipe: { ...recipe, title: `${b.recipe.title} (${b.instruction})`, servingsBase: b.servings } }
+          : { items: [{ ingredient: b.missing[0].name, skippable: true, options: [{ name: b.fridge[0] ?? "고춧가루", fromFridge: !!b.fridge[0], amount: "조금", how: "매운맛을 대신해요" }] }] };
+      setTimeout(() => { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ ...out, provider: "mock", model: "mock" })); }, 500);
+      return;
     }
     if (req.url === "/usage") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ today: { used: 3.25, limit: 40, familyUsed: 10, familyLimit: 150, remaining: 36.75 } })); }
     if (req.url === "/suggest") {

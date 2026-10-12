@@ -38,7 +38,7 @@ describe("basics", () => {
     expect(r.headers.get("Access-Control-Allow-Origin")).toBe("https://cook.example.com");
     const j = await r.json() as any;
     expect(j.configured).toEqual({ firebase: true, claude: true, gemini: true });
-    expect(j.ai).toEqual({ provider: "claude", model: "claude-opus-5-5" });
+    expect(j.ai).toEqual({ provider: "claude", model: "claude-opus-5-5", fastModel: "claude-haiku-5-5", webSearch: true });
     expect(JSON.stringify(j)).not.toContain('"k"');
   });
   it("health explains a missing AI key", async () => {

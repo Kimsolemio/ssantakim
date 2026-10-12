@@ -1,6 +1,6 @@
 import { RecipeDraft, recipeDraftJsonSchema, type FamilyProfile } from "@cook/shared";
 import { billedError, type AiProvider, type ProviderName } from "./ai";
-import { RECIPE_SYSTEM_PROMPT, buildRecipeUserMessage } from "./prompts";
+import { RECIPE_SYSTEM_PROMPT, RECIPE_RESEARCH_PROMPT, buildRecipeResearchMessage, buildRecipeUserMessage } from "./prompts";
 
 const RECIPE_SCHEMA = recipeDraftJsonSchema();
 
@@ -26,15 +26,29 @@ export function parseAiJson<T>(
 
 export async function generateRecipe(
   ai: AiProvider,
-  input: { dish: string; servings: number; profile?: FamilyProfile | null; notes?: string | null },
+  input: { dish: string; servings: number; profile?: FamilyProfile | null; notes?: string | null; research?: boolean },
 ): Promise<RecipeResult> {
+  // 1) (선택) 웹에서 인기 레시피를 찾아 메모한다 (Claude 웹 검색). 2) 그 메모를 참고해 형식에 맞춰 쓴다
+  let notes = "";
+  let refs: { url: string; title: string | null }[] = [];
+  let researchUsage = { input: 0, output: 0 };
+  if (input.research && ai.research) {
+    const r = await ai.research({
+      system: RECIPE_RESEARCH_PROMPT,
+      prompt: buildRecipeResearchMessage(input.dish, input.servings, input.notes),
+      searches: 3, fetches: 2, maxTokens: 6000,
+    });
+    notes = r.text; refs = r.sources; researchUsage = r.usage;
+  }
+  const text = buildRecipeUserMessage(input) + (notes ? `\n\n웹에서 찾은 인기 레시피 메모 (참고해서 가장 맛있게 정리):\n${notes.slice(0, 6000)}` : "");
   const out = await ai.generateJson({
     system: RECIPE_SYSTEM_PROMPT,
-    parts: [{ type: "text", text: buildRecipeUserMessage(input) }],
+    parts: [{ type: "text", text }],
     schema: RECIPE_SCHEMA,
     effort: "medium",
   });
-  // 만든 레시피의 출처는 언제나 "AI 생성"이다 (AI가 다른 값을 적어도 검증에서 떨어지지 않게)
+  // 만든 레시피의 출처는 언제나 "AI 생성"이다 (AI가 다른 값을 적어도 검증에서 떨어지지 않게). 참고한 웹 문서는 refs 로
   const recipe = parseAiJson(out.text, RecipeDraft, (raw) => (raw && typeof raw === "object" ? { ...(raw as object), source: { type: "generated" } } : raw));
-  return { recipe, provider: ai.name, model: out.model, usage: out.usage };
+  if (refs.length) recipe.source = { type: "generated", refs };
+  return { recipe, provider: ai.name, model: out.model, usage: { input: out.usage.input + researchUsage.input, output: out.usage.output + researchUsage.output } };
 }
