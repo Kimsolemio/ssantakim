@@ -1,5 +1,8 @@
 # 로컬 개발용. 이 파일을 .dev.vars 로 복사해서 채운다 (git에 올라가지 않음)
-GEMINI_API_KEY=AIza...   # https://aistudio.google.com/apikey (무료)
+# AI 키는 둘 중 하나만 있어도 된다. AI_PROVIDER=auto 면 Claude 키가 있을 때 Claude를 쓴다.
+ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+AI_PROVIDER=auto
 FIREBASE_PROJECT_ID=your-project-id
 ALLOWED_ORIGINS=http://localhost:5173
 ALLOWED_EMAILS=

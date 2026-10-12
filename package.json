@@ -9,7 +9,8 @@
     "typecheck": "pnpm -r typecheck",
     "worker:dev": "pnpm --filter @cook/worker dev",
     "worker:deploy": "pnpm --filter @cook/worker deploy",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-family-cook \"node --test tests/firestore-security.test.mjs\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-family-cook \"node --test tests/firestore-security.test.mjs\"",
+    "test": "pnpm -r test"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",

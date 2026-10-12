@@ -3,10 +3,14 @@ main = "src/index.ts"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 비밀값(GEMINI_API_KEY)은 `pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY` 로 넣는다.
+# AI 키는 비밀값으로 넣는다. 둘 중 하나만 있어도 된다 (AI_PROVIDER=auto 면 Claude 우선).
+#   pnpm --filter @cook/worker exec wrangler secret put ANTHROPIC_API_KEY   # Claude (유료 종량제)
+#   pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY      # Gemini (무료 등급)
 # 아래 vars는 배포 시 자신의 값으로 바꾼다 (또는 Cloudflare 대시보드 > Settings > Variables).
 [vars]
 FIREBASE_PROJECT_ID = ""
 ALLOWED_ORIGINS = "http://localhost:5173"
 ALLOWED_EMAILS = ""
+AI_PROVIDER = "auto"
+CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = "gemini-2.5-flash"

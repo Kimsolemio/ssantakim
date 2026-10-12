@@ -75,11 +75,11 @@
 
 | 기능 | 판정 | 근거·방법 |
 |------|------|-----------|
-| 음식 이름 → 레시피 | ✅ | 우리의식탁이 이미 정식 기능. Gemini API 무료 등급 + 구조화 출력(JSON 스키마)으로 1회 호출. 0원 |
+| 음식 이름 → 레시피 | ✅ | 우리의식탁이 이미 정식 기능. Claude 구조화 출력(JSON 스키마)으로 1회 호출, 건당 약 100원 안팎. Gemini 무료 대안 |
 | 유튜브 링크 | ✅ | 서버(Cloudflare Worker)에서 YouTube Data API로 설명란 취득 + Gemini에 유튜브 URL 직접 입력해 영상 이해 → 같은 Gemini로 레시피 JSON 정리 |
 | 인스타 링크 | ⚠️ 표준 방식으로 가능 | 캡션 붙여넣기(Pestle 방식) + 스크린샷 비전 분석. 링크는 출처 보관용. 릴스 저장 후 영상 업로드는 선택 기능 |
 | 공유 시트 진입 | ⚠️ 방법 선택 필요 | 아래 4-1 참고 |
-| 사진·영수증으로 재료 등록 | ✅ | Gemini 비전으로 이미지 → 재료 JSON. 국내 앱들이 이미 하는 기능 |
+| 사진·영수증으로 재료 등록 | ✅ | Claude 비전으로 이미지 → 재료 JSON. 국내 앱들이 이미 하는 기능 |
 | 쿡 모드 | ✅ | Screen Wake Lock API(iOS 16.4+ 사파리 지원), 단계 텍스트에서 "10분" 자동 감지 → 타이머, SpeechSynthesis로 읽어주기 |
 | 인분 스케일링 | ✅ | 재료를 qty/unit로 구조화해 저장하면 곱셈. "약간", "적당량"은 스케일 제외 플래그 |
 | 냉장고·장보기·가족 공유 | ✅ | Firestore 실시간 동기화 |
@@ -105,16 +105,16 @@
         │  Firebase Auth(구글 로그인, 가족 초대 코드) + Firestore 실시간 동기화
         │
         └─▶ [Cloudflare Worker /api/*]  ── API 키 보관, Firebase 토큰 검증
-                 ├─ /recipe        음식 이름 → Gemini Flash(구조화 출력, 무료)
-                 ├─ /import/youtube  YouTube Data API + Gemini(유튜브 URL 직접 입력, 영상 이해)
-                 ├─ /import/text     인스타 캡션·스크린샷·레시피 사진 → Gemini(비전)
-                 ├─ /normalize     재료 표준화(Gemini Flash-Lite)
-                 ├─ /pantry/photo  냉장고 사진·영수증 → 재료 JSON(Gemini 비전)
+                 ├─ /recipe        음식 이름 → Claude(claude-opus-5-5, 구조화 출력) / 키 없으면 Gemini
+                 ├─ /import/url    블로그·유튜브 링크 → Claude(웹 페이지 읽기) 정리, 필요 시 Gemini 영상 이해
+                 ├─ /import/text   인스타 캡션·스크린샷·레시피 사진 → Claude(비전)
+                 ├─ /normalize     재료 표준화(Claude, effort low)
+                 ├─ /pantry/photo  냉장고 사진·영수증 → 재료 JSON(Claude 비전)
                  └─ /suggest       Use It Up 추천
 ```
 
 - 브라우저에 AI 키를 두지 않는다(도용되면 무료 한도를 남이 써버린다). Worker에 가족 이메일 허용 목록 설정.
-- 월 예상 비용: **0원** (Gemini 무료 등급: 분당 약 10회·하루 약 1,500회, 가족용에 충분). 품질이 아쉬우면 Worker의 ai.ts 하나만 바꿔 유료 모델로 교체 가능.
+- 월 예상 비용: Claude 기본(claude-opus-5-5) 기준 레시피 1건 약 100원 안팎, 가족 사용량이면 월 수천~1만 원. Anthropic 콘솔 월 지출 한도로 상한을 건다. Gemini만 쓰면 0원.
 
 ### 5-1. 데이터 모델 (벤치마크 반영해 확장)
 
@@ -157,7 +157,12 @@ MealPlan (선택)
 ## 7. 앱 제작용 프롬프트 작성 플랜 (재정립)
 
 > 진행 상태: 1단계 ✅ · 2단계 ✅ · 3단계 ✅ (쿡 모드) · 4단계부터 예정
-> 비용 원칙(확정): **모든 API를 무료 등급으로만 쓴다.** Claude API는 무료 등급이 없어 AI는 Gemini API 무료 등급(Flash 모델)으로 통일했다. Cloudflare·Firebase·YouTube Data API·Gemini 모두 0원.
+> AI 원칙(갱신): **Claude API를 기본으로 쓴다**(사용자가 API 키 제공). 키가 없으면 Gemini 무료 등급으로 자동 전환되는 구조라 0원 운영도 계속 가능하다. Cloudflare·Firebase·YouTube Data API는 0원.
+>
+> Claude를 기본으로 두면 남은 단계가 쉬워진다. 글·사진·웹 페이지를 한 제공자, 한 호출 방식으로 처리할 수 있기 때문이다.
+> - 4단계 재료 정규화: 같은 Claude 호출 함수에 짧은 프롬프트만 추가 (effort low)
+> - 5단계 링크 가져오기: 블로그·레시피 사이트·유튜브 설명란은 Claude의 웹 페이지 읽기(web fetch) 도구로 바로 읽어 정리하는 방식을 먼저 시도한다. 인스타는 여전히 캡션 붙여넣기·스크린샷(Claude 비전). 설명란에 레시피가 없는 유튜브 영상만 Gemini 영상 이해(선택)로 보완
+> - 6단계 냉장고 사진·영수증: Claude 비전으로 처리. AI 호출 함수가 이미 사진 입력을 받도록 만들어 두었다
 
 6단계 → **7단계**. 벤치마크에서 필수로 확인된 쿡 모드·스케일링을 앞당기고, 공유 진입·사진 등록을 추가했다. 각 단계는 동작하는 결과물을 남기고 한 커밋으로 마무리한다.
 
@@ -171,7 +176,7 @@ MealPlan (선택)
 - 사용자는 나와 가족뿐. 한국어 UI. 모바일 세로 화면 기준, 하단 탭(레시피 / 냉장고 / 장보기 / 오늘 뭐 먹지).
 - 벤치마크 UX: Samsung Food의 저장 흐름, Paprika의 스케일링·가족 공유, Crouton의 쿡 모드를 참고한다. 광고·영양정보·커뮤니티는 만들지 않는다.
 - AI 호출은 반드시 apps/worker를 거친다. 브라우저 코드에 Gemini/YouTube 키를 절대 넣지 않는다.
-- AI: Gemini API 무료 등급(gemini-2.5-flash, REST + fetch, SDK 없음). responseJsonSchema 구조화 출력으로 JSON 스키마 강제. 다른 제공자로 바꿀 수 있게 ai.ts 한 파일에 격리.
+- AI: apps/worker/src/ai/ 의 AiProvider.generateJson 하나로만 호출한다. 기본 Claude(@anthropic-ai/sdk, claude-opus-5-5, output_config.format 구조화 출력, fallbacks "default"), 키가 없으면 Gemini 무료 등급. 사진은 parts에 image로 넣는다.
 - 완료 기준: 실제로 동작해야 하고, 네트워크 오류·401·JSON 파싱 실패 처리와 로딩 UI를 포함하며, 마지막에 수동 테스트 절차를 적는다.
 ```
 
@@ -242,7 +247,8 @@ Worker POST /suggest {fridgeItems, expiringSoon, exclude[], profile, mood?} → 
 
 | 항목 | 어디서 | 비용 |
 |------|--------|------|
-| Gemini API 키 | Google AI Studio (aistudio.google.com/apikey) | 무료, 카드 불필요 |
+| Claude API 키 + 월 지출 한도 | console.anthropic.com | 사용량 과금 (구독과 별개) |
+| (선택) Gemini API 키 | Google AI Studio (aistudio.google.com/apikey) | 무료, 카드 불필요 |
 | Cloudflare 계정 + Wrangler | cloudflare.com | 무료 |
 | YouTube Data API v3 키 | Google Cloud Console | 무료 |
 | Firebase 프로젝트(신규) | Firebase 콘솔 | 무료 |
