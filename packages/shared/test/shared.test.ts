@@ -209,3 +209,35 @@ describe("allergy check", () => {
     expect(findDislikes([{ name: "오이" }, { name: "고수" }], ["고수"]).map((h) => h.ingredient)).toEqual(["고수"]);
   });
 });
+
+import { rankRecipesByFridge } from "../src";
+
+describe("today: rank saved recipes by fridge", () => {
+  const today = new Date(2026, 9, 12);
+  const r = (title: string, names: [string, string, boolean?][], cooked: string[] = []) => ({
+    title, cookedLog: cooked.map((date) => ({ date, by: "u", servings: 2 })),
+    ingredients: names.map(([name, key, optional]) => ing({ name, key, qty: null, unit: "기타", optional: !!optional })),
+  });
+  const fridge = [
+    fr({ id: "t", name: "두부", key: "tofu", qty: 1, unit: "모", expiresAt: "2026-10-13" }),
+    fr({ id: "k", name: "배추김치", key: "kimchi", qty: null, unit: "기타" }),
+    fr({ id: "o", name: "양파", key: "onion", qty: 2, unit: "개", expiresAt: "2026-10-01" }), // 지남 → 없는 것으로
+  ];
+  it("prefers recipes that are ready and use expiring items", () => {
+    const list = rankRecipesByFridge([
+      r("김치찌개", [["김치", "kimchi"], ["두부", "tofu"], ["돼지고기", "pork"], ["소금", "salt"]]),
+      r("김치볶음밥", [["김치", "kimchi"], ["밥", "rice"], ["참기름", "sesame_oil"]]),
+      r("양파볶음", [["양파", "onion"]]),
+      r("스테이크", [["소고기", "beef"]]),
+    ], fridge, { staples: ["소금", "참기름"], today });
+    expect(list.map((x) => x.recipe.title)).toEqual(["김치찌개", "김치볶음밥"]);
+    expect(list[0]).toMatchObject({ needed: 3, have: 2, missing: ["돼지고기"], expiring: ["두부"] });
+  });
+  it("pushes back what was cooked yesterday", () => {
+    const list = rankRecipesByFridge([
+      r("A", [["두부", "tofu"]], ["2026-10-11T19:00:00Z"]),
+      r("B", [["김치", "kimchi"]]),
+    ], fridge, { today });
+    expect(list.map((x) => x.recipe.title)).toEqual(["B", "A"]);
+  });
+});

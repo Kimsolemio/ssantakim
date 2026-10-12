@@ -10,7 +10,7 @@ import { takePendingShare } from "./lib/share";
 import { useEffect } from "react";
 import { FamilySetup } from "./features/family/FamilySetup";
 import { FamilyMenu } from "./features/family/FamilyBar";
-import { Placeholder } from "./pages/Placeholder";
+import { TodayTab } from "./features/today/TodayTab";
 import { SetupScreen } from "./pages/SetupScreen";
 import { SignInScreen } from "./pages/SignInScreen";
 
@@ -27,7 +27,7 @@ function Tabs() {
       {tab === "fridge" && <FridgeTab />}
       {tab === "recipes" && <RecipesTab />}
       {tab === "shopping" && <ShoppingTab />}
-      {tab === "today" && <Placeholder title="오늘 뭐 먹지" stage="6단계" />}
+      {tab === "today" && <TodayTab />}
       <TabBar active={tab} onChange={setTab} />
     </div>
   );

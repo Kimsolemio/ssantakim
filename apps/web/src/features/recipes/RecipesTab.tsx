@@ -24,15 +24,26 @@ export function RecipesTab() {
   const folders = useFolders(familyId);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>({ kind: "all" });
-  const [generating, setGenerating] = useState<false | { dish?: string }>(false);
+  const [generating, setGenerating] = useState<false | { dish?: string; notes?: string; auto?: boolean }>(false);
   const [importing, setImporting] = useState<false | { initial: SharedPayload | null }>(false);
   const [draftNote, setDraftNote] = useState<string | null>(null);
-  const { pendingImport, consumeImport } = useNav();
+  const { pendingImport, consumeImport, pendingGenerate, consumeGenerate, pendingRecipe, consumeRecipe } = useNav();
   useEffect(() => {
     if (!pendingImport) return;
     consumeImport();
     setImporting({ initial: pendingImport });
   }, [pendingImport]); // eslint-disable-line react-hooks/exhaustive-deps
+  // "오늘 뭐 먹지"에서 고른 메뉴 → AI 레시피 만들기, 저장된 레시피 → 상세
+  useEffect(() => {
+    if (!pendingGenerate) return;
+    consumeGenerate();
+    setGenerating(pendingGenerate);
+  }, [pendingGenerate]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingRecipe) return;
+    consumeRecipe();
+    setOpenId(pendingRecipe);
+  }, [pendingRecipe]); // eslint-disable-line react-hooks/exhaustive-deps
   const [draft, setDraftState] = useState<RecipeDraft | null>(null);
   // 저장하지 않은 AI 초안은 이 기기에 보관해 두었다가 다시 열 수 있게 한다
   const pendingName = `draft:${familyId ?? ""}`;
@@ -125,7 +136,8 @@ export function RecipesTab() {
         style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>✨</button>
 
       {generating && (
-        <GenerateSheet profile={family?.profile ?? null} initialDish={generating.dish} onClose={() => setGenerating(false)}
+        <GenerateSheet profile={family?.profile ?? null} initialDish={generating.dish} initialNotes={generating.notes} autoStart={generating.auto}
+          onClose={() => setGenerating(false)}
           onResult={(d) => { setGenerating(false); setDraftNote(null); setDraft(d); }} />
       )}
       {importing && (

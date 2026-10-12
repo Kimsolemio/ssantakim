@@ -406,6 +406,49 @@ await mom.locator("nav").getByText("장보기", { exact: true }).click();
 await mom.getByTestId("shopping-row").filter({ hasText: "사과" }).waitFor();
 await mom.locator("nav").getByText("레시피", { exact: true }).click();
 
+// ---------- 6단계: 오늘 뭐 먹지 ----------
+await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
+await mom.getByRole("heading", { name: "오늘 뭐 먹지?" }).waitFor();
+const mackerel = mom.getByTestId("expiring-card").filter({ hasText: "고등어" });
+await mackerel.getByText(/D-1 추정/).waitFor();
+await mackerel.click();
+assert.equal(await mackerel.getAttribute("aria-pressed"), "true");
+// 저장된 레시피 중 지금 만들 수 있는 것 (알리오올리오: 스파게티면·마늘·올리브유·소금이 냉장고에)
+await mom.getByTestId("fit-row").filter({ hasText: "알리오올리오" }).getByText("재료가 다 있어요").waitFor();
+await mom.getByRole("button", { name: "⚡ 15분 안에" }).click();
+await mom.getByLabel("빼고 싶은 재료").fill("오이");
+await mom.getByRole("button", { name: "추가", exact: true }).click();
+await mom.getByRole("button", { name: "오이 빼기 취소" }).waitFor();
+await mom.screenshot({ path: `${shots}/23-today-form.png` });
+await mom.getByText("✨ 메뉴 5개 추천받기").click();
+await mom.getByTestId("suggest-card").first().waitFor({ timeout: 15000 });
+assert.equal(await mom.getByTestId("suggest-card").count(), 5);
+assert.match(await mom.getByTestId("suggest-card").first().textContent(), /꼭 쓰기: 고등어 \/ 분위기: 15분 안에 \/ 빼기: 오이/);
+await mom.screenshot({ path: `${shots}/24-today-suggestions.png` });
+const zucchini = mom.getByTestId("suggest-card").filter({ hasText: "두부 된장찌개" });
+await zucchini.getByText("🛒 살 것: 애호박").waitFor();
+await zucchini.getByText("🛒 살 것 담기").click();
+await zucchini.getByText("✓ 담았어요").waitFor();
+// 고른 메뉴로 바로 레시피 만들기 → 레시피 탭의 확인 화면
+await mom.getByTestId("suggest-card").filter({ hasText: "고등어 구이" }).getByText("✨ 레시피 만들기").click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue(), "고등어 구이");
+await mom.getByLabel("뒤로").click();
+await mom.getByTestId("pending-draft").getByText("버리기").click();
+// 다시 와도 추천이 남아 있고, "다른 메뉴로"는 다른 메뉴를 준다
+await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
+await mom.getByTestId("suggest-card").filter({ hasText: "고등어 구이" }).waitFor();
+await mom.getByText("🔄 다른 메뉴로").click();
+await mom.getByTestId("suggest-card").filter({ hasText: "고등어 김치찜" }).waitFor({ timeout: 15000 });
+assert.equal(await mom.getByTestId("suggest-card").filter({ hasText: "고등어 구이" }).count(), 0);
+// 내 레시피 → 상세
+await mom.getByTestId("fit-row").filter({ hasText: "알리오올리오" }).click();
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+await mom.getByLabel("뒤로").click();
+await mom.locator("nav").getByText("장보기", { exact: true }).click();
+await mom.getByTestId("shopping-row").filter({ hasText: "애호박" }).getByText("두부 된장찌개").waitFor();
+await mom.locator("nav").getByText("레시피", { exact: true }).click();
+
 // ---------- 사용자 2: 초대 코드로 참여 → 같은 데이터 ----------
 const dad = await newUserTracked("dad@test.local", "아빠");
 await dad.getByRole("button", { name: "초대 코드로 참여" }).click();

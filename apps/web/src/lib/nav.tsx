@@ -19,7 +19,17 @@ type NavState = {
   openImport: (p: SharedPayload) => void;
   pendingImport: SharedPayload | null;
   consumeImport: () => void;
+  /** 레시피 탭으로 가서 AI 레시피 만들기를 연다 (auto 면 바로 시작) */
+  openGenerate: (g: GenerateRequest) => void;
+  pendingGenerate: GenerateRequest | null;
+  consumeGenerate: () => void;
+  /** 레시피 탭으로 가서 저장된 레시피를 연다 */
+  openRecipe: (id: string) => void;
+  pendingRecipe: string | null;
+  consumeRecipe: () => void;
 };
+
+export type GenerateRequest = { dish: string; notes?: string; auto?: boolean };
 
 const NavCtx = createContext<NavState | null>(null);
 
@@ -34,8 +44,17 @@ export function NavProvider({ initialTab, children }: { initialTab: Tab; childre
   const [pendingImport, setPendingImport] = useState<SharedPayload | null>(null);
   const openImport = useCallback((p: SharedPayload) => { setPendingImport(p); setTab("recipes"); }, []);
   const consumeImport = useCallback(() => setPendingImport(null), []);
+  const [pendingGenerate, setPendingGenerate] = useState<GenerateRequest | null>(null);
+  const openGenerate = useCallback((g: GenerateRequest) => { setPendingGenerate(g); setTab("recipes"); }, []);
+  const consumeGenerate = useCallback(() => setPendingGenerate(null), []);
+  const [pendingRecipe, setPendingRecipe] = useState<string | null>(null);
+  const openRecipe = useCallback((id: string) => { setPendingRecipe(id); setTab("recipes"); }, []);
+  const consumeRecipe = useCallback(() => setPendingRecipe(null), []);
   return (
-    <NavCtx.Provider value={{ tab, setTab, dropIntoFridge, fridgeDrop, consumeFridgeDrop, openReceipt, pendingReceipt, consumeReceipt, openImport, pendingImport, consumeImport }}>
+    <NavCtx.Provider value={{
+      tab, setTab, dropIntoFridge, fridgeDrop, consumeFridgeDrop, openReceipt, pendingReceipt, consumeReceipt, openImport, pendingImport, consumeImport,
+      openGenerate, pendingGenerate, consumeGenerate, openRecipe, pendingRecipe, consumeRecipe,
+    }}>
       {children}
     </NavCtx.Provider>
   );

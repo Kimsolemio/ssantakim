@@ -5,17 +5,25 @@ import { AiNotice } from "../../components/AiNotice";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { ServingsStepper } from "./RecipeDetail";
 
-type Props = { profile: FamilyProfile | null; onResult: (draft: RecipeDraft) => void; onClose: () => void; initialDish?: string };
+type Props = {
+  profile: FamilyProfile | null;
+  onResult: (draft: RecipeDraft) => void;
+  onClose: () => void;
+  initialDish?: string;
+  initialNotes?: string;
+  /** 열자마자 만들기 시작 ("오늘 뭐 먹지"에서 고른 메뉴) */
+  autoStart?: boolean;
+};
 
 const WAITING = ["재료를 고르는 중…", "분량을 계산하는 중…", "조리 순서를 정리하는 중…", "팁을 적는 중…", "마무리 중…"];
 
 type RecipeResponse = { recipe: RecipeDraft; model: string; usage: { input: number; output: number } };
 
 /** 음식 이름 → AI 레시피 생성. 결과는 편집 화면으로 넘긴다. */
-export function GenerateSheet({ profile, onResult, onClose, initialDish }: Props) {
+export function GenerateSheet({ profile, onResult, onClose, initialDish, initialNotes, autoStart }: Props) {
   const [dish, setDish] = useState(initialDish ?? "");
   const [servings, setServings] = useState(profile?.defaultServings ?? 2);
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialNotes ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -28,8 +36,8 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish }: Props
   }, [busy]);
   useEffect(() => () => abort.current?.abort(), []);
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
     if (!dish.trim()) { setErr("음식 이름을 입력하세요"); return; }
     setErr(null); setBusy(true); setTick(0);
     abort.current = new AbortController();
@@ -40,6 +48,13 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish }: Props
       setErr(e instanceof ApiError ? e.message : "레시피를 만들지 못했습니다");
     } finally { setBusy(false); }
   };
+
+  // 고른 메뉴로 바로 시작. StrictMode 의 두 번 실행에도 한 번만 부르도록 예약 후 정리한다
+  useEffect(() => {
+    if (!autoStart || !workerConfigured) return;
+    const t = setTimeout(() => { void submit(); }, 0);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-3 text-base outline-none focus:border-orange-400";
 

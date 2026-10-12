@@ -78,6 +78,19 @@ createServer((req, res) => {
       const insta = String(b.url ?? "").includes("instagram.com");
       return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make(insta ? "인스타 떡볶이" : "메모 떡볶이", insta ? { type: "instagram", url: b.url } : { type: b.text ? "text" : "photo" }) }, via: b.text ? "caption" : "photo", provider: "mock", model: "mock" }), 700);
     }
+    if (req.url === "/suggest") {
+      const b = JSON.parse(body || "{}");
+      console.log("mock /suggest", JSON.stringify({ items: b.items?.length, mustUse: b.mustUse, exclude: b.exclude, mood: b.mood, avoid: b.avoid }));
+      const names = (b.items ?? []).map((i) => i.name);
+      const second = (b.avoid ?? []).length > 0;
+      const titles = second ? ["고등어 김치찜", "두부 부침", "계란말이", "대파 라면", "삼겹살 숙주볶음"] : ["고등어 구이", "두부 된장찌개", "삼겹살 김치볶음", "우유 계란찜", "만두 전골"];
+      const suggestions = titles.map((title, i) => ({
+        title, reason: `꼭 쓰기: ${(b.mustUse ?? []).join(",")} / 분위기: ${b.mood ?? ""} / 빼기: ${(b.exclude ?? []).join(",")}`,
+        uses: names.slice(i, i + 2), missing: i === 1 ? ["애호박"] : [], timeMinutes: 15, difficulty: "쉬움", tags: ["집밥"],
+      }));
+      setTimeout(() => { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ suggestions, dropped: 0, provider: "mock", model: "mock" })); }, 600);
+      return;
+    }
     if (req.url === "/normalize") {
       const b = JSON.parse(body || "{}");
       const dict = { "스파게티면": "spaghetti", "깐마늘": "garlic", "올리브유": "olive_oil", "대파": "green_onion", "두부": "tofu", "소금": "salt", "우유": "milk" };
