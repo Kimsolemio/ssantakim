@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { formatAmount, scaleIngredients, matchIngredients, safeStaples, type IngredientMatch, type MatchStatus, type Recipe, type Unit } from "@cook/shared";
+import { formatAmount, scaleIngredients, matchIngredients, type IngredientMatch, type MatchStatus, type Recipe, type Unit } from "@cook/shared";
 import { Sheet } from "../../components/Sheet";
 import type { FridgeDoc } from "../fridge/useFridge";
 import { itemLook } from "../fridge/FridgeVisual";
@@ -17,10 +17,9 @@ export function statusLabel(m: IngredientMatch<FridgeDoc>): string {
 }
 
 /** 현재 인분 기준으로 재료를 냉장고와 대조 (늘 있는 양념은 가족 설정에서) */
-export function useRecipeMatches(recipe: Recipe, servings: number, fridge: FridgeDoc[], staples: readonly string[] | undefined, allergies: readonly string[] = []) {
-  // 알레르기에 걸리는 양념은 "늘 있음"으로 넘기지 않는다
-  return useMemo(() => matchIngredients(scaleIngredients(recipe.ingredients, recipe.servingsBase, servings), fridge, { staples: staples && safeStaples(staples, allergies) }),
-    [recipe, servings, fridge, staples, allergies]);
+export function useRecipeMatches(recipe: Recipe, servings: number, fridge: FridgeDoc[], staples: readonly string[] | undefined) {
+  return useMemo(() => matchIngredients(scaleIngredients(recipe.ingredients, recipe.servingsBase, servings), fridge, { staples }),
+    [recipe, servings, fridge, staples]);
 }
 
 export function FridgeSummary({ matches, onAddToShopping }: { matches: IngredientMatch<FridgeDoc>[]; onAddToShopping: () => void }) {

@@ -12,7 +12,6 @@ import { useShopping, addShoppingItems } from "../shopping/useShopping";
 import { normalizeKeysInBackground, remapStepKeys } from "../../lib/normalize";
 import { useRecipeMatches, statusLabel, FridgeSummary, AddToShoppingSheet, LinkSheet } from "./FridgeCheck";
 import { updateRecipe, type FolderDoc } from "./useRecipes";
-import { AllergyBanner } from "./AllergyBanner";
 import { writeErrorMessage } from "../../lib/write";
 
 type Props = {
@@ -56,7 +55,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
   const { user } = useAuth();
   const { items: fridge, loading: fridgeLoading } = useFridge(familyId);
   const { items: shopping, loading: shoppingLoading } = useShopping(familyId);
-  const matches = useRecipeMatches(recipe, servings, fridge, family?.profile.staples, family?.profile.allergies);
+  const matches = useRecipeMatches(recipe, servings, fridge, family?.profile.staples);
   // 냉장고·장보기를 다 불러오기 전에는 "없음"으로 잘못 보이지 않게 대조 결과를 숨긴다
   const ready = !fridgeLoading && !shoppingLoading;
 
@@ -108,7 +107,6 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
         <button onClick={() => setMenu(true)} aria-label="더보기" className="px-2 py-2 text-xl">⋯</button>
       </>}>
       <div className="flex flex-col gap-4 p-4 pb-24">
-        <AllergyBanner ingredients={recipe.ingredients} profile={family?.profile} />
         <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
           <span className="rounded-full bg-orange-100 px-2 py-0.5 text-orange-800">{SOURCE_LABEL[recipe.source.type]}</span>
           {recipe.timeMinutes != null && <span>⏱ {recipe.timeMinutes}분</span>}
@@ -130,7 +128,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
               : <p className="rounded-2xl bg-white p-3 text-sm text-gray-500" data-testid="fridge-summary-loading">🧊 냉장고 확인 중…</p>}
           </div>
           <IngredientList ingredients={recipe.ingredients} servingsBase={recipe.servingsBase} servings={servings}
-            statuses={ready ? matches.map((m) => ({ status: m.status, label: statusLabel(m) })) : undefined} profile={family?.profile}
+            statuses={ready ? matches.map((m) => ({ status: m.status, label: statusLabel(m) })) : undefined}
             onStatusClick={(i) => { if (matches[i].status !== "always") setLinking(i); }} />
         </section>
 

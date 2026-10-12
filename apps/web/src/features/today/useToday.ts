@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_STAPLES, daysUntil, provisionalKey, rankRecipesByFridge, safeStaples, type MenuSuggestion } from "@cook/shared";
+import { DEFAULT_STAPLES, daysUntil, provisionalKey, rankRecipesByFridge, type MenuSuggestion } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
 import { useNav } from "../../lib/nav";
@@ -24,7 +24,7 @@ export function useToday() {
   const { items: shopping } = useShopping(familyId);
   const { openGenerate, openRecipe, setTab, openReceipt } = useNav();
   const profile = family?.profile ?? null;
-  const staples = useMemo(() => safeStaples(profile?.staples ?? [...DEFAULT_STAPLES], profile?.allergies ?? []), [profile]);
+  const staples = useMemo(() => profile?.staples ?? [...DEFAULT_STAPLES], [profile]);
 
   // 고른 조건은 탭을 옮겨도 기억한다
   const [inputs, setLocal] = useState<Inputs>(() => getInputs());

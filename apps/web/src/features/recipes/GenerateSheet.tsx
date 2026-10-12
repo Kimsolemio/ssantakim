@@ -73,9 +73,9 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish, initial
         </div>
         <input className={field} placeholder="추가 요청 (선택: 덜 맵게, 에어프라이어로, 15분 안에)" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={busy} maxLength={500} />
         {profile && (
-          <p className="text-xs text-gray-500">가족 취향 반영: {profile.spicyLevel}{profile.kidsFriendly ? " · 아이 있음" : ""}{profile.allergies.length ? ` · 알레르기 ${profile.allergies.join(", ")}` : ""}</p>
+          <p className="text-xs text-gray-500">가족 취향 반영: {profile.spicyLevel}{profile.kidsFriendly ? " · 아이 있음" : ""}{profile.dislikes.length ? ` · 피할 재료 ${profile.dislikes.join(", ")}` : ""}</p>
         )}
-        <AiNotice what="요리 이름과 가족 취향(알레르기 포함)" />
+        <AiNotice what="요리 이름과 가족 취향" />
         {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
         {busy ? (
           <div className="flex items-center justify-between rounded-xl bg-orange-50 px-4 py-3 text-sm text-orange-800">

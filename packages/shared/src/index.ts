@@ -4,5 +4,5 @@ export * from "./keys";
 export * from "./scale";
 export * from "./jsonschema";
 export * from "./matching";
-export * from "./allergy";
+export * from "./dislikes";
 export * from "./today";

@@ -153,7 +153,6 @@ export type NormalizedNames = z.infer<typeof NormalizedNames>;
 export const FamilyProfile = z.object({
   members: z.number().int().positive().default(2),
   spicyLevel: z.enum(["순한맛", "보통", "매운맛"]).default("보통"),
-  allergies: z.array(z.string()).default([]),
   dislikes: z.array(z.string()).default([]),
   kidsFriendly: z.boolean().default(false),
   defaultServings: z.number().positive().default(2),

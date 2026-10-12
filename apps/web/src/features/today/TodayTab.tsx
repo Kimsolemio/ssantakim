@@ -139,14 +139,13 @@ export function TodayTab() {
           <input className="mt-2 w-full rounded-xl border border-orange-200 px-3 py-2 text-base" placeholder="직접 적기 (예: 에어프라이어로, 비 오는 날)" value={inputs.moodText} onChange={(e) => t.update({ moodText: e.target.value })} maxLength={60} />
         </div>
         <form onSubmit={(e) => { e.preventDefault(); t.commitExclude(); }}>
-          <p className="mb-1 text-xs text-gray-500">빼고 싶은 재료 <span className="text-gray-400">(알레르기는 늘 빼고, 싫어하는 재료는 되도록 피해요)</span></p>
+          <p className="mb-1 text-xs text-gray-500">빼고 싶은 재료 <span className="text-gray-400">(가족 설정의 싫어하는 재료도 피해요)</span></p>
           <div className="flex gap-2">
             <input className="min-w-0 flex-1 rounded-xl border border-orange-200 px-3 py-2 text-base" placeholder="예: 오이, 가지" value={inputs.excludeText} onChange={(e) => t.update({ excludeText: e.target.value })} aria-label="빼고 싶은 재료" maxLength={60} />
             <button className="shrink-0 rounded-xl bg-orange-100 px-3 font-semibold text-orange-800">추가</button>
           </div>
-          {(inputs.exclude.length > 0 || (profile && profile.allergies.length + profile.dislikes.length > 0)) && (
+          {(inputs.exclude.length > 0 || (profile && profile.dislikes.length > 0)) && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {profile?.allergies.map((n) => <span key={`a-${n}`} className="rounded-full bg-red-50 px-2.5 py-1 text-sm text-red-700" title="가족 설정의 알레르기">🔒 {n}</span>)}
               {profile?.dislikes.map((n) => <span key={`d-${n}`} className="rounded-full bg-gray-50 px-2.5 py-1 text-sm text-gray-500" title="가족 설정의 싫어하는 재료">🔒 {n}</span>)}
               {inputs.exclude.map((n) => <button key={n} type="button" onClick={() => t.update({ exclude: inputs.exclude.filter((x) => x !== n) })} className="rounded-full bg-gray-100 px-2.5 py-1 text-sm text-gray-700" aria-label={`${n} 빼기 취소`}>🚫 {n} ✕</button>)}
             </div>
@@ -165,7 +164,7 @@ export function TodayTab() {
           <button type="button" disabled={!workerConfigured || t.fridgeLoading} onClick={() => t.suggest(false)} className="rounded-xl bg-orange-500 py-3 text-lg font-semibold text-white disabled:opacity-40">✨ 메뉴 5개 추천받기</button>
         )}
         {t.left != null && <p className="-mt-1 text-center text-xs text-gray-500" data-testid="usage-left">오늘 남은 AI 사용 {t.left}회 (추천 1회씩, 사진은 2회)</p>}
-        <AiNotice what="냉장고 목록과 가족 취향(알레르기 포함)" />
+        <AiNotice what="냉장고 목록과 가족 취향" />
       </section>
 
       {t.run.error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{t.run.error}</p>}
@@ -176,7 +175,7 @@ export function TodayTab() {
             <h2 className="font-bold">추천 메뉴 <span className="text-sm font-normal text-gray-500">{ago(t.saved.at)}</span></h2>
             <button type="button" disabled={t.run.busy} onClick={() => t.suggest(true)} className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-orange-700 ring-1 ring-orange-200 disabled:opacity-40">🔄 다른 메뉴로</button>
           </div>
-          {(t.saved.dropped ?? 0) > 0 && <p className="mb-2 text-xs text-gray-500" data-testid="dropped-note">알레르기·빼기 재료가 들어간 메뉴 {t.saved.dropped}개는 빼고 보여 드려요.</p>}
+          {(t.saved.dropped ?? 0) > 0 && <p className="mb-2 text-xs text-gray-500" data-testid="dropped-note">빼기·싫어하는 재료가 들어간 메뉴 {t.saved.dropped}개는 빼고 보여 드려요.</p>}
           <ul className="flex flex-col gap-2">
             {t.saved.suggestions.map((s) => {
               const added = t.saved!.added.includes(s.title);

@@ -102,7 +102,7 @@ describe("/recipe with Claude", () => {
 
   it("sends a structured-output request with fallbacks and parses the recipe", async () => {
     const calls = stubFetch(() => jsonResponse(claudeMessage(JSON.stringify(SAMPLE_RECIPE))));
-    const r = await recipeReq(env, { dish: "알리오올리오", servings: 2, notes: "덜 맵게", profile: { members: 3, spicyLevel: "순한맛", allergies: ["새우"], dislikes: [], kidsFriendly: true, defaultServings: 2 } });
+    const r = await recipeReq(env, { dish: "알리오올리오", servings: 2, notes: "덜 맵게", profile: { members: 3, spicyLevel: "순한맛", dislikes: ["고수"], kidsFriendly: true, defaultServings: 2 } });
     expect(r.status).toBe(200);
     const j = await r.json() as any;
     expect(j.provider).toBe("claude");
@@ -120,7 +120,7 @@ describe("/recipe with Claude", () => {
     expect(c.body.output_config.effort).toBe("medium");
     expect(c.body.output_config.format.type).toBe("json_schema");
     expect(c.body.output_config.format.schema.properties.ingredients).toBeTruthy();
-    expect(c.body.messages[0].content[0].text).toContain("알레르기 [새우]");
+    expect(c.body.messages[0].content[0].text).toContain("싫어하는 재료 [고수]");
     expect(c.body.messages[0].content[0].text).toContain("추가 요청: 덜 맵게");
   });
 

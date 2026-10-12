@@ -59,7 +59,7 @@ await mom.getByText("👨‍👩‍👧 테스트네").click();
 const code = (await mom.locator(".tracking-widest").first().textContent()).trim();
 assert.match(code, /^[A-Z0-9]{6}$/);
 await mom.getByLabel("아이가 함께 먹어요").check();
-await mom.getByPlaceholder("알레르기 (쉼표로: 땅콩, 새우)").fill("새우, 땅콩");
+await mom.getByPlaceholder("싫어하는 재료 (쉼표로: 고수, 오이)").fill("고수");
 await mom.getByText("취향 저장").click();
 await mom.getByText("저장했어요").waitFor();
 await mom.screenshot({ path: `${shots}/02-family-menu.png` });
@@ -366,7 +366,7 @@ assert.equal(await mom.getByRole("link", { name: "원본 보기" }).getAttribute
 await mom.getByLabel("뒤로").click();
 await mom.locator("li", { hasText: "인스타 떡볶이" }).waitFor();
 
-// ---------- 비판 검토 반영: 알레르기 경고, 저장 안 한 초안, 다 썼어요, 영수증 결과 보관 ----------
+// ---------- 비판 검토 반영: 저장 안 한 초안, 다 썼어요, 영수증 결과 보관 ----------
 await mom.getByText("✨ 음식 이름으로").click();
 assert.match(await mom.getByTestId("ai-notice").textContent(), /Google\(Gemini 무료 등급\)/, "어느 AI로 가는지 알린다");
 await mom.getByPlaceholder(/알리오올리오/).fill("새우볶음밥");
@@ -374,9 +374,7 @@ await mom.getByRole("button", { name: "레시피 만들기", exact: true }).clic
 await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
 await mom.getByText("+ 재료 추가").click();
 await mom.getByPlaceholder("재료", { exact: true }).last().fill("새우젓");
-await mom.getByTestId("allergy-banner").getByText(/가족 알레르기 재료가 있어요: 새우\(새우젓\)/).waitFor();
-await mom.getByTestId("allergy-chip").getByText("⚠️ 새우").waitFor(); // 그 재료 줄에도 표시
-await mom.screenshot({ path: `${shots}/22-allergy-banner.png` });
+await mom.screenshot({ path: `${shots}/22-editor-draft.png` });
 await mom.getByLabel("뒤로").click(); // "저장하지 않고 닫을까요?" → 확인
 await mom.getByTestId("pending-draft").getByText("새우볶음밥").waitFor();
 await mom.reload(); // 앱을 껐다 켜도 초안이 남는다

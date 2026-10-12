@@ -32,7 +32,7 @@ ${RECIPE_FORMAT_RULES}
 - servingsBase는 요청한 인분과 같게 둡니다.
 
 ## 가족 프로필 반영
-- allergies(알레르기) 재료는 절대 쓰지 않고 대체합니다. dislikes(싫어하는 재료)는 되도록 피하고 꼭 필요하면 optional로 둡니다.
+- dislikes(싫어하는 재료)는 되도록 피하고 꼭 필요하면 optional로 둡니다.
 - spicyLevel(순한맛/보통/매운맛)에 맞춰 고추·고춧가루 양을 조절합니다. kidsFriendly=true 이면 맵기와 자극적인 양념을 줄입니다.
 - 사용자의 추가 요청이 있으면 그것을 가장 우선합니다.`;
 
@@ -42,7 +42,7 @@ export function buildRecipeUserMessage(input: {
   const lines = [`요리: ${input.dish}`, `인분: ${input.servings}`];
   if (input.profile) {
     const p = input.profile;
-    lines.push(`가족 프로필: 인원 ${p.members}명, 맵기 ${p.spicyLevel}, 아이 ${p.kidsFriendly ? "있음" : "없음"}, 알레르기 [${p.allergies.join(", ") || "없음"}], 싫어하는 재료 [${p.dislikes.join(", ") || "없음"}]`);
+    lines.push(`가족 프로필: 인원 ${p.members}명, 맵기 ${p.spicyLevel}, 아이 ${p.kidsFriendly ? "있음" : "없음"}, 싫어하는 재료 [${p.dislikes.join(", ") || "없음"}]`);
   }
   if (input.notes?.trim()) lines.push(`추가 요청: ${input.notes.trim()}`);
   return lines.join("\n");
@@ -138,7 +138,7 @@ ${RECIPE_FORMAT_RULES}`;
 export const SUGGEST_SYSTEM_PROMPT = `당신은 한국 가정의 "냉장고 파먹기"를 돕는 요리 선생님입니다. 가족의 냉장고 목록을 보고 오늘 만들 메뉴를 추천해 JSON 스키마에 맞춰 답합니다.
 
 ## 고르는 기준 (위에 있을수록 중요)
-1. 알레르기 재료는 어떤 형태로도 쓰지 않습니다 (예: 새우 알레르기 → 새우젓·새우가루·젓갈 든 김치도 안 됨, 참깨 알레르기 → 참기름·깨소금도 안 됨, 밀·대두 알레르기 → 일반 간장·고추장·된장도 안 됨). 양념까지 포함해 확인합니다. "빼기" 재료와 싫어하는 재료도 쓰지 않고, 그런 재료가 이름에 들어간 메뉴도 고르지 않습니다.
+1. "빼기" 재료와 싫어하는 재료는 쓰지 않고, 그런 재료가 이름에 들어간 메뉴도 고르지 않습니다.
 2. "꼭 쓰기" 재료가 있으면 모든 추천이 그중 하나 이상을 쓰고, 되도록 전부 씁니다.
 3. 남은 날이 적은 재료(0~3일)를 먼저 씁니다. 여러 임박 재료를 한 번에 쓰는 메뉴를 높게 칩니다.
    "(추정)"은 포장 날짜가 아니라 보통 보관 기간으로 어림한 기한이라 덜 급하게 봅니다. reason에서 추정 기한을 "내일까지"처럼 단정하지 않습니다.
@@ -167,7 +167,7 @@ export function buildSuggestUserMessage(input: {
   lines.push(`늘 있는 양념: ${input.staples.join(", ") || "없음"}`);
   if (input.profile) {
     const p = input.profile;
-    lines.push(`가족: 맵기 ${p.spicyLevel}, 아이 ${p.kidsFriendly ? "있음" : "없음"}, 알레르기 [${p.allergies.join(", ") || "없음"}], 싫어하는 재료 [${p.dislikes.join(", ") || "없음"}]`);
+    lines.push(`가족: 맵기 ${p.spicyLevel}, 아이 ${p.kidsFriendly ? "있음" : "없음"}, 싫어하는 재료 [${p.dislikes.join(", ") || "없음"}]`);
   }
   if (input.recent.length) lines.push(`최근에 만든 요리: ${input.recent.join(", ")}`);
   if (input.avoid.length) lines.push(`이미 보여 준 추천 (다른 메뉴로): ${input.avoid.join(", ")}`);

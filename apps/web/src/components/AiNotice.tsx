@@ -1,6 +1,6 @@
 import { useAiInfo } from "../lib/aiInfo";
 
-/** "사진" → "사진은", "취향(알레르기 포함)" → "취향(알레르기 포함)은" (괄호 앞 글자로 받침을 본다) */
+/** "사진" → "사진은", "글(유튜브 포함)" → "글(유튜브 포함)은" (괄호 앞 글자로 받침을 본다) */
 function withTopic(word: string): string {
   const base = word.replace(/\([^)]*\)\s*$/, "").trim();
   const code = base.charCodeAt(base.length - 1) - 0xac00;

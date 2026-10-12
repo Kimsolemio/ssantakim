@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { IngredientGroup, RecipeDraft, Unit, provisionalKey, type Ingredient, type Step } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { remapStepKeys } from "../../lib/normalize";
-import { useFamily } from "../../lib/family";
-import { AllergyBanner, AllergyChip } from "./AllergyBanner";
 
 type Props = {
   title: string;
@@ -31,7 +29,6 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
   const [tagsText, setTagsText] = useState(initial.tags.join(", "));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const { family } = useFamily();
 
   // 재료마다 처음 이름·key 를 기억한다. 이름이 처음과 달라지면 key 를 비우고(저장할 때 새로 만든다),
   // 처음 이름으로 되돌리면 처음 key(AI가 정리한 것)를 되살린다. 단계의 ingredientKeys 를 고칠 때도 쓴다
@@ -94,7 +91,6 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
       <div className="flex flex-col gap-5 p-4">
         {note && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800" data-testid="import-note">✅ {note}{initial.source.url ? " · 원본 링크가 함께 저장돼요" : ""}. 저장 전에 재료와 순서를 확인해 주세요.</p>}
         {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
-        <AllergyBanner ingredients={d.ingredients.filter((i) => i.name.trim())} profile={family?.profile} />
 
         <section className="flex flex-col gap-2">
           <input className={`${field} text-lg font-bold`} placeholder="요리 이름" value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} />
@@ -127,7 +123,6 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
                   </select>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <AllergyChip name={ing.name} profile={family?.profile} />
                   <select className={small + " py-1"} value={ing.group} onChange={(e) => setIng(i, { group: e.target.value as IngredientGroup })}>
                     {IngredientGroup.options.map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>

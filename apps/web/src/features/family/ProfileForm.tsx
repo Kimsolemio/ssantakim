@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { FamilyProfile, isKnownAllergy, staplesWithAllergens } from "@cook/shared";
+import { FamilyProfile } from "@cook/shared";
 
 type Props = { initial: FamilyProfile; onSave: (p: FamilyProfile) => Promise<void> };
 
 /** 가족 취향: AI 레시피 생성 시 함께 보내진다 */
 export function ProfileForm({ initial, onSave }: Props) {
   const [p, setP] = useState<FamilyProfile>(initial);
-  const [allergies, setAllergies] = useState(initial.allergies.join(", "));
   const [dislikes, setDislikes] = useState(initial.dislikes.join(", "));
   const [staples, setStaples] = useState(initial.staples.join(", "));
   const [busy, setBusy] = useState(false);
@@ -26,23 +25,14 @@ export function ProfileForm({ initial, onSave }: Props) {
           </select></label>
       </div>
       <label className="flex items-center gap-2"><input type="checkbox" checked={p.kidsFriendly} onChange={(e) => setP({ ...p, kidsFriendly: e.target.checked })} />아이가 함께 먹어요</label>
-      <input className={small} placeholder="알레르기 (쉼표로: 땅콩, 새우)" value={allergies} onChange={(e) => setAllergies(e.target.value)} />
-      {split(allergies).some((a) => !isKnownAllergy(a)) && (
-        <p className="text-xs text-amber-700" data-testid="allergy-unknown">
-          ⚠️ {split(allergies).filter((a) => !isKnownAllergy(a)).join(", ")}: 숨은 성분 목록이 없어서 그 이름이 들어간 재료만 찾아요. 소스·가공식품은 포장 표시를 꼭 확인해 주세요.
-        </p>
-      )}
       <input className={small} placeholder="싫어하는 재료 (쉼표로: 고수, 오이)" value={dislikes} onChange={(e) => setDislikes(e.target.value)} />
       <label className="text-xs text-gray-500">늘 있는 양념 (냉장고에 없어도 "있음"으로 봐요)
         <input className={small + " mt-1 w-full"} placeholder="소금, 설탕, 간장" value={staples} onChange={(e) => setStaples(e.target.value)} /></label>
-      {staplesWithAllergens(split(staples), split(allergies)).length > 0 && (
-        <p className="text-xs text-red-700" data-testid="staple-allergy">⚠️ {staplesWithAllergens(split(staples), split(allergies)).join(", ")}은(는) 가족 알레르기에 걸려요. 늘 있는 양념으로 보지 않고, 레시피에 나오면 경고해요.</p>
-      )}
       {msg && <p className="text-xs text-gray-500">{msg}</p>}
       <button disabled={busy} className="rounded-lg bg-orange-500 py-2 font-semibold text-white disabled:opacity-50"
         onClick={async () => {
           setBusy(true); setMsg(null);
-          try { await onSave({ ...p, members: p.members, allergies: split(allergies), dislikes: split(dislikes), staples: split(staples) }); setMsg("저장했어요"); }
+          try { await onSave({ ...p, members: p.members, dislikes: split(dislikes), staples: split(staples) }); setMsg("저장했어요"); }
           catch (e) { setMsg(e instanceof Error ? e.message : "저장 실패"); }
           finally { setBusy(false); }
         }}>취향 저장</button>

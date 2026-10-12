@@ -86,7 +86,7 @@ async function readJson<T>(request: Request, schema: z.ZodType<T>, maxBytes = 1_
 const RecipeRequest = z.object({
   dish: z.string().trim().min(1).max(100),
   servings: z.number().positive().max(50).default(2),
-  profile: FamilyProfile.transform((p) => ({ ...p, allergies: p.allergies.slice(0, 30), dislikes: p.dislikes.slice(0, 30), staples: p.staples.slice(0, 40) })).nullable().optional(),
+  profile: FamilyProfile.transform((p) => ({ ...p, dislikes: p.dislikes.slice(0, 30), staples: p.staples.slice(0, 40) })).nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
 });
 
@@ -123,7 +123,6 @@ const names = (n: number, max = 60) => z.array(oneLine(max)).transform((a) => a.
 /** 가족 설정의 목록도 길이를 제한해서 보낸다 (아주 긴 목록이 그대로 AI 입력이 되지 않게) */
 const ProfileIn = FamilyProfile.transform((p) => ({
   ...p,
-  allergies: p.allergies.slice(0, 30).map((s) => s.slice(0, 30)),
   dislikes: p.dislikes.slice(0, 30).map((s) => s.slice(0, 30)),
   staples: p.staples.slice(0, 40).map((s) => s.slice(0, 30)),
 }));
