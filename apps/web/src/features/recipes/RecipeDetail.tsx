@@ -147,7 +147,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
           onLink={async (f) => { await setFridgeItemKey(familyId, f.id, linking.ingredient.key); say(`🔗 ${f.name}을(를) ${linking.ingredient.name}(으)로 연결했어요`); }} />
       )}
       {notice && (
-        <div role="status" className="fixed inset-x-0 z-50 mx-auto w-fit max-w-[90%] rounded-full bg-slate-900/90 px-4 py-2 text-sm text-white shadow-lg"
+        <div role="status" className="pointer-events-none fixed inset-x-0 z-50 mx-auto w-fit max-w-[90%] rounded-full bg-slate-900/90 px-4 py-2 text-sm text-white shadow-lg"
           style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>{notice}</div>
       )}
 

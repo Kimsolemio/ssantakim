@@ -58,6 +58,14 @@ createServer((req, res) => {
       setTimeout(() => { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ recipe: r, model: "mock", usage: { input: 1, output: 1 } })); }, 800);
       return;
     }
+    if (req.url === "/normalize") {
+      const b = JSON.parse(body || "{}");
+      const dict = { "스파게티면": "spaghetti", "깐마늘": "garlic", "올리브유": "olive_oil", "대파": "green_onion", "두부": "tofu", "소금": "salt", "우유": "milk" };
+      const items = (b.names ?? []).map((name) => ({ name, key: dict[name.replace(/\s/g, "")] ?? name }));
+      console.log("mock /normalize", JSON.stringify(items));
+      res.writeHead(200, { ...cors, "content-type": "application/json" });
+      return res.end(JSON.stringify({ items, provider: "mock", model: "mock" }));
+    }
     if (req.url === "/pantry/receipt") {
       const b = JSON.parse(body || "{}");
       const ok = Array.isArray(b.images) && b.images.length > 0 && b.images.every((im) => im.mediaType === "image/jpeg" && typeof im.data === "string" && im.data.length > 1000 && !im.data.startsWith("data:"));

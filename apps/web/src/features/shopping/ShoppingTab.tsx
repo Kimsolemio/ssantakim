@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   DEFAULT_SHELF_DAYS, FoodCategory, StorageLocation, Unit, addDays, defaultLocation, formatAmount, guessFood, localDate,
 } from "@cook/shared";
@@ -32,9 +32,25 @@ export function ShoppingTab() {
   const [moving, setMoving] = useState(false);
   const [editing, setEditing] = useState<ShoppingDoc | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // 체크하면 서버 반영을 기다리지 않고 바로 화면에 보인다 (반영되면 서버 값으로 돌아간다)
+  const [optimistic, setOptimistic] = useState<Record<string, boolean>>({});
+  const view = useMemo(() => items.map((i) => (i.id in optimistic ? { ...i, checked: optimistic[i.id] } : i)), [items, optimistic]);
+  useEffect(() => {
+    setOptimistic((o) => {
+      const next = { ...o };
+      let changed = false;
+      for (const i of items) if (i.id in next && next[i.id] === i.checked) { delete next[i.id]; changed = true; }
+      return changed ? next : o;
+    });
+  }, [items]);
+  const toggle = (it: ShoppingDoc, checked: boolean) => {
+    if (!familyId) return;
+    setOptimistic((o) => ({ ...o, [it.id]: checked }));
+    setShoppingChecked(familyId, it.id, checked).catch(() => setOptimistic((o) => { const n = { ...o }; delete n[it.id]; return n; }));
+  };
 
-  const todo = useMemo(() => items.filter((i) => !i.checked), [items]);
-  const done = useMemo(() => items.filter((i) => i.checked), [items]);
+  const todo = useMemo(() => view.filter((i) => !i.checked), [view]);
+  const done = useMemo(() => view.filter((i) => i.checked), [view]);
   const groups = useMemo(() => {
     const m = new Map<FoodCategory, ShoppingDoc[]>();
     for (const it of todo) { const c = it.category ?? guessFood(it.name).category; m.set(c, [...(m.get(c) ?? []), it]); }
@@ -59,7 +75,7 @@ export function ShoppingTab() {
   const row = (it: ShoppingDoc) => (
     <li key={it.id} data-testid="shopping-row" className="flex items-center gap-3 px-4 py-3">
       <input type="checkbox" className="h-6 w-6 accent-orange-500" aria-label={`${it.name} 담음`} checked={it.checked}
-        onChange={(e) => setShoppingChecked(familyId, it.id, e.target.checked)} />
+        onChange={(e) => toggle(it, e.target.checked)} />
       <button type="button" onClick={() => setEditing(it)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
         <span aria-hidden>{it.emoji ?? guessFood(it.name).emoji}</span>
         <span className={`min-w-0 flex-1 truncate ${it.checked ? "text-gray-400 line-through" : "font-medium"}`}>
