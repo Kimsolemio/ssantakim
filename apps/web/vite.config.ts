@@ -24,7 +24,8 @@ export default defineConfig({
           { src: "icon-512.png", sizes: "512x512", type: "image/png" },
           { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
-        // 5단계에서 share_target 추가 (Android 공유 대상)
+        // 안드로이드: 유튜브·인스타·블로그에서 "공유" → 이 앱을 고르면 /share 로 열린다
+        share_target: { action: "/share", method: "GET", params: { title: "title", text: "text", url: "url" } },
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],

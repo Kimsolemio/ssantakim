@@ -1,9 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RecipeDraft } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
 import { useRecipes, useFolders, createRecipe, updateRecipe, deleteRecipe, createFolder, deleteFolder, type RecipeDoc } from "./useRecipes";
 import { GenerateSheet } from "./GenerateSheet";
+import { ImportSheet } from "./ImportSheet";
+import { useNav } from "../../lib/nav";
+import type { SharedPayload } from "../../lib/share";
 import { RecipeEditor } from "./RecipeEditor";
 import { RecipeDetail, SOURCE_LABEL } from "./RecipeDetail";
 import { Sheet } from "../../components/Sheet";
@@ -18,7 +21,15 @@ export function RecipesTab() {
   const folders = useFolders(familyId);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>({ kind: "all" });
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState<false | { dish?: string }>(false);
+  const [importing, setImporting] = useState<false | { initial: SharedPayload | null }>(false);
+  const [draftNote, setDraftNote] = useState<string | null>(null);
+  const { pendingImport, consumeImport } = useNav();
+  useEffect(() => {
+    if (!pendingImport) return;
+    consumeImport();
+    setImporting({ initial: pendingImport });
+  }, [pendingImport]); // eslint-disable-line react-hooks/exhaustive-deps
   const [draft, setDraft] = useState<RecipeDraft | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<RecipeDoc | null>(null);
@@ -46,6 +57,10 @@ export function RecipesTab() {
         <h1 className="text-2xl font-bold">레시피</h1>
         <p className="text-sm text-gray-500">{family?.name ?? ""} · {recipes.length}개</p>
       </header>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => setGenerating({})} className="rounded-xl bg-orange-500 py-3 font-semibold text-white shadow">✨ 음식 이름으로</button>
+        <button onClick={() => setImporting({ initial: null })} data-testid="open-import" className="rounded-xl bg-white py-3 font-semibold text-gray-800 shadow">🔗 링크·사진으로</button>
+      </div>
       <input className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 outline-none focus:border-orange-400"
         placeholder="요리 이름, 재료, 태그 검색" value={search} onChange={(e) => setSearch(e.target.value)} />
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
@@ -61,7 +76,7 @@ export function RecipesTab() {
       {loading && <p className="text-sm text-gray-500">불러오는 중…</p>}
       {!loading && recipes.length === 0 && (
         <div className="rounded-2xl bg-white p-6 text-center text-gray-500">
-          아직 레시피가 없어요.<br />오른쪽 아래 ✨ 버튼으로 음식 이름만 입력해 보세요.
+          아직 레시피가 없어요.<br />음식 이름을 넣거나, 유튜브·블로그 링크나 인스타 캡션을 가져와 보세요.
         </div>
       )}
       {!loading && recipes.length > 0 && filtered.length === 0 && <p className="text-center text-sm text-gray-500">조건에 맞는 레시피가 없어요.</p>}
@@ -85,16 +100,21 @@ export function RecipesTab() {
         ))}
       </ul>
 
-      <button onClick={() => setGenerating(true)} aria-label="AI 레시피 만들기"
+      <button onClick={() => setGenerating({})} aria-label="AI 레시피 만들기"
         className="fixed right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-orange-500 text-2xl text-white shadow-lg active:scale-95"
         style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>✨</button>
 
       {generating && (
-        <GenerateSheet profile={family?.profile ?? null} onClose={() => setGenerating(false)}
-          onResult={(d) => { setGenerating(false); setDraft(d); }} />
+        <GenerateSheet profile={family?.profile ?? null} initialDish={generating.dish} onClose={() => setGenerating(false)}
+          onResult={(d) => { setGenerating(false); setDraftNote(null); setDraft(d); }} />
+      )}
+      {importing && (
+        <ImportSheet initial={importing.initial} onClose={() => setImporting(false)}
+          onResult={(d, note) => { setImporting(false); setDraftNote(note); setDraft(d); }}
+          onMakeWithAi={(dish) => { setImporting(false); setGenerating({ dish }); }} />
       )}
       {draft && (
-        <RecipeEditor title="레시피 확인·수정" initial={draft} onClose={() => setDraft(null)}
+        <RecipeEditor title="레시피 확인·수정" initial={draft} note={draftNote} onClose={() => setDraft(null)}
           onSave={async (d) => {
             const id = await createRecipe(familyId, user.uid, d, filter.kind === "folder" ? filter.id : null);
             setDraft(null); setOpenId(id);

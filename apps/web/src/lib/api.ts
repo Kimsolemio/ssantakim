@@ -4,7 +4,8 @@ export const workerUrl: string = (import.meta.env.VITE_WORKER_URL as string | un
 export const workerConfigured = workerUrl.length > 0;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  /** code: 서버가 알려 준 상황 (예: instagram → 캡션 입력으로 전환) */
+  constructor(message: string, public status: number, public code?: string) { super(message); }
 }
 
 /** Worker 호출. Firebase ID 토큰을 Authorization 헤더로 보낸다. */
@@ -28,8 +29,8 @@ export async function callWorker<T>(path: string, body: unknown, signal?: AbortS
   let data: unknown = null;
   try { data = await res.json(); } catch { /* 본문 없음 */ }
   if (!res.ok) {
-    const msg = (data as { error?: string } | null)?.error ?? `요청 실패 (${res.status})`;
-    throw new ApiError(msg, res.status);
+    const d = data as { error?: string; code?: string } | null;
+    throw new ApiError(d?.error ?? `요청 실패 (${res.status})`, res.status, d?.code);
   }
   return data as T;
 }

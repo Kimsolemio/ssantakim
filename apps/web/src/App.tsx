@@ -6,6 +6,8 @@ import { FridgeTab } from "./features/fridge/FridgeTab";
 import { RecipesTab } from "./features/recipes/RecipesTab";
 import { ShoppingTab } from "./features/shopping/ShoppingTab";
 import { NavProvider, useNav } from "./lib/nav";
+import { takePendingShare } from "./lib/share";
+import { useEffect } from "react";
 import { FamilySetup } from "./features/family/FamilySetup";
 import { FamilyMenu } from "./features/family/FamilyBar";
 import { Placeholder } from "./pages/Placeholder";
@@ -13,7 +15,12 @@ import { SetupScreen } from "./pages/SetupScreen";
 import { SignInScreen } from "./pages/SignInScreen";
 
 function Tabs() {
-  const { tab, setTab } = useNav();
+  const { tab, setTab, openImport } = useNav();
+  // 공유로 들어온 링크가 있으면 가져오기 화면을 연다 (로그인을 거친 뒤에도)
+  useEffect(() => {
+    const shared = takePendingShare();
+    if (shared) openImport(shared);
+  }, [openImport]);
   return (
     <div className="mx-auto max-w-lg" style={{ paddingTop: "var(--safe-top)" }}>
       <FamilyMenu />

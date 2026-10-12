@@ -4,15 +4,15 @@ import { Sheet } from "../../components/Sheet";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { ServingsStepper } from "./RecipeDetail";
 
-type Props = { profile: FamilyProfile | null; onResult: (draft: RecipeDraft) => void; onClose: () => void };
+type Props = { profile: FamilyProfile | null; onResult: (draft: RecipeDraft) => void; onClose: () => void; initialDish?: string };
 
 const WAITING = ["재료를 고르는 중…", "분량을 계산하는 중…", "조리 순서를 정리하는 중…", "팁을 적는 중…", "마무리 중…"];
 
 type RecipeResponse = { recipe: RecipeDraft; model: string; usage: { input: number; output: number } };
 
 /** 음식 이름 → AI 레시피 생성. 결과는 편집 화면으로 넘긴다. */
-export function GenerateSheet({ profile, onResult, onClose }: Props) {
-  const [dish, setDish] = useState("");
+export function GenerateSheet({ profile, onResult, onClose, initialDish }: Props) {
+  const [dish, setDish] = useState(initialDish ?? "");
   const [servings, setServings] = useState(profile?.defaultServings ?? 2);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);

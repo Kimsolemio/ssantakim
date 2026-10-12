@@ -5,6 +5,8 @@ import { FullScreen } from "../../components/FullScreen";
 type Props = {
   title: string;
   initial: RecipeDraft;
+  /** 가져온 곳 안내 (예: "유튜브 설명란에서 찾았어요") */
+  note?: string | null;
   onSave: (draft: RecipeDraft) => Promise<void>;
   onClose: () => void;
 };
@@ -17,7 +19,7 @@ function emptyIngredient(): Ingredient {
 }
 
 /** AI 결과를 저장하기 전에 사람이 고치는 화면. 저장 시 zod로 검증한다. */
-export function RecipeEditor({ title, initial, onSave, onClose }: Props) {
+export function RecipeEditor({ title, initial, note, onSave, onClose }: Props) {
   const [d, setD] = useState<RecipeDraft>(initial);
   const [tagsText, setTagsText] = useState(initial.tags.join(", "));
   const [busy, setBusy] = useState(false);
@@ -57,6 +59,7 @@ export function RecipeEditor({ title, initial, onSave, onClose }: Props) {
     <FullScreen title={title} onClose={onClose}
       right={<button disabled={busy} onClick={save} className="rounded-full bg-orange-500 px-4 py-1.5 font-semibold text-white disabled:opacity-50">{busy ? "저장 중…" : "저장"}</button>}>
       <div className="flex flex-col gap-5 p-4">
+        {note && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800" data-testid="import-note">✅ {note}{initial.source.url ? " · 원본 링크가 함께 저장돼요" : ""}. 저장 전에 재료와 순서를 확인해 주세요.</p>}
         {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
 
         <section className="flex flex-col gap-2">
