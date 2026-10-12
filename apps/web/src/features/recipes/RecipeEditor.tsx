@@ -1,6 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ChevronDown, Ellipsis, Plus, Timer, Trash2, X } from "lucide-react";
 import { IngredientGroup, RecipeDraft, Unit, provisionalKey, type Ingredient, type Step } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
+import { Sheet } from "../../components/Sheet";
+import { Button } from "../../components/ui/Button";
+import { IconButton } from "../../components/ui/IconButton";
+import { Banner } from "../../components/ui/Banner";
+import { TextArea, TextField } from "../../components/ui/Field";
+import { Stepper } from "../../components/ui/Stepper";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { SwitchRow } from "../../components/ui/Toggle";
+import { Band, SectionHeader, rowLine } from "../../components/ui/Section";
+import { SourceList } from "../../components/ui/Ai";
 import { remapStepKeys } from "../../lib/normalize";
 
 type Props = {
@@ -16,11 +27,38 @@ type Props = {
   onChange?: (draft: RecipeDraft) => void;
 };
 
-const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-base outline-none focus:border-orange-400";
-const small = "rounded-lg border border-orange-200 bg-white px-2 py-2 text-sm outline-none focus:border-orange-400";
+/** 흰 화면 위 작은 입력칸 (재료 줄·타이머·팁) */
+const cell = "h-11 rounded-control border border-transparent bg-surface-2 text-body text-ink placeholder:text-ink-3 outline-none transition "
+  + "focus:border-accent focus:bg-surface focus:ring-4 focus:ring-accent/15";
+const noSpin = "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+const DIFFICULTY = (["쉬움", "보통", "어려움"] as const).map((v) => ({ value: v, label: v }));
+const GROUPS = IngredientGroup.options.map((g) => ({ value: g, label: g }));
+const groupOf = (i: Ingredient): IngredientGroup => (IngredientGroup.options.includes(i.group) ? i.group : "기타");
 
 function emptyIngredient(): Ingredient {
   return { name: "", key: "", qty: null, unit: "개", scalable: true, optional: false, group: "주재료" };
+}
+
+/** 목록 끝 "재료 추가" 같은 행 */
+function AddRow({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick}
+      className="flex min-h-14 w-full items-center gap-3 px-5 text-left text-callout font-semibold text-accent transition-colors active:bg-surface-2">
+      <Plus size={20} aria-hidden />{children}
+    </button>
+  );
+}
+
+/** 옵션 시트 안의 한 행 */
+function ActionRow({ icon, children, onClick, disabled, danger }: { icon: ReactNode; children: ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean }) {
+  return (
+    <li className={`${rowLine} before:left-14`}>
+      <button type="button" onClick={onClick} disabled={disabled}
+        className={`flex min-h-14 w-full items-center gap-4 px-5 text-left text-body transition-colors active:bg-surface-2 disabled:text-ink-disabled ${danger ? "text-danger" : "text-ink"}`}>
+        {icon}{children}
+      </button>
+    </li>
+  );
 }
 
 /** AI 결과를 저장하기 전에 사람이 고치는 화면. 저장 시 zod로 검증한다. */
@@ -29,6 +67,22 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
   const [tagsText, setTagsText] = useState(initial.tags.join(", "));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [ingOpt, setIngOpt] = useState<number | null>(null);
+  const [stepOpt, setStepOpt] = useState<number | null>(null);
+  const timeId = useId();
+  const root = useRef<HTMLDivElement>(null);
+  const errBox = useRef<HTMLDivElement>(null);
+  // 행을 추가하면 그 칸으로 커서를 옮긴다 (data-focus 값)
+  const focusNext = useRef<string | null>(null);
+  useEffect(() => {
+    const key = focusNext.current;
+    if (!key) return;
+    focusNext.current = null;
+    const el = root.current?.querySelector<HTMLElement>(`[data-focus="${key}"]`);
+    el?.focus({ preventScroll: true });
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
+  useEffect(() => { if (err) errBox.current?.scrollIntoView({ block: "start", behavior: "smooth" }); }, [err]);
 
   // 재료마다 처음 이름·key 를 기억한다. 이름이 처음과 달라지면 key 를 비우고(저장할 때 새로 만든다),
   // 처음 이름으로 되돌리면 처음 key(AI가 정리한 것)를 되살린다. 단계의 ingredientKeys 를 고칠 때도 쓴다
@@ -45,8 +99,18 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
     setD((p) => ({ ...p, ingredients: p.ingredients.filter((_, idx) => idx !== i) }));
     setOrigs((k) => k.filter((_, idx) => idx !== i));
   };
+  const addIng = () => {
+    focusNext.current = `ing-${d.ingredients.length}`;
+    setD({ ...d, ingredients: [...d.ingredients, emptyIngredient()] });
+    setOrigs((k) => [...k, null]);
+  };
   const setStep = (i: number, patch: Partial<Step>) =>
     setD((p) => ({ ...p, steps: p.steps.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) }));
+  const moveStep = (i: number, dir: -1 | 1) => {
+    const a = [...d.steps];
+    [a[i + dir], a[i]] = [a[i], a[i + dir]];
+    setD({ ...d, steps: a });
+  };
 
   const dirty = d !== initial || tagsText !== initial.tags.join(", ");
   useEffect(() => { if (dirty) onChange?.({ ...d, tags: tagsText.split(/[,，]/).map((t) => t.trim()).filter(Boolean) }); }, [d, tagsText]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,95 +149,158 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
     finally { setBusy(false); }
   };
 
+  // 배너는 하나만: 오류가 있으면 오류, 아니면 어디서 왔는지 (새 AI 결과)
+  const refs = initial.source.refs ?? [];
+  const noteText = note ? `${note}${initial.source.url ? " · 원본 링크가 함께 저장돼요" : ""}`
+    : fresh && refs.length ? `인기 레시피 ${refs.length}곳을 참고했어요` : null;
+  const groups = IngredientGroup.options.filter((g) => d.ingredients.some((x) => groupOf(x) === g));
+
+  const ingRow = (ing: Ingredient, i: number) => {
+    const extra = [ing.optional && "선택 재료", !ing.scalable && ing.unit !== "기타" && "인분 고정", ing.note?.trim()].filter(Boolean).join(" · ");
+    return (
+      <li key={i}>
+        <div className="flex items-center gap-1.5 px-4 py-1.5">
+          <input data-focus={`ing-${i}`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="재료" value={ing.name} onChange={(e) => setIng(i, { name: e.target.value })} />
+          <input className={`${cell} w-[60px] shrink-0 px-2 text-center tabular-nums ${noSpin}`} type="number" inputMode="decimal" step="any" min={0} placeholder="수량" value={ing.qty ?? ""}
+            onChange={(e) => setIng(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
+          <span className="relative w-[72px] shrink-0">
+            <select aria-label="단위" className={`${cell} w-full appearance-none pl-2 pr-5 text-callout`} value={ing.unit}
+              onChange={(e) => setIng(i, { unit: e.target.value as Unit, ...(e.target.value === "기타" ? { scalable: false } : {}) })}>
+              {Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+            <ChevronDown size={14} aria-hidden className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-ink-3" />
+          </span>
+          <IconButton aria-label="재료 옵션" className="-mr-1.5" onClick={() => setIngOpt(i)}><Ellipsis size={20} /></IconButton>
+        </div>
+        {extra && (
+          <button type="button" onClick={() => setIngOpt(i)} className="-mt-0.5 block w-full truncate pb-2 pl-7 pr-4 text-left text-caption text-ink-3">{extra}</button>
+        )}
+      </li>
+    );
+  };
+
+  const opt = ingOpt != null ? d.ingredients[ingOpt] : undefined;
   return (
     <FullScreen title={title} onClose={onClose} confirmClose={confirmClose}
-      right={<button disabled={busy} onClick={save} className="rounded-full bg-orange-500 px-4 py-1.5 font-semibold text-white disabled:opacity-50">{busy ? "저장 중…" : "저장"}</button>}>
-      <div className="flex flex-col gap-5 p-4">
-        {note && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800" data-testid="import-note">✅ {note}{initial.source.url ? " · 원본 링크가 함께 저장돼요" : ""}. 저장 전에 재료와 순서를 확인해 주세요.</p>}
-        {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
-
-        <section className="flex flex-col gap-2">
-          <input className={`${field} text-lg font-bold`} placeholder="요리 이름" value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} />
-          <div className="grid grid-cols-3 gap-2">
-            <label className="text-xs text-gray-500">기준 인분
-              <input className={small + " mt-1 w-full"} type="number" inputMode="numeric" min={1} value={d.servingsBase}
-                onChange={(e) => setD({ ...d, servingsBase: Math.max(1, Number(e.target.value) || 1) })} /></label>
-            <label className="text-xs text-gray-500">총 시간(분)
-              <input className={small + " mt-1 w-full"} type="number" inputMode="numeric" min={0} value={d.timeMinutes ?? ""}
-                onChange={(e) => setD({ ...d, timeMinutes: e.target.value === "" ? null : Number(e.target.value) })} /></label>
-            <label className="text-xs text-gray-500">난이도
-              <select className={small + " mt-1 w-full"} value={d.difficulty} onChange={(e) => setD({ ...d, difficulty: e.target.value as RecipeDraft["difficulty"] })}>
-                {["쉬움", "보통", "어려움"].map((x) => <option key={x}>{x}</option>)}
-              </select></label>
+      footer={<Button block loading={busy} onClick={save}>{busy ? "저장 중…" : "저장"}</Button>}>
+      <div ref={root}>
+        {(err || noteText) && (
+          <div ref={errBox} className="scroll-mt-2 px-5 pt-2">
+            {err ? <Banner kind="danger">{err}</Banner> : <Banner kind="success" testId="import-note" title={noteText} />}
           </div>
-          <input className={field} placeholder="태그 (쉼표로 구분: 한식, 10분요리)" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
+        )}
+
+        <TextField big wrapClass="px-5 pt-4" placeholder="요리 이름" aria-label="요리 이름" value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} />
+        <div className="mt-2">
+          <div className="flex min-h-14 items-center justify-between gap-3 px-5">
+            <span className="text-body text-ink">기준 인분</span>
+            <Stepper value={d.servingsBase} min={1} max={99} onChange={(v) => setD({ ...d, servingsBase: Math.max(1, v) })}
+              labels={{ minus: "기준 인분 줄이기", plus: "기준 인분 늘리기" }} />
+          </div>
+          <div className="flex min-h-14 items-center justify-between gap-3 px-5">
+            <label htmlFor={timeId} className="text-body text-ink">총 시간</label>
+            <span className="relative">
+              <input id={timeId} className={`${cell} w-24 pl-3 pr-9 text-right tabular-nums ${noSpin}`} type="number" inputMode="numeric" min={0} value={d.timeMinutes ?? ""}
+                onChange={(e) => setD({ ...d, timeMinutes: e.target.value === "" ? null : Number(e.target.value) })} />
+              <span aria-hidden className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-body text-ink-3">분</span>
+            </span>
+          </div>
+          <div className="flex min-h-14 items-center justify-between gap-3 px-5">
+            <span className="text-body text-ink">난이도</span>
+            <SegmentedControl label="난이도" className="w-[204px]" value={d.difficulty} options={DIFFICULTY} onChange={(v) => setD({ ...d, difficulty: v })} />
+          </div>
+        </div>
+        <TextField wrapClass="px-5 pb-6 pt-3" label="태그" helper="쉼표로 구분" placeholder="예: 한식, 10분요리" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
+
+        <Band />
+        <section className="pb-1">
+          <SectionHeader first title="재료" count={d.ingredients.length} />
+          {groups.map((g) => (
+            <div key={g}>
+              {groups.length > 1 && <p className="px-5 pb-1 pt-3 text-caption font-semibold text-ink-3">{g}</p>}
+              <ul>{d.ingredients.map((ing, i) => (groupOf(ing) === g ? ingRow(ing, i) : null))}</ul>
+            </div>
+          ))}
+          <AddRow onClick={addIng}>재료 추가</AddRow>
         </section>
 
-        <section>
-          <h2 className="mb-2 font-bold">재료 <span className="text-sm font-normal text-gray-500">{d.ingredients.length}개</span></h2>
-          <div className="flex flex-col gap-2">
-            {d.ingredients.map((ing, i) => (
-              <div key={i} className="rounded-2xl bg-white p-3">
-                <div className="flex gap-2">
-                  <input className={small + " min-w-0 flex-1"} placeholder="재료" value={ing.name} onChange={(e) => setIng(i, { name: e.target.value })} />
-                  <input className={small + " w-16"} type="number" inputMode="decimal" step="any" min={0} placeholder="수량" value={ing.qty ?? ""}
-                    onChange={(e) => setIng(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
-                  <select className={small + " w-24"} value={ing.unit} onChange={(e) => setIng(i, { unit: e.target.value as Unit, ...(e.target.value === "기타" ? { scalable: false } : {}) })}>
-                    {Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <select className={small + " py-1"} value={ing.group} onChange={(e) => setIng(i, { group: e.target.value as IngredientGroup })}>
-                    {IngredientGroup.options.map((g) => <option key={g} value={g}>{g}</option>)}
-                  </select>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={ing.optional} onChange={(e) => setIng(i, { optional: e.target.checked })} />선택 재료</label>
-                  <label className="flex items-center gap-1"><input type="checkbox" checked={!ing.scalable} onChange={(e) => setIng(i, { scalable: !e.target.checked })} />인분 고정</label>
-                  <input className={small + " min-w-0 flex-1 py-1"} placeholder="메모 (다진 것, 대체: …)" value={ing.note ?? ""} onChange={(e) => setIng(i, { note: e.target.value })} />
-                  <button className="text-red-500" onClick={() => removeIng(i)}>삭제</button>
-                </div>
-              </div>
-            ))}
-            <button className="rounded-xl border border-dashed border-orange-300 py-2 text-sm text-orange-700" onClick={() => { setD({ ...d, ingredients: [...d.ingredients, emptyIngredient()] }); setOrigs((k) => [...k, null]); }}>+ 재료 추가</button>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-2 font-bold">조리 순서</h2>
-          <div className="flex flex-col gap-2">
+        <Band />
+        <section className="pb-1">
+          <SectionHeader first title="조리 순서" />
+          <ol>
             {d.steps.map((s, i) => (
-              <div key={i} className="rounded-2xl bg-white p-3">
-                <div className="flex items-start gap-2">
-                  <span className="mt-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">{i + 1}</span>
-                  <textarea className={small + " min-w-0 flex-1 leading-relaxed"} rows={3} value={s.text} onChange={(e) => setStep(i, { text: e.target.value })} />
+              <li key={i} className={`${rowLine} flex gap-3 px-4 py-3 before:left-14`}>
+                <span aria-hidden className="mt-2.5 grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-caption font-semibold text-ink tabular-nums">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <TextArea data-focus={`step-${i}`} aria-label={`${i + 1}단계 설명`} rows={1} minRows={1} value={s.text} onChange={(e) => setStep(i, { text: e.target.value })} />
+                  <div className="mt-2 flex items-center gap-2">
+                    <label className="flex items-center gap-2 text-callout text-ink-2">
+                      <Timer size={16} aria-hidden />타이머
+                      <input className={`${cell} w-16 px-2 text-center tabular-nums ${noSpin}`} type="number" inputMode="numeric" min={0} value={s.minutes ?? ""}
+                        onChange={(e) => setStep(i, { minutes: e.target.value === "" ? null : Number(e.target.value) })} />
+                      분
+                    </label>
+                    <span className="flex-1" />
+                    <IconButton aria-label="단계 옵션" className="-mr-1.5" onClick={() => setStepOpt(i)}><Ellipsis size={20} /></IconButton>
+                  </div>
                 </div>
-                <div className="mt-2 flex items-center gap-2 pl-8 text-xs">
-                  <label className="flex items-center gap-1">⏱ <input className={small + " w-16 py-1"} type="number" inputMode="numeric" min={0} placeholder="분" value={s.minutes ?? ""}
-                    onChange={(e) => setStep(i, { minutes: e.target.value === "" ? null : Number(e.target.value) })} /> 분</label>
-                  <span className="flex-1" />
-                  <button disabled={i === 0} className="text-gray-500 disabled:opacity-30" onClick={() => { const a = [...d.steps]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; setD({ ...d, steps: a }); }}>↑</button>
-                  <button disabled={i === d.steps.length - 1} className="text-gray-500 disabled:opacity-30" onClick={() => { const a = [...d.steps]; [a[i + 1], a[i]] = [a[i], a[i + 1]]; setD({ ...d, steps: a }); }}>↓</button>
-                  <button className="text-red-500" onClick={() => setD({ ...d, steps: d.steps.filter((_, idx) => idx !== i) })}>삭제</button>
-                </div>
-              </div>
+              </li>
             ))}
-            <button className="rounded-xl border border-dashed border-orange-300 py-2 text-sm text-orange-700"
-              onClick={() => setD({ ...d, steps: [...d.steps, { order: d.steps.length + 1, text: "", minutes: null, ingredientKeys: [] }] })}>+ 단계 추가</button>
-          </div>
+          </ol>
+          <AddRow onClick={() => { focusNext.current = `step-${d.steps.length}`; setD({ ...d, steps: [...d.steps, { order: d.steps.length + 1, text: "", minutes: null, ingredientKeys: [] }] }); }}>단계 추가</AddRow>
         </section>
 
-        <section>
-          <h2 className="mb-2 font-bold">팁</h2>
-          <div className="flex flex-col gap-2">
+        <Band />
+        <section className="pb-1">
+          <SectionHeader first title="팁" />
+          <ul>
             {d.tips.map((t, i) => (
-              <div key={i} className="flex gap-2">
-                <input className={small + " min-w-0 flex-1"} value={t} onChange={(e) => setD({ ...d, tips: d.tips.map((x, idx) => (idx === i ? e.target.value : x)) })} />
-                <button className="text-sm text-red-500" onClick={() => setD({ ...d, tips: d.tips.filter((_, idx) => idx !== i) })}>삭제</button>
-              </div>
+              <li key={i} className="flex items-center gap-1.5 px-4 py-1.5">
+                <input data-focus={`tip-${i}`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="팁" value={t}
+                  onChange={(e) => setD({ ...d, tips: d.tips.map((x, idx) => (idx === i ? e.target.value : x)) })} />
+                <IconButton aria-label="팁 삭제" className="-mr-1.5" onClick={() => setD({ ...d, tips: d.tips.filter((_, idx) => idx !== i) })}><X size={20} /></IconButton>
+              </li>
             ))}
-            <button className="rounded-xl border border-dashed border-orange-300 py-2 text-sm text-orange-700" onClick={() => setD({ ...d, tips: [...d.tips, ""] })}>+ 팁 추가</button>
-          </div>
+          </ul>
+          <AddRow onClick={() => { focusNext.current = `tip-${d.tips.length}`; setD({ ...d, tips: [...d.tips, ""] }); }}>팁 추가</AddRow>
         </section>
+
+        {refs.length > 0 && (
+          <>
+            <Band />
+            <section>
+              <SectionHeader first title="참고한 곳" count={refs.length} />
+              <SourceList refs={refs} />
+            </section>
+          </>
+        )}
       </div>
+
+      {opt && ingOpt != null && (
+        <Sheet title={opt.name.trim() || "재료"} onClose={() => setIngOpt(null)}
+          footer={<Button block onClick={() => setIngOpt(null)}>완료</Button>}>
+          <p className="mb-2 text-caption font-semibold text-ink-2">분류</p>
+          <SegmentedControl label="분류" value={groupOf(opt)} options={GROUPS} onChange={(g) => setIng(ingOpt, { group: g })} />
+          <div className="mt-2">
+            <SwitchRow title="선택 재료" sub="없어도 만들 수 있어요" checked={opt.optional} onChange={(v) => setIng(ingOpt, { optional: v })} />
+            <SwitchRow title="인분 고정" sub="인분을 바꿔도 양이 그대로예요" checked={!opt.scalable} onChange={(v) => setIng(ingOpt, { scalable: !v })} />
+          </div>
+          <TextField wrapClass="mt-2" label="메모" placeholder="다진 것, 대체 재료" value={opt.note ?? ""} onChange={(e) => setIng(ingOpt, { note: e.target.value })} />
+          <button type="button" onClick={() => { const i = ingOpt; setIngOpt(null); removeIng(i); }}
+            className="-ml-4 mt-4 inline-flex h-12 items-center gap-2 rounded-control px-4 text-callout font-semibold text-danger transition-colors active:bg-danger-soft">
+            <Trash2 size={20} aria-hidden />재료 삭제
+          </button>
+        </Sheet>
+      )}
+      {stepOpt != null && d.steps[stepOpt] && (
+        <Sheet title={`${stepOpt + 1}단계`} onClose={() => setStepOpt(null)} flush>
+          <ul>
+            <ActionRow icon={<ArrowUp size={20} aria-hidden />} disabled={stepOpt === 0} onClick={() => { moveStep(stepOpt, -1); setStepOpt(null); }}>위로 옮기기</ActionRow>
+            <ActionRow icon={<ArrowDown size={20} aria-hidden />} disabled={stepOpt === d.steps.length - 1} onClick={() => { moveStep(stepOpt, 1); setStepOpt(null); }}>아래로 옮기기</ActionRow>
+            <ActionRow icon={<Trash2 size={20} aria-hidden />} danger onClick={() => { const i = stepOpt; setStepOpt(null); setD({ ...d, steps: d.steps.filter((_, idx) => idx !== i) }); }}>단계 삭제</ActionRow>
+          </ul>
+        </Sheet>
+      )}
     </FullScreen>
   );
 }

@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Camera, ClipboardPaste, Plus, X } from "lucide-react";
 import type { ImportResult, RecipeDraft } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { AiNotice } from "../../components/AiNotice";
+import { Button } from "../../components/ui/Button";
+import { Banner } from "../../components/ui/Banner";
+import { Field, TextArea, TextField, inputBase } from "../../components/ui/Field";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { AiProgress } from "../../components/ui/Ai";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { prepareImage, type PreparedImage } from "../../lib/image";
 import type { SharedPayload } from "../../lib/share";
 
 type ImportResponse = { result: ImportResult; via: string; provider: string; model: string };
 type Mode = "link" | "paste";
+type Info = { title: string; body?: string };
 
 const isInstagram = (u: string) => /(^|\.)instagram\.com$/i.test((() => { try { return new URL(u).hostname; } catch { return ""; } })());
 const isYoutube = (u: string) => /(^|\.)(youtube\.com|youtu\.be)$/i.test((() => { try { return new URL(u).hostname; } catch { return ""; } })());
@@ -15,6 +22,17 @@ const VIA_LABEL: Record<string, string> = {
   youtube_description: "유튜브 설명란에서 찾았어요", youtube_video: "유튜브 영상을 보고 정리했어요", jsonld: "레시피 사이트 정보를 읽었어요",
   page: "페이지 본문에서 찾았어요", caption: "붙여넣은 글에서 찾았어요", photo: "사진에서 읽었어요",
 };
+const MODES: { value: Mode; label: string }[] = [{ value: "link", label: "링크" }, { value: "paste", label: "캡션·사진" }];
+const LINK_STEPS = ["페이지를 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
+const PASTE_STEPS = ["글과 사진을 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
+const INSTAGRAM: Info = { title: "인스타그램은 링크만으로 볼 수 없어요", body: "캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요" };
+const TO_PASTE: Info = { title: "캡션을 붙여넣거나 스크린샷을 올려 주세요" };
+
+/** 서버 문장 "A했어요. B해 주세요." → 제목 A, 본문 B */
+function splitMessage(msg: string): Info {
+  const m = msg.match(/^(.+?[.!?])\s+(.+)$/);
+  return m ? { title: m[1].replace(/\.$/, ""), body: m[2] } : { title: msg };
+}
 
 type Props = {
   initial?: SharedPayload | null;
@@ -32,21 +50,24 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const [text, setText] = useState(initial?.text && initial.text !== startUrl ? initial.text.replace(startUrl, "").trim() : "");
   const [images, setImages] = useState<PreparedImage[]>([]);
   const [busy, setBusy] = useState(false);
-  const [tick, setTick] = useState(0);
   const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(startUrl && isInstagram(startUrl) ? "인스타그램은 링크만으로 내용을 볼 수 없어요. 게시물의 캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요." : null);
+  /** 주소 칸 바로 아래 오류 (형식·붙여넣기 권한) */
+  const [urlErr, setUrlErr] = useState<string | null>(null);
+  /** 서버가 이 페이지를 못 읽었을 때 (링크 탭) */
+  const [unreadable, setUnreadable] = useState<string | null>(null);
+  const [info, setInfo] = useState<Info | null>(startUrl && isInstagram(startUrl) ? INSTAGRAM : null);
   const [miss, setMiss] = useState<ImportResult | null>(null);
+  const [srcOpen, setSrcOpen] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const urlId = useId();
+  const canPaste = typeof navigator !== "undefined" && "clipboard" in navigator;
 
-  useEffect(() => {
-    if (!busy) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [busy]);
   useEffect(() => () => { abort.current?.abort(); images.forEach((i) => URL.revokeObjectURL(i.previewUrl)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toPaste = (message: string | null) => { setMode("paste"); setInfo(message); setErr(null); };
+  const clearNotes = () => { setErr(null); setUrlErr(null); setUnreadable(null); setMiss(null); };
+  const switchMode = (m: Mode) => { setMode(m); clearNotes(); };
+  const toPaste = (message: Info | null) => { switchMode("paste"); setInfo(message); };
 
   const handle = (res: ImportResponse) => {
     if (res.result.hasRecipe && res.result.recipe) onResult(res.result.recipe, VIA_LABEL[res.via] ?? "");
@@ -54,12 +75,14 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   };
 
   const run = async <T,>(path: string, body: unknown): Promise<T | null> => {
-    setBusy(true); setTick(0); setErr(null); setMiss(null);
+    setBusy(true); clearNotes();
     abort.current = new AbortController();
     try { return await callWorker<T>(path, body, abort.current.signal); }
     catch (e) {
-      if (e instanceof ApiError && e.code === "instagram") toPaste(e.message);
-      else if (e instanceof ApiError && (e.code === "empty_page" || e.code === "fetch_failed" || e.code === "not_html")) { setErr(e.message); }
+      // 취소는 입력 화면으로 조용히 돌아간다
+      if (abort.current?.signal.aborted) return null;
+      if (e instanceof ApiError && e.code === "instagram") toPaste(splitMessage(e.message));
+      else if (e instanceof ApiError && (e.code === "empty_page" || e.code === "fetch_failed" || e.code === "not_html") && mode === "link") setUnreadable(splitMessage(e.message).title);
       else setErr(e instanceof ApiError ? e.message : "가져오지 못했습니다");
       return null;
     } finally { setBusy(false); }
@@ -67,8 +90,8 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
 
   const importLink = async (u = url) => {
     const target = u.trim();
-    if (!/^https?:\/\//i.test(target)) { setErr("http:// 또는 https:// 로 시작하는 주소를 넣어 주세요"); return; }
-    if (isInstagram(target)) { toPaste("인스타그램은 링크만으로 내용을 볼 수 없어요. 게시물의 캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요."); return; }
+    if (!/^https?:\/\//i.test(target)) { setUrlErr("http:// 또는 https:// 로 시작하는 주소를 넣어 주세요"); return; }
+    if (isInstagram(target)) { toPaste(INSTAGRAM); return; }
     const res = await run<ImportResponse>("/import/url", { url: target });
     if (res) handle(res);
   };
@@ -95,90 +118,119 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
       const next: PreparedImage[] = [];
       for (const f of Array.from(files).slice(0, room)) next.push(await prepareImage(f));
       setImages((l) => [...l, ...next]);
+      setMiss(null);
     } catch (e) { setErr(e instanceof Error ? e.message : "사진을 처리하지 못했습니다"); }
     finally { if (fileRef.current) fileRef.current.value = ""; }
   };
 
   const pasteFromClipboard = async () => {
-    try { const t = await navigator.clipboard.readText(); if (t) setUrl(t.trim()); }
-    catch { setErr("붙여넣기 권한이 없어요. 주소 칸을 길게 눌러 붙여넣어 주세요."); }
+    try { const t = await navigator.clipboard.readText(); if (t) { setUrl(t.trim()); setUrlErr(null); setMiss(null); } }
+    catch { setUrlErr("붙여넣기 권한이 없어요. 칸을 길게 눌러 붙여넣어 주세요."); }
   };
 
-  const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-3 text-base outline-none focus:border-orange-400";
-  const tab = (m: Mode, label: string) => (
-    <button type="button" role="tab" aria-selected={mode === m} onClick={() => { setMode(m); setErr(null); }}
-      className={`flex-1 py-2 text-sm font-semibold ${mode === m ? "bg-orange-500 text-white" : "bg-white text-gray-600"}`}>{label}</button>
-  );
+  // 배너는 한 화면에 하나 (위험 > 경고 > 정보)
+  const banner = err ? (
+    <Banner kind="danger" action={mode === "link" ? { label: "캡션·사진으로", onClick: () => toPaste(TO_PASTE) } : undefined}>{err}</Banner>
+  ) : !workerConfigured ? (
+    <Banner kind="warning" title="AI 서버가 아직 연결되지 않았어요">앱을 설치한 사람에게 알려 주세요</Banner>
+  ) : mode === "link" && unreadable ? (
+    <Banner kind="info" title="이 페이지는 읽을 수 없어요" action={{ label: "캡션·사진으로", onClick: () => toPaste(TO_PASTE) }}>{unreadable}</Banner>
+  ) : mode === "paste" && info ? (
+    <Banner kind="info" testId="import-info" title={info.title}>{info.body}</Banner>
+  ) : null;
+
+  // 못 찾아서 "AI로 만들기"를 보일 때는 하단 버튼을 숨긴다 (주 버튼 하나)
+  const showFooter = !busy && !miss?.dishName;
+  const footer = showFooter ? (
+    <>
+      <AiNotice className="mb-3" what={mode === "link" ? "링크의 글" : "붙여넣은 글과 사진"} kind={mode === "link" ? "link" : "default"} video={mode === "link"} />
+      {mode === "link" ? (
+        <Button ai block disabled={!url.trim() || !workerConfigured} onClick={() => importLink()}>가져오기</Button>
+      ) : (
+        <Button ai block disabled={(!text.trim() && images.length === 0) || !workerConfigured} onClick={importPaste}>정리하기</Button>
+      )}
+    </>
+  ) : undefined;
 
   return (
-    <FullScreen title="링크·사진으로 가져오기" onClose={() => { abort.current?.abort(); onClose(); }}
-      confirmClose={busy ? "레시피를 정리하는 중이에요. 그만둘까요?" : null}>
-      <div className="flex flex-col gap-3 p-4">
-        {!workerConfigured && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버가 아직 연결되지 않았어요. 앱을 설치한 사람에게 알려 주세요 (README "Worker 배포").</p>}
-        <div className="flex overflow-hidden rounded-xl border border-orange-200" role="tablist">
-          {tab("link", "🔗 링크")}
-          {tab("paste", "📋 캡션·사진")}
+    <FullScreen title="레시피 가져오기" onClose={() => { abort.current?.abort(); onClose(); }}
+      confirmClose={busy ? "레시피를 정리하는 중이에요. 그만둘까요?" : null} footer={footer}>
+      {busy ? (
+        <AiProgress messages={mode === "link" ? LINK_STEPS : PASTE_STEPS}
+          typical={mode === "link" && isYoutube(url) ? "영상까지 보면 1분 넘게 걸려요" : "보통 15~40초"}
+          onCancel={() => abort.current?.abort()} />
+      ) : (
+        <div className="pb-4">
+          <SegmentedControl role="tab" label="가져올 곳" className="mx-5 mt-2" value={mode} options={MODES} onChange={switchMode} />
+
+          {mode === "link" ? (
+            <>
+              <Field label="주소" error={urlErr} htmlFor={urlId} className="mx-5 mt-5">
+                <div className="relative">
+                  <input id={urlId} type="url" inputMode="url" aria-label="링크" placeholder="레시피가 있는 주소" value={url} aria-invalid={urlErr ? true : undefined}
+                    onChange={(e) => { setUrl(e.target.value); setUrlErr(null); setMiss(null); }}
+                    className={`${inputBase} h-12 bg-surface-2 ${canPaste ? "pr-[112px]" : ""} ${urlErr ? "border-danger" : ""}`} />
+                  {canPaste && (
+                    <button type="button" onClick={pasteFromClipboard}
+                      className="absolute right-1 top-1/2 inline-flex h-11 -translate-y-1/2 items-center gap-1.5 rounded-control px-3 text-callout font-semibold text-accent active:bg-fill-pressed">
+                      <ClipboardPaste size={18} aria-hidden />붙여넣기
+                    </button>
+                  )}
+                </div>
+              </Field>
+              {banner && <div className="mx-5 mt-4">{banner}</div>}
+            </>
+          ) : (
+            <>
+              {banner && <div className="mx-5 mt-4">{banner}</div>}
+              <TextArea wrapClass="mx-5 mt-4" minRows={5} placeholder="캡션이나 블로그 글을 붙여넣어 주세요" aria-label="캡션·본문" maxLength={8000} value={text}
+                onChange={(e) => { setText(e.target.value.slice(0, 8000)); setMiss(null); }}
+                helper={text.length > 7000 ? `${text.length.toLocaleString()} / 8,000자 · 재료와 순서만 남기면 더 정확해요` : undefined} />
+              <div className="mx-5 mt-4">
+                <div className="flex flex-wrap gap-3">
+                  {images.map((im, i) => (
+                    <span key={im.previewUrl} className="relative size-16 shrink-0">
+                      <img src={im.previewUrl} alt={`사진 ${i + 1}`} className="size-16 rounded-control object-cover" />
+                      <button type="button" aria-label={`사진 ${i + 1} 빼기`} onClick={() => { URL.revokeObjectURL(im.previewUrl); setImages((l) => l.filter((x) => x !== im)); }}
+                        className="absolute -right-3 -top-3 grid size-11 place-items-center">
+                        <span className="grid size-7 place-items-center rounded-full bg-ink/70 text-surface"><X size={16} strokeWidth={2.5} aria-hidden /></span>
+                      </button>
+                    </span>
+                  ))}
+                  {images.length < 4 && (
+                    <button type="button" aria-label="사진 추가" onClick={() => fileRef.current?.click()}
+                      className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-control bg-surface-2 text-ink-2 transition-colors active:bg-fill-pressed">
+                      <Camera size={22} aria-hidden /><span className="text-micro tabular-nums">{images.length}/4</span>
+                    </button>
+                  )}
+                </div>
+                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="import-files" />
+                <p className="mt-2 text-caption text-ink-3">요리책·손글씨는 사진만 올려도 돼요</p>
+              </div>
+              {srcOpen || url.trim() ? (
+                <TextField wrapClass="mx-5 mt-5" label="원본 링크" aria-label="원본 링크" type="url" inputMode="url" placeholder="https://" value={url}
+                  autoFocus={srcOpen && !url} onChange={(e) => { setUrl(e.target.value); setSrcOpen(true); }} />
+              ) : (
+                <Button variant="ghost" size="md" icon={<Plus size={20} aria-hidden />} className="ml-1 mt-3" onClick={() => setSrcOpen(true)}>원본 링크 추가</Button>
+              )}
+            </>
+          )}
+
+          {miss && (
+            <div className="px-5 pt-8" data-testid="import-miss">
+              <p className="text-headline text-ink">레시피를 찾지 못했어요</p>
+              {miss.reason && <p className="mt-1 text-callout text-ink-2">{miss.reason}</p>}
+              <div className="mt-5 flex flex-col gap-2">
+                {miss.dishName && <Button ai size="md" block onClick={() => onMakeWithAi(miss.dishName!)}>‘{miss.dishName}’ AI로 만들기</Button>}
+                {mode === "link" && (
+                  <Button variant="secondary" size="md" block
+                    onClick={() => toPaste({ title: TO_PASTE.title, body: "재료가 보이는 화면이나 댓글 속 레시피도 좋아요" })}>캡션·사진으로 다시</Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-
-        {busy ? (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <div className="text-5xl motion-safe:animate-bounce">🍳</div>
-            <p className="font-semibold">{mode === "link" ? "링크를 읽고 레시피를 정리하는 중…" : "글과 사진에서 레시피를 찾는 중…"}</p>
-            <p className="text-sm text-gray-500">{tick}초{mode === "link" && isYoutube(url) ? " · 영상까지 보면 1분 넘게 걸릴 수 있어요" : " · 보통 15~40초"}</p>
-            <button onClick={() => abort.current?.abort()} className="text-sm text-gray-500 underline">취소</button>
-          </div>
-        ) : mode === "link" ? (
-          <>
-            <div className="flex gap-2">
-              <input className={field} type="url" inputMode="url" placeholder="유튜브·블로그·레시피 사이트 주소" value={url} onChange={(e) => setUrl(e.target.value)} aria-label="링크" />
-              {"clipboard" in navigator && <button type="button" onClick={pasteFromClipboard} className="shrink-0 rounded-xl bg-white px-3 text-sm">붙여넣기</button>}
-            </div>
-            <ul className="rounded-xl bg-white p-3 text-xs leading-relaxed text-gray-600">
-              <li>▶️ 유튜브: 설명란의 레시피를 정리해요{" "}(설명란에 없으면 영상까지 보는 기능은 설정된 경우에만)</li>
-              <li>📝 블로그·레시피 사이트: 본문을 읽어 정리해요 (네이버 블로그 포함)</li>
-              <li>📸 인스타그램: 링크만으로는 못 읽어요 → "캡션·사진" 탭에서 캡션이나 스크린샷을 올려 주세요</li>
-            </ul>
-            <button disabled={!url.trim() || !workerConfigured} onClick={() => importLink()} className="rounded-xl bg-orange-500 py-3.5 text-lg font-semibold text-white disabled:opacity-40">가져오기</button>
-          </>
-        ) : (
-          <>
-            {info && <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-900" data-testid="import-info">{info}</p>}
-            <textarea className={field + " min-h-[140px] leading-relaxed"} placeholder="인스타 캡션, 블로그 본문, 메모한 레시피를 붙여넣어 주세요" value={text} onChange={(e) => setText(e.target.value.slice(0, 8000))} aria-label="캡션·본문" maxLength={8000} />
-            {text.length > 7000 && <p className="-mt-1 text-right text-xs text-amber-700">{text.length.toLocaleString()} / 8,000자 (재료와 순서 부분만 남기면 더 정확해요)</p>}
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" disabled={images.length >= 4} onClick={() => fileRef.current?.click()} className="rounded-xl bg-white px-3 py-2 text-sm font-semibold disabled:opacity-40">📷 스크린샷·사진 추가 ({images.length}/4)</button>
-              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="import-files" />
-              {images.map((im, i) => (
-                <span key={im.previewUrl} className="relative h-14 w-11 overflow-hidden rounded-lg bg-white">
-                  <img src={im.previewUrl} alt={`사진 ${i + 1}`} className="h-full w-full object-cover" />
-                  <button type="button" aria-label={`사진 ${i + 1} 빼기`} onClick={() => { URL.revokeObjectURL(im.previewUrl); setImages((l) => l.filter((x) => x !== im)); }} className="absolute right-0 top-0 h-5 w-5 rounded-full bg-black/60 text-[10px] text-white">✕</button>
-                </span>
-              ))}
-            </div>
-            <input className={field + " text-sm"} placeholder="원본 링크 (선택, 출처로 남아요)" value={url} onChange={(e) => setUrl(e.target.value)} aria-label="원본 링크" />
-            <p className="text-xs text-gray-500">요리책이나 손글씨 레시피는 사진만 올려도 돼요.</p>
-            <button disabled={(!text.trim() && images.length === 0) || !workerConfigured} onClick={importPaste} className="rounded-xl bg-orange-500 py-3.5 text-lg font-semibold text-white disabled:opacity-40">정리하기</button>
-          </>
-        )}
-
-        {err && (
-          <div className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
-            {err}
-            {mode === "link" && <button type="button" onClick={() => toPaste(null)} className="ml-2 underline">캡션·사진으로 하기</button>}
-          </div>
-        )}
-        {!busy && <AiNotice what={mode === "link" ? "링크의 글" : "붙여넣은 글과 사진"} video={mode === "link"} />}
-        {miss && (
-          <div className="flex flex-col gap-2 rounded-2xl bg-white p-4 text-sm" data-testid="import-miss">
-            <p className="font-semibold">레시피를 찾지 못했어요</p>
-            <p className="text-gray-600">{miss.reason}</p>
-            {miss.dishName && (
-              <button type="button" onClick={() => onMakeWithAi(miss.dishName!)} className="rounded-xl bg-orange-500 py-2.5 font-semibold text-white">✨ ‘{miss.dishName}’ AI 레시피로 만들기</button>
-            )}
-            {mode === "link" && <button type="button" onClick={() => toPaste("영상·글 속 재료가 보이는 스크린샷을 올리거나, 댓글·고정 댓글의 레시피를 복사해 붙여넣어 보세요.")} className="rounded-xl border border-orange-300 py-2.5 font-semibold text-orange-700">📋 캡션·스크린샷으로 다시</button>}
-          </div>
-        )}
-      </div>
+      )}
     </FullScreen>
   );
 }

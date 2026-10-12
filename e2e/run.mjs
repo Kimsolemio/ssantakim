@@ -80,7 +80,7 @@ await mom.getByText("레시피 확인·수정").waitFor({ timeout: 20000 });
 assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue(), "알리오올리오");
 await mom.screenshot({ path: `${shots}/04-editor.png`, fullPage: false });
 // 편집: 팁 하나 추가
-await mom.getByText("+ 팁 추가").click();
+await mom.getByText("팁 추가", { exact: true }).click();
 await mom.locator("section").filter({ hasText: "팁" }).locator("input").last().fill("남은 면수는 버리지 마세요.");
 await mom.getByText("저장", { exact: true }).click();
 
@@ -104,21 +104,21 @@ const cookMain = mom.locator("main");
 await cookMain.locator("li", { hasText: "스파게티면" }).getByText("400g").waitFor();
 await cookMain.locator("li", { hasText: "소금" }).getByText("약간", { exact: true }).waitFor();
 // 타이머 시작 → 상단 타이머 바에 9:00 근처로 카운트
-await mom.getByText("⏱ 9분 타이머 시작").click();
-await mom.getByTestId("timer-bar").waitFor();
+await mom.getByText("9분 타이머 시작").click();
+await mom.getByTestId("step-timer").waitFor();
 await mom.waitForTimeout(1500);
-assert.match(await mom.getByTestId("timer-bar").textContent(), /1단계.*8:5\d/);
+assert.match(await mom.getByTestId("step-timer").textContent(), /8:5\d/);
 await mom.getByText("+1분").click();
-assert.match(await mom.getByTestId("timer-bar").textContent(), /9:5\d/);
+assert.match(await mom.getByTestId("step-timer").textContent(), /9:5\d/);
 await mom.screenshot({ path: `${shots}/09-cook-step1.png` });
 // 다음 → 2단계, 타이머는 계속 표시
-await mom.getByText("다음 ›").click();
+await mom.getByText("다음", { exact: true }).click();
 await mom.getByText("2 / 5 단계").waitFor();
 await mom.getByTestId("timer-bar").waitFor();
 await cookMain.locator("li", { hasText: "마늘" }).getByText("16쪽").waitFor();
-await mom.getByText("‹ 이전").click();
+await mom.getByText("이전", { exact: true }).click();
 await mom.getByText("1 / 5 단계").waitFor();
-for (let i = 0; i < 5; i++) await mom.getByText(/다음 ›|마무리 ›/).click();
+for (let i = 0; i < 5; i++) await mom.getByText(/^(다음|마무리)$/).click();
 await mom.getByText("요리 완료!").waitFor();
 await mom.screenshot({ path: `${shots}/10-cook-done.png` });
 await mom.getByText("요리 완료", { exact: true }).click();
@@ -281,7 +281,7 @@ await mom.getByText(/장보기에 2개 담았어요 \(1개는 이미 있어서 �
 await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click();
 // 요리 → 차감
 await mom.getByText("🍳 요리 시작").click();
-for (let i = 0; i < 5; i++) await mom.getByText(/다음 ›|마무리 ›/).click();
+for (let i = 0; i < 5; i++) await mom.getByText(/^(다음|마무리)$/).click();
 await mom.getByText("요리 완료", { exact: true }).click();
 await mom.getByTestId("useup-sheet").waitFor();
 assert.equal(await mom.getByTestId("useup-row").count(), 3);
@@ -290,7 +290,7 @@ assert.equal(await mom.getByLabel("올리브유 쓴 양").inputValue(), "90"); /
 assert.equal(await mom.getByLabel("깐마늘 빼기").isChecked(), false, "단위가 달라 직접 입력해야 한다");
 await mom.getByLabel("깐마늘 쓴 양").fill("50");
 await mom.screenshot({ path: `${shots}/18-useup-sheet.png` });
-await mom.getByText("🧊 냉장고에서 빼고 기록 (3개)").click();
+await mom.getByRole("button", { name: "3개 빼고 기록" }).click();
 await mom.getByText(/요리 기록 2회/).waitFor({ timeout: 10000 });
 await mom.getByLabel("뒤로").click();
 await mom.locator("nav").getByText("냉장고", { exact: true }).click();
@@ -358,7 +358,7 @@ await mom.getByTestId("open-import").click();
 await mom.getByLabel("링크").fill("https://www.youtube.com/watch?v=noRecipe001");
 await mom.getByText("가져오기", { exact: true }).click();
 await mom.getByTestId("import-miss").getByText("설명란에 레시피가 없어요").waitFor({ timeout: 15000 });
-await mom.getByText("✨ ‘김치볶음밥’ AI 레시피로 만들기").click();
+await mom.getByRole("button", { name: "‘김치볶음밥’ AI로 만들기" }).click();
 assert.equal(await mom.getByPlaceholder(/알리오올리오/).inputValue(), "김치볶음밥");
 await mom.getByRole("button", { name: "닫기", exact: true }).click();
 
@@ -379,14 +379,14 @@ assert.match(await mom.getByTestId("ai-notice").textContent(), /Anthropic\(Claud
 await mom.getByPlaceholder(/알리오올리오/).fill("새우볶음밥");
 await mom.getByRole("button", { name: "레시피 만들기", exact: true }).click();
 await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
-await mom.getByText("+ 재료 추가").click();
-await mom.getByPlaceholder("재료", { exact: true }).last().fill("새우젓");
+await mom.getByText("재료 추가", { exact: true }).click();
+await mom.locator('input[placeholder="재료"]:focus').fill("새우젓");
 await mom.screenshot({ path: `${shots}/22-editor-draft.png` });
 await mom.getByLabel("뒤로").click(); // "저장하지 않고 닫을까요?" → 확인
 await mom.getByTestId("pending-draft").getByText("새우볶음밥").waitFor();
 await mom.reload(); // 앱을 껐다 켜도 초안이 남는다
 await mom.getByTestId("pending-draft").getByText("이어서").click();
-assert.equal(await mom.getByPlaceholder("재료", { exact: true }).last().inputValue(), "새우젓");
+assert.ok((await mom.getByPlaceholder("재료", { exact: true }).evaluateAll((es) => es.map((e) => e.value))).includes("새우젓"));
 await mom.getByLabel("뒤로").click();
 await mom.getByTestId("pending-draft").getByText("버리기").click();
 await mom.getByTestId("pending-draft").waitFor({ state: "detached" });

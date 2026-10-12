@@ -37,8 +37,8 @@ export const TextField = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
   });
 
 /** 내용에 따라 높이가 늘어나는 여러 줄 입력 */
-export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & Common & { minRows?: number }>(
-  function TextArea({ label, helper, error, onCanvas, wrapClass = "", className = "", id, value, ...rest }, ref) {
+export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & Common & { /** 1이면 한 줄 높이(48px)에서 시작 */ minRows?: number }>(
+  function TextArea({ label, helper, error, onCanvas, wrapClass = "", className = "", id, value, minRows = 4, ...rest }, ref) {
     const auto = useId();
     const fid = id ?? auto;
     const inner = useRef<HTMLTextAreaElement | null>(null);
@@ -52,7 +52,8 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
       <Field label={label} helper={helper} error={error} htmlFor={fid} className={wrapClass}>
         <textarea id={fid} value={value} aria-invalid={error ? true : undefined}
           ref={(el) => { inner.current = el; if (typeof ref === "function") ref(el); else if (ref) ref.current = el; }}
-          className={`${inputBase} ${fill(onCanvas)} min-h-[120px] resize-none py-3 leading-[26px] ${error ? "border-danger" : ""} ${className}`} {...rest} />
+          style={{ minHeight: minRows * 26 + 24 }}
+          className={`${inputBase} ${fill(onCanvas)} resize-none py-3 leading-[26px] ${error ? "border-danger" : ""} ${className}`} {...rest} />
       </Field>
     );
   });
