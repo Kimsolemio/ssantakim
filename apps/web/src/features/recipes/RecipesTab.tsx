@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { BookOpen, ChevronRight, FolderPlus, Link as LinkIcon, Sparkles, Star } from "lucide-react";
-import type { RecipeDraft } from "@cook/shared";
+import { guessFood, type RecipeDraft } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
 import { useRecipes, useFolders, createRecipe, updateRecipe, deleteRecipe, createFolder, deleteFolder, addCookedLog, type RecipeDoc } from "./useRecipes";
@@ -49,6 +49,17 @@ function AddRow({ icon, title, sub, onClick, testId }: { icon: ReactNode; title:
       </button>
     </li>
   );
+}
+
+/** 목록 썸네일: 요리 이름이나 주재료로 짐작한 음식 그림 (모르면 첫 글자) */
+function recipeEmoji(r: RecipeDoc): string | null {
+  const t = guessFood(r.title);
+  if (t.category !== "기타") return t.emoji;
+  for (const i of r.ingredients.filter((x) => x.group === "주재료")) {
+    const g = guessFood(i.name);
+    if (g.category !== "기타") return g.emoji;
+  }
+  return null;
 }
 
 export function RecipesTab() {
@@ -171,7 +182,9 @@ export function RecipesTab() {
               {filtered.map((r) => (
                 <li key={r.id} data-favorite={r.favorite || undefined} className={`${rowLine} before:left-[76px]`}>
                   <button type="button" onClick={() => setOpenId(r.id)} className="flex min-h-[72px] w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2">
-                    <span aria-hidden className="grid size-12 shrink-0 place-items-center rounded-control bg-surface-2 text-title2 text-ink-2">{[...r.title.trim()][0] ?? ""}</span>
+                    {(() => { const e = recipeEmoji(r); return e
+                      ? <span aria-hidden className="food-emoji grid size-12 shrink-0 place-items-center rounded-control bg-surface-2 text-[26px]">{e}</span>
+                      : <span aria-hidden className="grid size-12 shrink-0 place-items-center rounded-control bg-surface-2 text-title2 text-ink-2">{[...r.title.trim()][0] ?? ""}</span>; })()}
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1">
                         <span className="truncate text-headline text-ink">{r.title}</span>

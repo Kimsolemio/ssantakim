@@ -3,7 +3,6 @@ import { ArrowUp, CircleStop, RotateCcw } from "lucide-react";
 import type { Recipe } from "@cook/shared";
 import { Sheet } from "../../components/Sheet";
 import { AiNotice } from "../../components/AiNotice";
-import { IconButton } from "../../components/ui/IconButton";
 import { callWorker, ApiError } from "../../lib/api";
 
 type Turn = { q: string; a: string };
@@ -125,7 +124,7 @@ export function AskSheet({ recipe, recipeKey, servings, step, fridge, onClose, t
       {/* 맥락 줄 (스크롤해도 남는다) */}
       <div className="sticky top-0 z-[1] -mx-5 -mt-1 flex min-h-11 items-center justify-between gap-2 bg-surface pl-5 pr-2">
         <p className="min-w-0 truncate text-caption text-ink-3 tabular-nums">{recipe.title} · {step ? `${step}단계` : `${servings}인분`}</p>
-        {!fresh && <IconButton aria-label="새 대화" onClick={reset}><RotateCcw size={20} /></IconButton>}
+        {!fresh && <button type="button" onClick={reset} className="inline-flex h-11 shrink-0 items-center gap-1.5 px-3 text-callout font-semibold text-accent active:opacity-60"><RotateCcw size={16} aria-hidden />새 대화</button>}
       </div>
       {fresh && <p className="pt-2 text-callout text-ink-2">이 레시피에 대해 물어보세요</p>}
       <ol className={`flex flex-col gap-3 ${!fresh || busy || failed ? "py-3" : ""}`} aria-live="polite">

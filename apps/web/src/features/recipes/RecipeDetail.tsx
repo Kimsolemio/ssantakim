@@ -129,7 +129,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
     if (!familyId || !user) return;
     const res = await addShoppingItems(familyId, user.uid, items.map((i) => ({ ...i, fromRecipeId: fromRecipe ? recipeId ?? null : null, recipeTitle: fromRecipe ? recipe.title : undefined })), shopping);
     void normalizeKeysInBackground(familyId, "shopping_items", res.added);
-    say(`장보기에 ${res.added.length + res.merged}개 담았어요${res.merged ? ` (${res.merged}개는 이미 있어서 양만 더함)` : ""}`);
+    say(`장보기에 ${res.added.length + res.merged}개 담았어요${res.merged ? ` · ${res.merged}개는 양만 더함` : ""}`);
   };
   const applyUseUp = async (r: UseUpResult) => {
     if (!familyId) return;

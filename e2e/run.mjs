@@ -73,7 +73,7 @@ await mom.getByLabel("뒤로").click();
 await mom.getByTestId("open-generate").click();
 await mom.getByPlaceholder(/알리오올리오/).fill("알리오올리오");
 await mom.getByLabel("인분 늘리기").click(); // 2 → 3
-await mom.getByPlaceholder(/추가 요청/).fill("덜 맵게");
+await mom.getByLabel("추가 요청").fill("덜 맵게");
 await mom.screenshot({ path: `${shots}/03-generate.png` });
 await mom.getByText("레시피 만들기", { exact: true }).click();
 await mom.getByText("레시피 확인·수정").waitFor({ timeout: 20000 });
@@ -121,7 +121,7 @@ await mom.getByText("1 / 5 단계").waitFor();
 for (let i = 0; i < 5; i++) await mom.getByText(/^(다음|마무리)$/).click();
 await mom.getByText("요리 완료!").waitFor();
 await mom.screenshot({ path: `${shots}/10-cook-done.png` });
-await mom.getByText("요리 완료", { exact: true }).click();
+await mom.getByRole("button", { name: "재료 정리하고 끝내기" }).click();
 await mom.getByText("냉장고에서 뺄 재료가 없어요. 요리 기록만 남길게요.").waitFor();
 await mom.getByText("요리 기록 남기기").click();
 await mom.getByText(/요리 기록 1회/).waitFor({ timeout: 10000 });
@@ -278,12 +278,12 @@ await mom.getByLabel("인분 늘리기").click(); await mom.getByLabel("인분 �
 await status("스파게티면").getByText("100g 부족").waitFor();
 await mom.getByRole("button", { name: "장보기에 담기", exact: true }).click();
 await mom.getByRole("button", { name: "2개 담기", exact: true }).click();
-await mom.getByText(/장보기에 2개 담았어요 \(1개는 이미 있어서 양만 더함\)/).waitFor();
+await mom.getByText(/장보기에 2개 담았어요 · 1개는 양만 더함/).waitFor();
 await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click();
 // 요리 → 차감
 await mom.getByRole("button", { name: "요리 시작", exact: true }).click();
 for (let i = 0; i < 5; i++) await mom.getByText(/^(다음|마무리)$/).click();
-await mom.getByText("요리 완료", { exact: true }).click();
+await mom.getByRole("button", { name: "재료 정리하고 끝내기" }).click();
 await mom.getByTestId("useup-sheet").waitFor();
 assert.equal(await mom.getByTestId("useup-row").count(), 3);
 assert.equal(await mom.getByLabel("스파게티면 쓴 양").inputValue(), "300");
@@ -291,7 +291,7 @@ assert.equal(await mom.getByLabel("올리브유 쓴 양").inputValue(), "90"); /
 assert.equal(await mom.getByLabel("깐마늘 빼기").isChecked(), false, "단위가 달라 직접 입력해야 한다");
 await mom.getByLabel("깐마늘 쓴 양").fill("50");
 await mom.screenshot({ path: `${shots}/18-useup-sheet.png` });
-await mom.getByRole("button", { name: "3개 빼고 기록" }).click();
+await mom.getByRole("button", { name: "냉장고에서 3개 빼기" }).click();
 await mom.getByText(/요리 기록 2회/).waitFor({ timeout: 10000 });
 await mom.getByLabel("뒤로").click();
 await mom.locator("nav").getByText("냉장고", { exact: true }).click();
@@ -380,7 +380,7 @@ await mom.locator("li", { hasText: "인스타 떡볶이" }).waitFor();
 // ---------- 비판 검토 반영: 저장 안 한 초안, 다 썼어요, 영수증 결과 보관 ----------
 await mom.getByRole("button", { name: "레시피 추가" }).click();
 await mom.getByTestId("open-generate").click();
-assert.match(await mom.getByTestId("ai-notice").textContent(), /Anthropic AI\(Claude\)/, "어느 AI로 가는지 알린다");
+assert.match(await mom.getByTestId("ai-notice").textContent(), /Claude로 보내요/, "어느 AI로 가는지 알린다");
 await mom.getByPlaceholder(/알리오올리오/).fill("새우볶음밥");
 await mom.getByRole("button", { name: "레시피 만들기", exact: true }).click();
 await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });

@@ -89,10 +89,10 @@ export function UseUpSheet({ matches, servings, onClose, onApply, onSkip, recipe
     <>
       {err && <p role="alert" className="mb-3 flex items-start gap-1.5 text-caption text-danger"><CircleAlert size={14} aria-hidden className="mt-0.5 shrink-0" />{err}</p>}
       <Button block loading={busy === "apply"} disabled={busy !== null} onClick={() => run("apply", () => onApply(result()))}>
-        {busy === "apply" ? "저장 중…" : preview.updates.length > 0 ? `${preview.updates.length}개 빼고 기록` : "요리 기록 남기기"}
+        {busy === "apply" ? "저장 중…" : preview.updates.length > 0 ? `냉장고에서 ${preview.updates.length}개 빼기` : "요리 기록 남기기"}
       </Button>
       {rows.length > 0 && (
-        <Button variant="ghost" size="md" block className="mt-1" loading={busy === "skip"} disabled={busy !== null} onClick={() => run("skip", onSkip)}>빼지 않고 기록만</Button>
+        <Button variant="ghost" size="md" block className="mt-1" loading={busy === "skip"} disabled={busy !== null} onClick={() => run("skip", onSkip)}>냉장고는 그대로 두기</Button>
       )}
     </>
   );

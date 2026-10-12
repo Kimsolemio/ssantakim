@@ -24,13 +24,14 @@ export function AiNotice({ what, kind = "default", webSearch, video, extra, clas
 }) {
   const { provider, gemini } = useAiInfo();
   const [more, setMore] = useState(false);
+  // 한 줄(25자 안팎)로. 긴 설명은 "자세히" 시트에
   const short = provider === "gemini"
-    ? "Google 무료 AI로 보내요. 사람이 볼 수 있으니 개인정보는 가려 주세요."
+    ? "Google 무료 AI로 보내요 · 개인정보는 가려 주세요"
     : provider === "claude"
-      ? kind === "link" ? "주소를 Claude에게 보내 페이지를 직접 읽어요. 학습에는 쓰이지 않아요."
-        : kind === "fridge" ? "냉장고 목록과 함께 Claude에게 보내요. 학습에는 쓰이지 않아요."
-          : `Anthropic AI(Claude)로 보내요. 학습에는 쓰이지 않아요.${webSearch ? " 웹 검색도 함께 해요." : ""}`
-      : "AI 서버로 보내요. 앱에는 결과만 저장해요.";
+      ? kind === "link" ? "Claude가 페이지를 읽어요 · 학습엔 안 써요"
+        : kind === "fridge" ? "냉장고 목록도 Claude로 · 학습엔 안 써요"
+          : webSearch ? "Claude로 보내요 · 웹 검색 포함 · 학습엔 안 써요" : "Claude로 보내요 · 학습엔 안 써요"
+      : "AI 서버로 보내요 · 결과만 저장해요";
   const subject = withTopic(what);
   const long = provider === "gemini"
     ? `${subject} 분석을 위해 Google(Gemini 무료 등급)로 보내져요. 무료 등급은 Google이 서비스 개선에 쓸 수 있고 사람이 볼 수도 있으니, 이름·주소·카드번호 같은 개인정보는 가리고 올려 주세요.`
@@ -45,12 +46,13 @@ export function AiNotice({ what, kind = "default", webSearch, video, extra, clas
     <>
       <p className={`flex items-start gap-1.5 text-caption text-ink-3 ${className}`} data-testid="ai-notice">
         <Lock size={14} aria-hidden className="mt-0.5 shrink-0" />
-        <span>{short}{extra ? ` ${extra}` : ""} <button type="button" onClick={() => setMore(true)} className="font-semibold text-ink-2 active:opacity-60">자세히</button></span>
+        <span>{short} <button type="button" onClick={() => setMore(true)} className="font-semibold text-ink-2 active:opacity-60">자세히</button></span>
       </p>
       {more && (
         <Sheet title="AI로 보내는 내용" onClose={() => setMore(false)} top>
           <div className="space-y-3 text-body text-ink-2">
             <p>{long}</p>
+            {extra && <p>{extra}</p>}
             {searchNote && <p>{searchNote}</p>}
             {videoNote && <p>{videoNote}</p>}
           </div>

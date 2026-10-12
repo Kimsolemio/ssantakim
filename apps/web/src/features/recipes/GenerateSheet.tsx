@@ -29,10 +29,10 @@ const WAITING_SEARCH = ["인기 레시피를 찾는 중…", "레시피 여러 �
 
 type RecipeResponse = { recipe: RecipeDraft; model: string; usage: { input: number; output: number } };
 
-/** 가족 취향 1줄: "보통 맵기 · 아이 · 오이, 고수 빼고" */
+/** 가족 취향 1줄: "보통 맵기 · 아이와 함께 · 오이, 고수 빼고" */
 function tasteLine(p: FamilyProfile): string {
   const dis = p.dislikes.length ? `${p.dislikes.slice(0, 2).join(", ")}${p.dislikes.length > 2 ? ` 외 ${p.dislikes.length - 2}개` : ""} 빼고` : null;
-  return [p.spicyLevel === "보통" ? "보통 맵기" : p.spicyLevel, p.kidsFriendly ? "아이" : null, dis].filter(Boolean).join(" · ");
+  return [p.spicyLevel === "보통" ? "보통 맵기" : p.spicyLevel, p.kidsFriendly ? "아이와 함께" : null, dis].filter(Boolean).join(" · ");
 }
 
 /** 음식 이름 → AI 레시피 생성. 결과는 편집 화면으로 넘긴다. */
@@ -96,7 +96,7 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish, initial
               <span className="text-body text-ink">인분</span>
               <Stepper value={servings} onChange={setServings} />
             </div>
-            <TextField placeholder="추가 요청 (선택)" aria-label="추가 요청" helper="예: 덜 맵게, 에어프라이어로" maxLength={500}
+            <TextField label="추가 요청" placeholder="예: 덜 맵게, 에어프라이어로" maxLength={500}
               value={notes} onChange={(e) => setNotes(e.target.value)} />
             {aiInfo.webSearch && (
               <div className="mt-2">

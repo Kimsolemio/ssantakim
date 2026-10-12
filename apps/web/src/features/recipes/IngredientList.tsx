@@ -20,7 +20,7 @@ type Props = {
 function StatusMark({ status, label, similar }: { status: MatchStatus; label: string; similar?: boolean }) {
   switch (status) {
     case "enough": return <Check size={18} strokeWidth={2.5} aria-hidden className="text-success" />;
-    case "unknown_amount": return <><Check size={16} strokeWidth={2.5} aria-hidden className="shrink-0 text-success" />양 확인</>;
+    case "unknown_amount": return <b className="inline-flex h-6 items-center rounded-badge bg-warning-soft px-2 font-semibold text-warning">양 확인</b>;
     case "short": return <b className="inline-flex h-6 items-center rounded-badge bg-warning-soft px-2 font-semibold text-warning">{label}</b>;
     case "missing": return similar ? <b className="font-semibold text-accent">비슷한 것?</b> : <>없음<ChevronRight size={14} aria-hidden className="shrink-0" /></>;
     case "staple": return <>늘 있음</>;

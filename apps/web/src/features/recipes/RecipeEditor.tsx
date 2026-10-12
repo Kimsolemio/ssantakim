@@ -159,12 +159,12 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
     const extra = [ing.optional && "선택 재료", !ing.scalable && ing.unit !== "기타" && "인분 고정", ing.note?.trim()].filter(Boolean).join(" · ");
     return (
       <li key={i}>
-        <div className="flex items-center gap-1.5 px-4 py-1.5">
+        <div className="flex items-center gap-1.5 px-5 py-1.5">
           <input data-focus={`ing-${i}`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="재료" value={ing.name} onChange={(e) => setIng(i, { name: e.target.value })} />
           <input className={`${cell} w-[60px] shrink-0 px-2 text-center tabular-nums ${noSpin}`} type="number" inputMode="decimal" step="any" min={0} placeholder="수량" value={ing.qty ?? ""}
             onChange={(e) => setIng(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
-          <span className="relative w-[72px] shrink-0">
-            <select aria-label="단위" className={`${cell} w-full appearance-none pl-2 pr-5 text-callout`} value={ing.unit}
+          <span className="relative w-[80px] shrink-0">
+            <select aria-label="단위" className={`${cell} w-full appearance-none pl-2 pr-6 text-callout`} value={ing.unit}
               onChange={(e) => setIng(i, { unit: e.target.value as Unit, ...(e.target.value === "기타" ? { scalable: false } : {}) })}>
               {Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}
             </select>
@@ -229,7 +229,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
           <SectionHeader first title="조리 순서" />
           <ol>
             {d.steps.map((s, i) => (
-              <li key={i} className={`${rowLine} flex gap-3 px-4 py-3 before:left-14`}>
+              <li key={i} className={`${rowLine} flex gap-3 px-5 py-3 before:left-[60px]`}>
                 <span aria-hidden className="mt-2.5 grid size-7 shrink-0 place-items-center rounded-full bg-surface-2 text-caption font-semibold text-ink tabular-nums">{i + 1}</span>
                 <div className="min-w-0 flex-1">
                   <TextArea data-focus={`step-${i}`} aria-label={`${i + 1}단계 설명`} rows={1} minRows={1} value={s.text} onChange={(e) => setStep(i, { text: e.target.value })} />
@@ -255,7 +255,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
           <SectionHeader first title="팁" />
           <ul>
             {d.tips.map((t, i) => (
-              <li key={i} className="flex items-center gap-1.5 px-4 py-1.5">
+              <li key={i} className="flex items-center gap-1.5 px-5 py-1.5">
                 <input data-focus={`tip-${i}`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="팁" value={t}
                   onChange={(e) => setD({ ...d, tips: d.tips.map((x, idx) => (idx === i ? e.target.value : x)) })} />
                 <IconButton aria-label="팁 삭제" className="-mr-1.5" onClick={() => setD({ ...d, tips: d.tips.filter((_, idx) => idx !== i) })}><X size={20} /></IconButton>

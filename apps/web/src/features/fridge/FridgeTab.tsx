@@ -163,7 +163,7 @@ export function FridgeTab() {
           <FridgeVisual items={items} recentIds={recent} dimmedIds={dimmed} onItemClick={setEditing} openSignal={openSignal} />
           {empty && (
             <div className="pointer-events-none absolute inset-x-0 top-20 z-[1] flex justify-center">
-              <div className="pointer-events-auto mx-6 w-full max-w-[340px] rounded-card bg-surface/85 backdrop-blur-sm">{emptyState}</div>
+              <div className="pointer-events-auto mx-6 w-full max-w-[340px] rounded-card bg-surface shadow-overlay">{emptyState}</div>
             </div>
           )}
         </div>

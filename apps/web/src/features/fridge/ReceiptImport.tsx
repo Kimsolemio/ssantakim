@@ -187,7 +187,7 @@ export function ReceiptImport({ onClose, onConfirm, existing = [], initialMode =
     ].filter(Boolean).join(" · ");
     return (
       <li key={c.id} data-testid="receipt-row" className={`${rowLine} before:left-[108px]`}>
-        <div className={`flex min-h-14 items-center transition-opacity ${c.checked ? "" : "opacity-50"}`}>
+        <div className="flex min-h-14 items-center">
           <label className="flex h-14 shrink-0 cursor-pointer items-center pl-5 pr-3">
             <Checkbox aria-label={`${c.name} 넣기`} checked={c.checked} onChange={(e) => set(c.id, { checked: e.target.checked })} />
           </label>

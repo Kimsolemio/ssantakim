@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronLeft, Plus } from "lucide-react";
+import { ChevronLeft, Plus, Users } from "lucide-react";
 import { IconButton } from "./IconButton";
 
 /** 탭 화면 머리: 위쪽 줄(오른쪽 버튼들) + 큰 제목. 제목이 스크롤로 사라지면 위쪽 줄 가운데에 작은 제목이 나타난다 */
@@ -27,12 +27,15 @@ export function LargeTitleBar({ title, right }: { title: string; right?: ReactNo
   );
 }
 
-/** 가족 메뉴 단추 (가족 이름 첫 글자) */
-export function FamilyAvatar({ name, onClick }: { name: string; onClick: () => void }) {
+/** 가족 메뉴 단추 (아이콘 + "가족"). 이름 첫 글자만으로는 무슨 단추인지 몰라서 글자를 붙인다 */
+export function FamilyAvatar({ onClick }: { name?: string; onClick: () => void }) {
   return (
-    <IconButton aria-label="우리 가족" onClick={onClick}>
-      <span aria-hidden className="grid size-9 place-items-center rounded-full bg-surface text-callout font-semibold text-ink-2 ring-1 ring-line">{[...name.trim()][0] ?? "가"}</span>
-    </IconButton>
+    <button type="button" aria-label="우리 가족" onClick={onClick}
+      className="inline-flex h-11 shrink-0 items-center px-1 active:opacity-70">
+      <span aria-hidden className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface px-3 text-callout font-semibold text-ink-2 ring-1 ring-line">
+        <Users size={16} />가족
+      </span>
+    </button>
   );
 }
 

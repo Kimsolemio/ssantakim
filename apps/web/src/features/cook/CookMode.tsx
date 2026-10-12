@@ -101,7 +101,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
         </div>
       </header>
 
-      {otherTimers.length > 0 && (
+      {step && otherTimers.length > 0 && (
         <div className="flex shrink-0 gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]" data-testid="timer-bar">
           {otherTimers.map((t) => (
             <div key={t.id} className={`flex h-11 shrink-0 items-center gap-1 rounded-full pl-4 text-callout ${t.done ? "bg-danger text-white motion-safe:animate-pulse" : "bg-surface-2 text-ink"}`}>
@@ -167,7 +167,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
             <button type="button" onClick={next} className={`${bigBtn} flex-[2] bg-accent text-on-accent active:bg-accent-pressed`}>{idx === steps.length - 1 ? "마무리" : "다음"}</button>
           ) : (
             <button type="button" disabled={busy} aria-busy={busy || undefined} onClick={finish} className={`${bigBtn} flex-[2] bg-accent text-on-accent active:bg-accent-pressed`}>
-              {busy ? <><LoaderCircle size={20} className="animate-spin" aria-hidden />저장 중…</> : "요리 완료"}
+              {busy ? <><LoaderCircle size={20} className="animate-spin" aria-hidden />저장 중…</> : "재료 정리하고 끝내기"}
             </button>
           )}
         </div>

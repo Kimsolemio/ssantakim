@@ -168,7 +168,7 @@ export function ShoppingTab() {
             {/* 숫자 앞 띄어쓰기는 읽기·검색용 ("담은 것 2") */}
             <h2 className="text-headline text-ink">담은 것 <span className="ml-0.5 text-callout font-medium text-ink-3 tabular-nums">{done.length}</span></h2>
             <button type="button" onClick={() => removeWithUndo(done, `담은 것 ${done.length}개를 지웠어요`)}
-              className="-my-2.5 -mr-2 h-11 px-2 text-callout font-semibold text-ink-3 active:opacity-60">모두 지우기</button>
+              className="-my-2.5 -mr-2 h-11 px-2 text-callout font-semibold text-ink-3 active:opacity-60">담은 것 지우기</button>
           </div>
           <Card className="mx-5 overflow-hidden"><ul>{done.map(row)}</ul></Card>
         </section>
