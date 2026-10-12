@@ -8,10 +8,25 @@ compatibility_flags = ["nodejs_compat"]
 #   pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY      # Gemini (무료 등급, 유튜브 영상 이해에도 쓴다)
 #   pnpm --filter @cook/worker exec wrangler secret put YOUTUBE_API_KEY     # 선택: 유튜브 설명란을 더 안정적으로 읽는다 (무료)
 # 아래 vars는 배포 시 자신의 값으로 바꾼다 (또는 Cloudflare 대시보드 > Settings > Variables).
+# ALLOWED_EMAILS 는 꼭 채운다. 비어 있으면 AI 기능이 모두 막힌다 (비용 사고 방지). "*"는 로그인한 누구나.
 [vars]
 FIREBASE_PROJECT_ID = ""
 ALLOWED_ORIGINS = "http://localhost:5173"
 ALLOWED_EMAILS = ""
+DAILY_LIMIT_PER_USER = "40"   # 하루 한 사람 (레시피 1, 영수증 2, 가져오기 1, 이름 정리 0.25)
+DAILY_LIMIT_TOTAL = "150"     # 하루 가족 전체
 AI_PROVIDER = "auto"
 CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = "gemini-2.5-flash"
+
+# 1분에 12번까지 (사람별). 따로 만들 것 없이 동작한다
+[[ratelimits]]
+name = "AI_LIMIT"
+namespace_id = "1001"
+simple = { limit = 12, period = 60 }
+
+# 하루 한도를 쓰려면 (권장) KV를 한 번 만들고 아래 주석을 푼다:
+#   pnpm --filter @cook/worker exec wrangler kv namespace create USAGE
+# [[kv_namespaces]]
+# binding = "USAGE"
+# id = "여기에_출력된_id"

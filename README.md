@@ -75,8 +75,10 @@ Claude가 안전 정책으로 거절하면 같은 호출 안에서 알맞은 대
 3. `apps/worker/wrangler.toml`의 `[vars]` 수정
    - `FIREBASE_PROJECT_ID`: Firebase 프로젝트 ID (토큰 검증용)
    - `ALLOWED_ORIGINS`: 앱 주소들 (쉼표 구분, 예: `http://localhost:5173,https://cook.example.pages.dev`)
-   - `ALLOWED_EMAILS`: 가족 구글 계정 이메일 (쉼표 구분). **비워두면 구글 계정이 있는 누구나 내 AI 키로 호출할 수 있으니 꼭 채우자**
-4. 비밀값 등록 후 배포
+   - `ALLOWED_EMAILS`: 가족 구글 계정 이메일 (쉼표 구분). **비어 있으면 AI 기능이 전부 막힌다**(비용 사고 방지). 누구나 허용하려면 `*`를 적어야 한다(권장하지 않음). 이메일 인증이 끝난 구글 계정만 맞춰 본다.
+   - `DAILY_LIMIT_PER_USER` / `DAILY_LIMIT_TOTAL`: 하루 한도 (기본 40 / 150, 레시피 1·영수증 2·가져오기 1·이름 정리 0.25로 센다). 한국 자정에 초기화.
+4. 하루 한도용 저장소 만들기 (권장, 무료): `pnpm --filter @cook/worker exec wrangler kv namespace create USAGE` → 출력된 id를 `wrangler.toml` 맨 아래 `[[kv_namespaces]]` 주석을 풀어 넣는다. 없으면 1분 한도(사람당 12회)만 동작한다.
+5. 비밀값 등록 후 배포
 
 ```bash
 pnpm --filter @cook/worker exec wrangler secret put ANTHROPIC_API_KEY   # Claude를 쓸 때
@@ -86,8 +88,10 @@ pnpm worker:deploy        # 끝나면 https://family-cook-api.<계정>.workers.d
 
    - 선택: `YOUTUBE_API_KEY` (Google Cloud Console에서 YouTube Data API v3 키, 무료). 없어도 유튜브 페이지에서 설명란을 읽지만, 있으면 더 안정적이다.
    - 유튜브 설명란에 레시피가 없을 때 영상 자체를 보고 정리하는 기능은 `GEMINI_API_KEY`가 있을 때만 동작한다(Claude는 영상을 볼 수 없다).
-5. 그 주소를 `apps/web/.env`의 `VITE_WORKER_URL`에 넣고 프론트 다시 빌드·배포
-6. 확인: 브라우저에서 `https://.../health` → `"ai":{"provider":"claude","model":"claude-opus-5-5"}`
+6. 그 주소를 `apps/web/.env`의 `VITE_WORKER_URL`에 넣고 프론트 다시 빌드·배포
+7. 확인: 브라우저에서 `https://.../health` → `"ai":{"provider":"claude","model":"claude-opus-5-5"}`, `"guard":{"allowList":3,"perMinute":true,"daily":true}` (허용 이메일 수, 1분 한도, 하루 한도)
+
+> 비용의 진짜 상한은 Anthropic 콘솔의 **월 지출 한도**다. Worker 한도는 실수·무한 반복을 막는 2차 안전장치다.
 
 로컬 개발: `apps/worker/.dev.vars.example`을 `.dev.vars`로 복사해 채우고 `pnpm worker:dev` (http://localhost:8787).
 모든 프롬프트는 `apps/worker/src/prompts.ts` 한 파일에 있다. AI 호출은 `apps/worker/src/ai/` 폴더에 제공자별로 나뉘어 있다.

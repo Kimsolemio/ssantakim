@@ -27,7 +27,7 @@ const isClaude = (u: string) => u.startsWith("https://api.anthropic.com/");
 const isGemini = (u: string) => u.startsWith("https://generativelanguage.googleapis.com/");
 const html = (s: string, ct = "text/html; charset=utf-8") => new Response(s, { headers: { "content-type": ct } });
 
-const env: Env = { FIREBASE_PROJECT_ID: PROJECT, ALLOWED_ORIGINS: "http://localhost:5173", ANTHROPIC_API_KEY: "sk-ant-test" };
+const env: Env = { FIREBASE_PROJECT_ID: PROJECT, ALLOWED_ORIGINS: "http://localhost:5173", ALLOWED_EMAILS: "me@example.com", ANTHROPIC_API_KEY: "sk-ant-test" };
 const post = (path: string, body: unknown, e: Env = env) => handler.fetch!(new Request(`https://api.test${path}`, {
   method: "POST", body: JSON.stringify(body), headers: { Origin: "http://localhost:5173", Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
 }) as any, e, {} as any);

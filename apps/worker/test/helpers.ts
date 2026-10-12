@@ -14,7 +14,7 @@ export async function makeSigner() {
   async function token(overrides: Record<string, unknown> = {}, opts: { kid?: string; badSig?: boolean } = {}) {
     const header = { alg: "RS256", kid: opts.kid ?? kid, typ: "JWT" };
     const payload = { iss: `https://securetoken.google.com/${PROJECT}`, aud: PROJECT, auth_time: now - 10, sub: "uid-1",
-      iat: now - 10, exp: now + 3600, email: "me@example.com", name: "Tester", ...overrides };
+      iat: now - 10, exp: now + 3600, email: "me@example.com", email_verified: true, name: "Tester", ...overrides };
     const h = b64url(JSON.stringify(header)), p = b64url(JSON.stringify(payload));
     const sig = await webcrypto.subtle.sign("RSASSA-PKCS1-v1_5", privateKey, new TextEncoder().encode(`${h}.${p}`));
     return `${h}.${p}.${opts.badSig ? b64url(new Uint8Array(256)) : b64url(sig)}`;

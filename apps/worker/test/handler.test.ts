@@ -22,7 +22,7 @@ function stubFetch(route: (c: Captured) => Response | Promise<Response>) {
   return calls;
 }
 
-const baseEnv: Env = { FIREBASE_PROJECT_ID: PROJECT, ALLOWED_ORIGINS: "http://localhost:5173,https://cook.example.com", ALLOWED_EMAILS: "" };
+const baseEnv: Env = { FIREBASE_PROJECT_ID: PROJECT, ALLOWED_ORIGINS: "http://localhost:5173,https://cook.example.com", ALLOWED_EMAILS: "*" };
 const call = (env: Env, path: string, init: RequestInit & { headers?: Record<string, string> } = {}) =>
   handler.fetch!(new Request(`https://api.test${path}`, { ...init, headers: { Origin: "https://cook.example.com", ...(init.headers ?? {}) } }) as any, env, {} as any);
 const recipeReq = (env: Env, body: unknown = { dish: "알리오올리오", servings: 2 }) =>
@@ -66,6 +66,22 @@ describe("/recipe auth and validation", () => {
     stubFetch(() => jsonResponse({}, 500));
     const r = await recipeReq({ ...baseEnv, ALLOWED_EMAILS: "mom@example.com, dad@example.com", ANTHROPIC_API_KEY: "k" });
     expect(r.status).toBe(403);
+  });
+  it("blocks everyone when the allow list is empty (fail closed)", async () => {
+    const calls = stubFetch(() => jsonResponse({}, 500));
+    const r = await recipeReq({ ...baseEnv, ALLOWED_EMAILS: "", ANTHROPIC_API_KEY: "k" });
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ code: "not_configured" });
+    expect(calls).toHaveLength(0);
+  });
+  it("matches the allow list only with a verified email", async () => {
+    const calls = stubFetch(() => jsonResponse(claudeMessage(JSON.stringify(SAMPLE_RECIPE))));
+    const env = { ...baseEnv, ALLOWED_EMAILS: "Me@Example.com", ANTHROPIC_API_KEY: "k" };
+    const unverified = await signer.token({ email_verified: false });
+    const r1 = await call(env, "/recipe", { method: "POST", body: JSON.stringify({ dish: "라면" }), headers: { Authorization: `Bearer ${unverified}` } });
+    expect(r1.status).toBe(403);
+    expect(calls).toHaveLength(0);
+    expect((await recipeReq(env)).status).toBe(200);
   });
   it("rejects a bad body", async () => {
     stubFetch(() => jsonResponse({}, 500));
@@ -169,5 +185,54 @@ describe("/recipe with Gemini", () => {
     const r = await recipeReq(env);
     expect(r.status).toBe(429);
     expect((await r.json() as any).error).toMatch(/무료 사용량 한도/);
+  });
+});
+
+describe("usage limits", () => {
+  /** 메모리로 흉내 낸 KV */
+  function fakeKv() {
+    const m = new Map<string, string>();
+    return { m, kv: { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); } } as unknown as KVNamespace };
+  }
+  const ok = () => jsonResponse(claudeMessage(JSON.stringify(SAMPLE_RECIPE)));
+
+  it("stops a user at the daily limit without calling the AI", async () => {
+    const calls = stubFetch(ok);
+    const { kv, m } = fakeKv();
+    const env: Env = { ...baseEnv, ANTHROPIC_API_KEY: "k", USAGE: kv, DAILY_LIMIT_PER_USER: "2" };
+    expect((await recipeReq(env)).status).toBe(200);
+    expect((await recipeReq(env)).status).toBe(200);
+    const r = await recipeReq(env);
+    expect(r.status).toBe(429);
+    expect(await r.json()).toMatchObject({ code: "daily_user" });
+    expect(calls).toHaveLength(2);
+    expect([...m.keys()].some((k) => k.startsWith("u:") && k.endsWith(":uid-1"))).toBe(true);
+  });
+  it("has a family-wide daily limit", async () => {
+    stubFetch(ok);
+    const { kv } = fakeKv();
+    const env: Env = { ...baseEnv, ANTHROPIC_API_KEY: "k", USAGE: kv, DAILY_LIMIT_TOTAL: "1" };
+    expect((await recipeReq(env)).status).toBe(200);
+    expect(await (await recipeReq(env)).json()).toMatchObject({ code: "daily_total" });
+  });
+  it("does not charge invalid requests", async () => {
+    stubFetch(ok);
+    const { kv, m } = fakeKv();
+    const env: Env = { ...baseEnv, ANTHROPIC_API_KEY: "k", USAGE: kv };
+    expect((await recipeReq(env, {})).status).toBe(400);
+    expect(m.size).toBe(0);
+  });
+  it("honours the per-minute rate limit binding", async () => {
+    const calls = stubFetch(ok);
+    const keys: string[] = [];
+    const env: Env = { ...baseEnv, ANTHROPIC_API_KEY: "k", AI_LIMIT: { limit: async ({ key }: { key: string }) => { keys.push(key); return { success: false }; } } as unknown as RateLimit };
+    const r = await recipeReq(env);
+    expect(r.status).toBe(429);
+    expect(keys).toEqual(["uid-1"]);
+    expect(calls).toHaveLength(0);
+  });
+  it("health shows which guards are on", async () => {
+    const j = await (await call({ ...baseEnv, ALLOWED_EMAILS: "a@b.c,d@e.f" }, "/health")).json() as any;
+    expect(j.guard).toEqual({ allowList: 2, perMinute: false, daily: false });
   });
 });

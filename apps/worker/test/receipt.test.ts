@@ -19,7 +19,7 @@ function stubFetch(route: (c: Captured) => Response) {
   return calls;
 }
 
-const env: Env = { FIREBASE_PROJECT_ID: PROJECT, ALLOWED_ORIGINS: "http://localhost:5173", ANTHROPIC_API_KEY: "sk-ant-test" };
+const env: Env = { FIREBASE_PROJECT_ID: PROJECT, ALLOWED_ORIGINS: "http://localhost:5173", ALLOWED_EMAILS: "me@example.com", ANTHROPIC_API_KEY: "sk-ant-test" };
 const post = (body: unknown, e: Env = env) => handler.fetch!(new Request("https://api.test/pantry/receipt", {
   method: "POST", body: typeof body === "string" ? body : JSON.stringify(body),
   headers: { Origin: "http://localhost:5173", Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

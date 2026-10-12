@@ -5,4 +5,5 @@ GEMINI_API_KEY=
 AI_PROVIDER=auto
 FIREBASE_PROJECT_ID=your-project-id
 ALLOWED_ORIGINS=http://localhost:5173
-ALLOWED_EMAILS=
+# 가족 이메일을 쉼표로. 비우면 AI가 막힌다 ("*"는 모두 허용)
+ALLOWED_EMAILS=*

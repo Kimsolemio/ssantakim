@@ -2,7 +2,7 @@
  * Firebase ID 토큰 검증 (firebase-admin 없이 WebCrypto로).
  * 규칙: https://firebase.google.com/docs/auth/admin/verify-id-tokens#verify_id_tokens_using_a_third-party_jwt_library
  */
-export type Verified = { uid: string; email: string | null; name: string | null };
+export type Verified = { uid: string; email: string | null; emailVerified: boolean; name: string | null };
 
 type Jwk = JsonWebKey & { kid: string };
 type JwksFetcher = () => Promise<Jwk[]>;
@@ -77,6 +77,7 @@ export async function verifyFirebaseIdToken(
   return {
     uid: sub,
     email: typeof payload.email === "string" ? payload.email : null,
+    emailVerified: payload.email_verified === true,
     name: typeof payload.name === "string" ? payload.name : null,
   };
 }

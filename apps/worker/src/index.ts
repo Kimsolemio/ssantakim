@@ -6,11 +6,12 @@ import { generateRecipe } from "./recipe";
 import { scanReceipt } from "./receipt";
 import { normalizeNames } from "./normalize";
 import { importFromUrl, importFromText } from "./import";
+import { checkAllowed, chargeUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
 
-export interface Env extends AiEnv {
+export interface Env extends AiEnv, GuardEnv {
   FIREBASE_PROJECT_ID: string;
   ALLOWED_ORIGINS: string;   // 쉼표로 구분
-  ALLOWED_EMAILS?: string;   // 쉼표로 구분. 비우면 로그인한 모든 사용자 허용
+  // ALLOWED_EMAILS: 쉼표로 구분한 가족 이메일. 비우면 아무도 못 쓴다 ("*"는 로그인한 모두)
   // AI 설정은 AiEnv 참고: AI_PROVIDER, ANTHROPIC_API_KEY(secret), CLAUDE_MODEL, GEMINI_API_KEY(secret), GEMINI_MODEL
   YOUTUBE_API_KEY?: string;  // 선택. 없으면 유튜브 페이지에서 설명란을 읽는다
 }
@@ -44,11 +45,16 @@ async function authenticate(request: Request, env: Env): Promise<Verified> {
   let user: Verified;
   try { user = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID); }
   catch (e) { throw new HttpError(401, e instanceof AuthError ? e.message : "토큰 검증 실패"); }
-  const allowed = (env.ALLOWED_EMAILS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-  if (allowed.length > 0 && !(user.email && allowed.includes(user.email.toLowerCase()))) {
-    throw new HttpError(403, "이 앱을 사용할 수 있는 계정이 아닙니다");
-  }
+  checkAllowed(env, user);
   return user;
+}
+
+/** 로그인 → 본문 검사 → 사용량 차감 순서. 잘못된 요청은 사용량을 쓰지 않는다 */
+async function begin<T>(request: Request, env: Env, route: string, schema: z.ZodType<T>, maxBytes?: number): Promise<{ user: Verified; body: T }> {
+  const user = await authenticate(request, env);
+  const body = await readJson(request, schema, maxBytes);
+  await chargeUsage(env, user.uid, route);
+  return { user, body };
 }
 
 async function readJson<T>(request: Request, schema: z.ZodType<T>, maxBytes = 1_000_000): Promise<T> {
@@ -106,44 +112,45 @@ async function handle(request: Request, env: Env): Promise<Response> {
         ok: true, stage: 5, features: ["recipe", "pantry/receipt", "normalize", "import/url", "import/text"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
         ai: describeAi(env),
+        guard: { allowList: allowList(env).includes("*") ? "everyone" : allowList(env).length, perMinute: !!env.AI_LIMIT, daily: !!env.USAGE },
       }, 200, cors);
     }
 
-    if (url.pathname === "/recipe" && request.method === "POST") {
+    if (url.pathname === "/usage" && request.method === "GET") {
       const user = await authenticate(request, env);
-      const body = await readJson(request, RecipeRequest);
+      return json({ today: await usageToday(env, user.uid) }, 200, cors);
+    }
+
+    if (url.pathname === "/recipe" && request.method === "POST") {
+      const { user, body } = await begin(request, env, "/recipe", RecipeRequest);
       const result = await generateRecipe(selectProvider(env), body);
       console.log(JSON.stringify({ route: "recipe", uid: user.uid, dish: body.dish, provider: result.provider, model: result.model, usage: result.usage }));
       return json(result, 200, cors);
     }
 
     if (url.pathname === "/pantry/receipt" && request.method === "POST") {
-      const user = await authenticate(request, env);
-      const body = await readJson(request, ReceiptRequest, 12_000_000);
+      const { user, body } = await begin(request, env, "/pantry/receipt", ReceiptRequest, 12_000_000);
       const result = await scanReceipt(selectProvider(env), body);
       console.log(JSON.stringify({ route: "pantry/receipt", uid: user.uid, images: body.images.length, items: result.scan.items.length, provider: result.provider, model: result.model, usage: result.usage }));
       return json(result, 200, cors);
     }
 
     if (url.pathname === "/normalize" && request.method === "POST") {
-      const user = await authenticate(request, env);
-      const body = await readJson(request, NormalizeRequest);
+      const { user, body } = await begin(request, env, "/normalize", NormalizeRequest);
       const result = await normalizeNames(selectProvider(env), body.names);
       console.log(JSON.stringify({ route: "normalize", uid: user.uid, count: body.names.length, provider: result.provider, model: result.model }));
       return json(result, 200, cors);
     }
 
     if (url.pathname === "/import/url" && request.method === "POST") {
-      const user = await authenticate(request, env);
-      const body = await readJson(request, ImportUrlRequest);
+      const { user, body } = await begin(request, env, "/import/url", ImportUrlRequest);
       const r = await importFromUrl(env, body.url);
       console.log(JSON.stringify({ route: "import/url", uid: user.uid, via: r.via, hasRecipe: r.result.hasRecipe, provider: r.provider, model: r.model }));
       return json(r, 200, cors);
     }
 
     if (url.pathname === "/import/text" && request.method === "POST") {
-      const user = await authenticate(request, env);
-      const body = await readJson(request, ImportTextRequest, 12_000_000);
+      const { user, body } = await begin(request, env, "/import/text", ImportTextRequest, 12_000_000);
       const r = await importFromText(env, body);
       console.log(JSON.stringify({ route: "import/text", uid: user.uid, via: r.via, images: body.images?.length ?? 0, hasRecipe: r.result.hasRecipe, provider: r.provider }));
       return json(r, 200, cors);
@@ -153,6 +160,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     throw new HttpError(404, "not found");
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, cors);
+    if (e instanceof GuardError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     if (e instanceof GenerationError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     console.error(e);
     return json({ error: "서버 오류" }, 500, cors);

@@ -7,7 +7,10 @@ describe("verifyFirebaseIdToken", async () => {
   const fetchJwks = async () => jwks;
 
   it("accepts a valid token", async () => {
-    expect(await verifyFirebaseIdToken(await token(), PROJECT, fetchJwks)).toEqual({ uid: "uid-1", email: "me@example.com", name: "Tester" });
+    expect(await verifyFirebaseIdToken(await token(), PROJECT, fetchJwks)).toEqual({ uid: "uid-1", email: "me@example.com", emailVerified: true, name: "Tester" });
+  });
+  it("reports an unverified email", async () => {
+    expect((await verifyFirebaseIdToken(await token({ email_verified: false }), PROJECT, fetchJwks)).emailVerified).toBe(false);
   });
 
   const bad: [string, () => Promise<string>][] = [
