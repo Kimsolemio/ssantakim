@@ -3,7 +3,7 @@ import { ChevronLeft, Plus, Users } from "lucide-react";
 import { IconButton } from "./IconButton";
 
 /** 탭 화면 머리: 위쪽 줄(오른쪽 버튼들) + 큰 제목. 제목이 스크롤로 사라지면 위쪽 줄 가운데에 작은 제목이 나타난다 */
-export function LargeTitleBar({ title, right }: { title: string; right?: ReactNode }) {
+export function LargeTitleBar({ title, right, left }: { title: string; right?: ReactNode; left?: ReactNode }) {
   const h1 = useRef<HTMLHeadingElement>(null);
   const [compact, setCompact] = useState(false);
   useEffect(() => {
@@ -19,6 +19,7 @@ export function LargeTitleBar({ title, right }: { title: string; right?: ReactNo
         style={{ paddingTop: "var(--safe-top)" }}>
         <div className="relative flex h-12 items-center justify-end gap-1 px-2">
           <span aria-hidden className={`pointer-events-none absolute inset-x-16 text-center text-headline text-ink transition-opacity ${compact ? "opacity-100" : "opacity-0"}`}>{title}</span>
+          {left && <div className="relative mr-auto flex items-center">{left}</div>}
           {right}
         </div>
       </div>

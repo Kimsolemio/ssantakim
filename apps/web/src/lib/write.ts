@@ -1,9 +1,13 @@
+import { isOffline } from "./online";
+
 /**
  * Firestore 쓰기는 기기 사본에 바로 반영되고, 서버 확인은 연결되면 온다.
  * 인터넷이 약한 곳(마트 지하)에서 "저장 중…"에 멈추지 않도록, 서버 확인을 잠깐만 기다리고 넘어간다.
  * 그 뒤에 난 오류는 콘솔에 남긴다 (Firestore가 연결되면 다시 보낸다).
  */
 export async function settle<T>(write: Promise<T>, ms = 2500): Promise<void> {
+  // 끊긴 동안은 기다릴 서버가 없다: 기기 사본에 이미 들어갔으니 바로 넘어간다 (연결되면 Firestore가 보낸다)
+  if (isOffline()) ms = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = write.then(() => undefined);
   const timeout = new Promise<"timeout">((r) => { timer = setTimeout(() => r("timeout"), ms); });

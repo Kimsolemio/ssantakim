@@ -1,4 +1,5 @@
 import { getAuthInstance } from "./firebase";
+import { isOffline } from "./online";
 
 export const workerUrl: string = (import.meta.env.VITE_WORKER_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 export const workerConfigured = workerUrl.length > 0;
@@ -11,6 +12,8 @@ export class ApiError extends Error {
 /** Worker 호출. Firebase ID 토큰을 Authorization 헤더로 보낸다. */
 export async function callWorker<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   if (!workerConfigured) throw new ApiError("AI 서버 주소(VITE_WORKER_URL)가 설정되지 않았습니다", 0);
+  // 끊긴 채로 기다리게 하지 않는다 (저장한 레시피·냉장고는 오프라인에서도 볼 수 있다)
+  if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요. 연결되면 다시 해 주세요", 0, "offline");
   const user = getAuthInstance().currentUser;
   if (!user) throw new ApiError("로그인이 필요합니다", 401);
   const token = await user.getIdToken();
@@ -38,6 +41,7 @@ export async function callWorker<T>(path: string, body: unknown, signal?: AbortS
 /** 로그인한 GET 요청 (예: 오늘 남은 AI 사용량) */
 export async function getWorker<T>(path: string): Promise<T> {
   if (!workerConfigured) throw new ApiError("AI 서버가 연결되지 않았어요", 0);
+  if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요", 0, "offline");
   const user = getAuthInstance().currentUser;
   if (!user) throw new ApiError("로그인이 필요합니다", 401);
   const res = await fetch(`${workerUrl}${path}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}` } });

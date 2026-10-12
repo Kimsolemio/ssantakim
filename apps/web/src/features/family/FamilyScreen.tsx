@@ -15,10 +15,11 @@ import { Switch } from "../../components/ui/Toggle";
 import { TextField } from "../../components/ui/Field";
 import { FamilyAvatar, LargeTitleBar } from "../../components/ui/Bars";
 import { useToast } from "../../components/ui/Toast";
+import { OfflinePill } from "../../components/OfflinePill";
 
 /** 탭 화면 머리 (큰 제목 + 오른쪽 버튼 + 가족 단추) */
 export function TabHeader({ title, right }: { title: string; right?: ReactNode }) {
-  return <LargeTitleBar title={title} right={<>{right}<FamilyButton /></>} />;
+  return <LargeTitleBar title={title} left={<OfflinePill />} right={<>{right}<FamilyButton /></>} />;
 }
 
 export function FamilyButton() {

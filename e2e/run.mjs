@@ -240,6 +240,8 @@ for (const [name, qty, unit] of [["스파게티면", "500", "g"], ["깐마늘", 
   await mom.getByLabel(new RegExp(`^${name} ${qty}${unit}`)).waitFor();
 }
 await mom.locator("nav").getByText("레시피", { exact: true }).click();
+// 레시피 탭 머리: 사흘 안에 먹어야 할 재료 (고등어 D-1, 삼겹살 D-2, 대파 D-3)
+assert.match(await mom.getByTestId("expiring-pill").getAttribute("aria-label"), /빨리 먹어야 할 재료 3개/);
 await mom.locator("li", { hasText: "알리오올리오" }).first().click();
 const status = (name) => mom.getByTestId("ingredient-row").filter({ hasText: name }).locator("[data-status]");
 await mom.getByTestId("fridge-summary").waitFor();

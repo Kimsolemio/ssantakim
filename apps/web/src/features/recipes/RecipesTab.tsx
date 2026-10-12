@@ -22,6 +22,7 @@ import { IconThumb } from "../../components/ui/FoodThumb";
 import { Card, rowLine } from "../../components/ui/Section";
 import { ExtendedFab } from "../../components/ui/Bars";
 import { TabHeader } from "../family/FamilyScreen";
+import { ExpiringPill } from "../fridge/ExpiringPill";
 import { fixRecipeKeysInBackground } from "../../lib/normalize";
 import { loadPending, savePending, clearPending } from "../../lib/drafts";
 
@@ -125,7 +126,7 @@ export function RecipesTab() {
 
   return (
     <div className="pb-[calc(var(--safe-bottom)+56px+96px)]">
-      <TabHeader title="레시피" />
+      <TabHeader title="레시피" right={<ExpiringPill />} />
       {!empty && (
         <>
           <SearchField onCanvas className="mx-5" value={search} onChange={setSearch} placeholder="요리 이름이나 재료로 찾기" label="레시피 검색" />
