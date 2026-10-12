@@ -8,37 +8,77 @@ import type { FridgeItem, Ingredient, StorageLocation, Unit } from "./schemas";
 
 const MASS: Partial<Record<Unit, number>> = { g: 1, kg: 1000 };
 const VOLUME: Partial<Record<Unit, number>> = { ml: 1, L: 1000, 큰술: 15, 작은술: 5, 컵: 200 };
+/** 낱개를 세는 말. "달걀 2알" = "달걀 2개", "대파 1대" = "대파 1개" */
+const PIECE: Partial<Record<Unit, number>> = { 개: 1, 알: 1, 대: 1 };
 
-/** 같은 종류 단위끼리만 바꾼다 (무게끼리, 부피·숟가락끼리). 못 바꾸면 null */
+/** 같은 종류 단위끼리만 바꾼다 (무게끼리, 부피·숟가락끼리, 낱개끼리). 못 바꾸면 null */
 export function convertQty(qty: number, from: Unit, to: Unit): number | null {
   if (from === to) return qty;
-  const m1 = MASS[from], m2 = MASS[to];
-  if (m1 && m2) return (qty * m1) / m2;
-  const v1 = VOLUME[from], v2 = VOLUME[to];
-  if (v1 && v2) return (qty * v1) / v2;
+  for (const table of [MASS, VOLUME, PIECE]) {
+    const a = table[from], b = table[to];
+    if (a && b) return (qty * a) / b;
+  }
   return null;
 }
 
-/** 표시용 반올림: 개수 단위는 0.5, 나머지는 소수 첫째 자리 (큰 값은 정수) */
+/** 셈 단위: 0.5 단위로 다룬다 */
+export const COUNT_UNITS: ReadonlySet<Unit> = new Set<Unit>(["개", "쪽", "장", "봉", "팩", "캔", "줌", "모", "단", "대", "마리", "송이", "포기", "알", "병"]);
+
+/** 표시용 반올림: 셈 단위는 0.5, 나머지는 소수 첫째 자리 (큰 값은 정수) */
 export function roundQty(n: number, unit: Unit): number {
-  if (["개", "쪽", "장", "봉", "팩", "캔", "줌"].includes(unit)) return Math.round(n * 2) / 2;
+  if (COUNT_UNITS.has(unit)) return Math.round(n * 2) / 2;
   if (Math.abs(n) >= 100) return Math.round(n);
   return Math.round(n * 10) / 10;
 }
 
 /** 늘 있다고 보는 재료 (냉장고에 넣어 두지 않는 것) */
 const ALWAYS_KEYS = new Set(["water", "ice"]);
-const ALWAYS_NAMES = new Set(["물", "생수", "얼음", "끓는물", "찬물", "따뜻한물"]);
+const ALWAYS_NAMES = new Set(["물", "생수", "얼음", "끓는물", "찬물", "따뜻한물", "뜨거운물", "미지근한물", "면수"]);
 export function isAlwaysAvailable(ing: { key: string; name: string }): boolean {
   return ALWAYS_KEYS.has(ing.key.toLowerCase()) || ALWAYS_NAMES.has(provisionalKey(ing.name));
 }
 
-/**
- * 같은 식재료인가. ① 표준 key가 같거나 ② 이름이 같거나 ③ 한쪽이 다른 쪽의 "끝부분"이면 같다고 본다
- * (깐마늘·다진마늘 ↔ 마늘, 진간장 ↔ 간장). 앞부분 포함은 다르다 (고추장 ≠ 고추).
- */
+/** AI가 정리한 표준 영문 key인가 (한글 임시 key와 구분) */
+export const isStandardKey = (k: string): boolean => /^[a-z][a-z0-9_]*$/.test(k);
+
+/** 같은 재료인데 AI가 가끔 다르게 붙이는 key */
+const KEY_ALIASES: Record<string, string> = {
+  // 대파 = green_onion, 쪽파 = scallion 으로 따로 둔다 (요리에서 다르게 쓴다)
+  welsh_onion: "green_onion", large_green_onion: "green_onion", daepa: "green_onion", spring_onion: "scallion", chive: "scallion", jjokpa: "scallion",
+  minced_garlic: "garlic", garlic_clove: "garlic", peeled_garlic: "garlic",
+  cooking_oil: "vegetable_oil", canola_oil: "vegetable_oil", grapeseed_oil: "vegetable_oil", soybean_oil: "vegetable_oil",
+  toasted_sesame_seed: "sesame_seed", ground_black_pepper: "black_pepper", korean_chili_flakes: "chili_flakes", gochugaru: "chili_flakes",
+  mirin: "cooking_wine", rice_wine: "cooking_wine", corn_starch: "starch", potato_starch: "starch",
+};
+
+/** 복수형 정리 + 별칭. 표준 key가 아니면 그대로 */
+export function canonKey(key: string): string {
+  let k = key.trim().toLowerCase();
+  if (!isStandardKey(k)) return k;
+  if (k.length > 4 && k.endsWith("ies")) k = k.slice(0, -3) + "y";
+  else if (k.length > 4 && k.endsWith("oes")) k = k.slice(0, -2);
+  else if (k.length > 3 && k.endsWith("s") && !k.endsWith("ss") && !k.endsWith("us")) k = k.slice(0, -1);
+  return KEY_ALIASES[k] ?? k;
+}
+
 /** 손질·원산지 같은 앞말. "생강", "통조림"처럼 단어의 일부인 경우를 피하려고 한 글자 앞말은 최소화했다 */
-const PREFIXES = ["국내산", "무농약", "유기농", "채썬", "다진", "손질", "냉동", "국산", "수입", "볶은", "삶은", "데친", "썬", "깐", "편"];
+const PREFIXES = ["국내산", "무농약", "유기농", "친환경", "채썬", "다진", "손질", "냉동", "냉장", "국산", "수입", "볶은", "삶은", "데친", "썬", "깐", "편"];
+
+/** 같은 재료의 다른 이름 → 대표 이름 (앞말을 뗀 뒤 적용) */
+const NAME_SYNONYMS: Record<string, string> = {
+  계란: "달걀", 파: "대파", 실파: "쪽파", 쇠고기: "소고기", 돈육: "돼지고기", 닭: "닭고기",
+  녹말: "전분", 녹말가루: "전분", 전분가루: "전분", 감자전분: "전분", 옥수수전분: "전분",
+  후추: "후춧가루", 후추가루: "후춧가루", 고추가루: "고춧가루",
+  카놀라유: "식용유", 포도씨유: "식용유", 콩기름: "식용유", 해바라기유: "식용유",
+  올리브유: "올리브오일", 엑스트라버진올리브오일: "올리브오일",
+  깨: "참깨", 통깨: "참깨", 깨소금: "참깨",
+  진간장: "간장", 양조간장: "간장", 미림: "맛술", 케찹: "케첩", 토마토케첩: "케첩", 마요: "마요네즈",
+  양송이버섯: "양송이", 표고버섯: "표고", 새송이버섯: "새송이", 팽이버섯: "팽이", 느타리버섯: "느타리",
+  스파게티면: "스파게티", 마늘쫑: "마늘종", 쪽파김치: "파김치",
+};
+
+/** 앞에 붙어도 같은 재료로 보는 말 (진간장 = 간장, 통마늘 = 마늘, 굵은소금 = 소금) */
+const VARIANT_HEADS = new Set(["진", "양조", "통", "햇", "흙", "생", "굵은", "고운", "꽃", "천일"]);
 
 export function foodBaseName(name: string): string {
   let n = provisionalKey(name);
@@ -51,16 +91,41 @@ export function foodBaseName(name: string): string {
   return n;
 }
 
-export function sameFood(a: { key: string; name: string }, b: { key: string; name: string }): boolean {
-  if (a.key && b.key && a.key.toLowerCase() === b.key.toLowerCase()) return true;
-  const x = foodBaseName(a.name), y = foodBaseName(b.name);
-  if (!x || !y) return false;
-  if (x === y) return true;
-  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  return short.length >= 2 && long.endsWith(short);
+/** 비교용 대표 이름 */
+export function canonName(name: string): string {
+  const b = foodBaseName(name);
+  return NAME_SYNONYMS[b] ?? b;
 }
 
-export type MatchStatus = "enough" | "short" | "unknown_amount" | "missing" | "always";
+type Named = { key: string; name: string };
+
+/**
+ * 같은 식재료인가.
+ * ① 표준 key가 같다 ② 대표 이름이 같다 (계란 = 달걀, 다진 마늘 = 마늘)
+ * ③ 둘 중 하나라도 아직 AI가 정리하지 않은 이름이면, 같은 재료로 보는 앞말만 붙은 경우 (진간장 = 간장)
+ * 둘 다 AI가 정리한 key인데 서로 다르면 다른 재료다 (butter ≠ peanut_butter, napa_cabbage ≠ cabbage).
+ */
+export function sameFood(a: Named, b: Named): boolean {
+  const ka = canonKey(a.key), kb = canonKey(b.key);
+  if (ka && kb && ka === kb) return true;
+  const x = canonName(a.name), y = canonName(b.name);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (isStandardKey(ka) && isStandardKey(kb)) return false;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  if (short.length < 2 || !long.endsWith(short)) return false;
+  return VARIANT_HEADS.has(long.slice(0, long.length - short.length));
+}
+
+/** 같다고는 못 하지만 비슷한 이름 (땅콩버터 ↔ 버터, 양배추 ↔ 배추). 화면에서 "혹시 이것?"으로만 보여 준다 */
+export function similarFood(a: Named, b: Named): boolean {
+  if (sameFood(a, b)) return false;
+  const x = canonName(a.name), y = canonName(b.name);
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.length >= 2 && long.includes(short);
+}
+
+export type MatchStatus = "enough" | "short" | "unknown_amount" | "missing" | "always" | "staple";
 
 export type IngredientMatch<T> = {
   ingredient: Ingredient;
@@ -71,6 +136,13 @@ export type IngredientMatch<T> = {
   have: number | null;
   /** 부족한 양 (재료 단위) */
   shortBy: number | null;
+  /** 같은 재료로 단정하지 않은 비슷한 품목 (예: 버터를 찾는데 땅콩버터) */
+  similar: T[];
+};
+
+export type MatchOptions = {
+  /** 늘 있는 양념 이름 (가족 설정). 냉장고에 없으면 "staple"로 본다 */
+  staples?: readonly string[];
 };
 
 type FridgeLike = Pick<FridgeItem, "name" | "key" | "qty" | "unit" | "expiresAt">;
@@ -79,11 +151,15 @@ function byExpiry<T extends FridgeLike>(a: T, b: T): number {
   return (daysUntil(a.expiresAt) ?? 99999) - (daysUntil(b.expiresAt) ?? 99999);
 }
 
-export function matchIngredient<T extends FridgeLike>(ing: Ingredient, fridge: T[]): IngredientMatch<T> {
-  if (isAlwaysAvailable(ing)) return { ingredient: ing, status: "always", items: [], have: null, shortBy: null };
+export function matchIngredient<T extends FridgeLike>(ing: Ingredient, fridge: T[], opts: MatchOptions = {}): IngredientMatch<T> {
+  const base = { ingredient: ing, have: null, shortBy: null, similar: [] as T[] };
+  if (isAlwaysAvailable(ing)) return { ...base, status: "always", items: [] };
   const items = fridge.filter((f) => sameFood(ing, f)).sort(byExpiry);
-  if (items.length === 0) return { ingredient: ing, status: "missing", items, have: null, shortBy: null };
-  if (ing.qty == null) return { ingredient: ing, status: "enough", items, have: null, shortBy: null };
+  if (items.length === 0) {
+    if (opts.staples?.some((s) => sameFood(ing, { key: provisionalKey(s), name: s }))) return { ...base, status: "staple", items };
+    return { ...base, status: "missing", items, similar: fridge.filter((f) => similarFood(ing, f)).sort(byExpiry) };
+  }
+  if (ing.qty == null) return { ...base, status: "enough", items };
   let have = 0, convertible = 0, unknown = 0;
   for (const f of items) {
     if (f.qty == null) { unknown++; continue; }
@@ -91,15 +167,15 @@ export function matchIngredient<T extends FridgeLike>(ing: Ingredient, fridge: T
     if (c == null) { unknown++; continue; }
     have += c; convertible++;
   }
-  if (convertible === 0) return { ingredient: ing, status: "unknown_amount", items, have: null, shortBy: null };
-  if (have + 1e-9 >= ing.qty) return { ingredient: ing, status: "enough", items, have: roundQty(have, ing.unit), shortBy: null };
+  if (convertible === 0) return { ...base, status: "unknown_amount", items };
+  if (have + 1e-9 >= ing.qty) return { ...base, status: "enough", items, have: roundQty(have, ing.unit) };
   // 양을 모르는 품목이 함께 있으면 부족하다고 단정하지 않는다
-  if (unknown > 0) return { ingredient: ing, status: "unknown_amount", items, have: roundQty(have, ing.unit), shortBy: null };
-  return { ingredient: ing, status: "short", items, have: roundQty(have, ing.unit), shortBy: roundQty(ing.qty - have, ing.unit) };
+  if (unknown > 0) return { ...base, status: "unknown_amount", items, have: roundQty(have, ing.unit) };
+  return { ...base, status: "short", items, have: roundQty(have, ing.unit), shortBy: roundQty(ing.qty - have, ing.unit) };
 }
 
-export function matchIngredients<T extends FridgeLike>(ings: Ingredient[], fridge: T[]): IngredientMatch<T>[] {
-  return ings.map((i) => matchIngredient(i, fridge));
+export function matchIngredients<T extends FridgeLike>(ings: Ingredient[], fridge: T[], opts: MatchOptions = {}): IngredientMatch<T>[] {
+  return ings.map((i) => matchIngredient(i, fridge, opts));
 }
 
 export type Deduction<T> = {

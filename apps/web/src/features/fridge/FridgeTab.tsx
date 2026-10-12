@@ -7,7 +7,7 @@ import { FridgeVisual, itemLook } from "./FridgeVisual";
 import { ReceiptImport } from "./ReceiptImport";
 import { useNav } from "../../lib/nav";
 import { normalizeKeysInBackground } from "../../lib/normalize";
-import { useShopping, deleteShoppingItems } from "../shopping/useShopping";
+import { useShopping, deleteShoppingItems, addShoppingItems } from "../shopping/useShopping";
 import { sameFood } from "@cook/shared";
 import { FridgeItemForm } from "./FridgeItemForm";
 
@@ -157,7 +157,7 @@ export function FridgeTab() {
             try {
               // 장보기 목록에서 이번에 산 것은 지운다
               const bought = shopping.filter((sh) => inputs.some((i) => sameFood(sh, { key: i.key, name: i.name })));
-              await addFridgeItems(familyId, user.uid, inputs, (ids) => {
+              const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => {
                 setSearch("");
                 setView("visual");
                 setRecent(new Set(ids));
@@ -166,6 +166,7 @@ export function FridgeTab() {
                 showToast(`🎉 ${ids.length}개를 냉장고에 넣었어요${bought.length ? ` · 장보기 ${bought.length}개 완료` : ""}`);
               });
               await deleteShoppingItems(familyId, bought.map((b) => b.id));
+              void normalizeKeysInBackground(familyId, "fridge_items", ids.map((id, i) => ({ id, name: inputs[i].name, key: inputs[i].key })));
             } catch (e) {
               setRecent(new Set());
               showToast(`저장하지 못했어요: ${e instanceof Error ? e.message : String(e)}`);
@@ -186,9 +187,16 @@ export function FridgeTab() {
       {editing && (
         <FridgeItemForm title="재료 수정" initial={editing} onClose={() => setEditing(null)}
           onSubmit={async (v) => {
-            const renamed = v.name !== editing.name;
-            await updateFridgeItem(familyId, editing.id, v);
+            const renamed = await updateFridgeItem(familyId, editing.id, v, editing);
             if (renamed) void normalizeKeysInBackground(familyId, "fridge_items", [{ id: editing.id, name: v.name }]);
+          }}
+          onUsedUp={async (toShopping) => {
+            await deleteFridgeItem(familyId, editing.id);
+            if (toShopping) {
+              const res = await addShoppingItems(familyId, user.uid, [{ name: editing.name, key: editing.key, qty: null, unit: editing.unit, category: editing.category, emoji: editing.emoji }], shopping);
+              void normalizeKeysInBackground(familyId, "shopping_items", res.added);
+            }
+            showToast(toShopping ? `🛒 ${editing.name}을(를) 다 써서 장보기에 담았어요` : `${editing.name}을(를) 냉장고에서 뺐어요`);
           }}
           onDelete={() => deleteFridgeItem(familyId, editing.id)} />
       )}

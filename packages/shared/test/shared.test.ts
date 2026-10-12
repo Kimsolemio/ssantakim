@@ -23,13 +23,17 @@ describe("scaling", () => {
   it("rounds count units to halves and grams sensibly", () => {
     expect(scaleQty(3, "쪽", 2, 3)).toBe(4.5);
     expect(scaleQty(200, "g", 2, 3)).toBe(300);
-    expect(scaleQty(1, "큰술", 4, 1)).toBe(0.5);
+    expect(scaleQty(1, "큰술", 4, 1)).toBe(0.25); // 1/4큰술까지는 살린다
+    expect(scaleQty(1, "작은술", 2, 1)).toBe(0.5);
+    expect(scaleQty(0.25, "작은술", 2, 2)).toBe(0.25); // 인분이 그대로면 손대지 않는다
+    expect(scaleQty(1, "모", 2, 1)).toBe(0.5);
     expect(scaleQty(null, "기타", 2, 4)).toBeNull();
   });
   it("formats amounts", () => {
     expect(formatAmount({ qty: 1.5, unit: "큰술" })).toBe("1.5큰술");
     expect(formatAmount({ qty: 200, unit: "g" })).toBe("200g");
     expect(formatAmount({ qty: null, unit: "기타" })).toBe("");
+    expect(formatAmount({ qty: 0.25, unit: "작은술" })).toBe("1/4작은술");
   });
 });
 
@@ -111,11 +115,50 @@ describe("matching", () => {
     expect(sameFood({ key: "soy_sauce", name: "간장" }, { key: "진간장", name: "진간장" })).toBe(true);
     expect(sameFood({ key: "gochujang", name: "고추장" }, { key: "고추", name: "고추" })).toBe(false);
     expect(sameFood({ key: "spaghetti", name: "스파게티면" }, { key: "spaghetti", name: "파스타면" })).toBe(true);
-    expect(sameFood({ key: "x", name: "파" }, { key: "y", name: "대파" })).toBe(false); // 한 글자는 끝부분 일치로 보지 않는다
+    expect(sameFood({ key: "", name: "파" }, { key: "", name: "대파" })).toBe(true); // 동의어
     expect(isAlwaysAvailable({ key: "water", name: "물" })).toBe(true);
     expect(sameFood({ key: "", name: "냉동 만두" }, { key: "", name: "만두" })).toBe(true);
     expect(sameFood({ key: "", name: "생강" }, { key: "", name: "강" })).toBe(false);
     expect(sameFood({ key: "", name: "돼지고기" }, { key: "", name: "소고기" })).toBe(false);
+  });
+  it("does not confuse different foods that share an ending", () => {
+    // 둘 다 AI가 정리한 key면 key를 믿는다
+    expect(sameFood({ key: "butter", name: "버터" }, { key: "peanut_butter", name: "땅콩버터" })).toBe(false);
+    expect(sameFood({ key: "napa_cabbage", name: "배추" }, { key: "cabbage", name: "양배추" })).toBe(false);
+    expect(sameFood({ key: "milk", name: "우유" }, { key: "banana_milk", name: "바나나우유" })).toBe(false);
+    // 아직 한글 임시 key여도 모르는 앞말이면 같다고 하지 않는다
+    expect(sameFood({ key: "butter", name: "버터" }, { key: "땅콩버터", name: "땅콩버터" })).toBe(false);
+    expect(sameFood({ key: "배추", name: "배추" }, { key: "양배추", name: "양배추" })).toBe(false);
+    expect(sameFood({ key: "", name: "고추" }, { key: "", name: "청양고추" })).toBe(false);
+    expect(sameFood({ key: "", name: "두부" }, { key: "", name: "순두부" })).toBe(false);
+    // 같은 재료로 보는 앞말과 동의어
+    expect(sameFood({ key: "", name: "소금" }, { key: "", name: "굵은소금" })).toBe(true);
+    expect(sameFood({ key: "egg", name: "계란" }, { key: "달걀", name: "달걀" })).toBe(true);
+    expect(sameFood({ key: "", name: "녹말가루" }, { key: "", name: "감자전분" })).toBe(true);
+    expect(sameFood({ key: "eggs", name: "eggs" }, { key: "egg", name: "달걀" })).toBe(true);
+    expect(sameFood({ key: "welsh_onion", name: "파" }, { key: "green_onion", name: "대파" })).toBe(true);
+    expect(sameFood({ key: "scallion", name: "쪽파" }, { key: "green_onion", name: "대파" })).toBe(false);
+    expect(sameFood({ key: "tomatoes", name: "a" }, { key: "tomato", name: "b" })).toBe(true);
+  });
+  it("offers look-alikes as hints only", () => {
+    const fridge = [fr({ id: "pb", name: "땅콩버터", key: "peanut_butter", qty: 1, unit: "병" })];
+    const m = matchIngredient(ing({ name: "버터", key: "butter", qty: 10, unit: "g" }), fridge);
+    expect(m.status).toBe("missing");
+    expect(m.similar.map((x) => x.id)).toEqual(["pb"]);
+  });
+  it("treats family staples as available unless the fridge says otherwise", () => {
+    const staples = ["소금", "간장", "후춧가루"];
+    expect(matchIngredient(ing({ name: "소금", key: "salt", unit: "기타" }), [], { staples }).status).toBe("staple");
+    expect(matchIngredient(ing({ name: "후추", key: "black_pepper", unit: "기타" }), [], { staples }).status).toBe("staple");
+    expect(matchIngredient(ing({ name: "진간장", key: "soy_sauce", qty: 2, unit: "큰술" }), [], { staples }).status).toBe("staple");
+    expect(matchIngredient(ing({ name: "버터", key: "butter", qty: 10, unit: "g" }), [], { staples }).status).toBe("missing");
+    const low = [fr({ id: "s", name: "간장", key: "soy_sauce", qty: 1, unit: "큰술" })];
+    expect(matchIngredient(ing({ name: "간장", key: "soy_sauce", qty: 3, unit: "큰술" }), low, { staples }).status).toBe("short");
+  });
+  it("counts eggs in 개 and 알 together", () => {
+    expect(convertQty(2, "알", "개")).toBe(2);
+    const m = matchIngredient(ing({ name: "달걀", key: "egg", qty: 2, unit: "개" }), [fr({ id: "e", name: "계란", key: "egg", qty: 10, unit: "알" })]);
+    expect(m.status).toBe("enough");
   });
   it("classifies enough / short / unknown / missing", () => {
     const fridge = [fr({ id: "a", name: "스파게티면", key: "spaghetti", qty: 500, unit: "g" }), fr({ id: "b", name: "깐마늘", key: "garlic", qty: 200, unit: "g" }),

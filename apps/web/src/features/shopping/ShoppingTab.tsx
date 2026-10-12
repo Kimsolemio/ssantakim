@@ -15,10 +15,10 @@ import {
 /** "우유 2", "삼겹살 600g", "두부 1모" → 이름·수량·단위. 숫자 앞에 띄어쓰기가 있을 때만 수량으로 본다 ("비타500"은 이름) */
 export function parseQuickAdd(text: string): { name: string; qty: number | null; unit: Unit } {
   const t = text.trim().replace(/\s+/g, " ");
-  const m = /^(.*?)\s+(\d+(?:\.\d+)?)\s*(kg|g|ml|L|l|개|봉|팩|캔|장|줌|쪽|컵|모|단|마리)?$/.exec(t);
+  const m = /^(.*?)\s+(\d+(?:\.\d+)?)\s*(kg|g|ml|L|l|개|봉|팩|캔|장|줌|쪽|컵|모|단|대|마리|송이|포기|알|병)?$/.exec(t);
   if (!m || !m[1]) return { name: t, qty: null, unit: "개" };
   const raw = m[3] ?? "개";
-  const unit: Unit = raw === "l" ? "L" : (["모", "단", "마리"].includes(raw) ? "개" : (raw as Unit));
+  const unit: Unit = raw === "l" ? "L" : (raw as Unit);
   return { name: m[1].trim(), qty: Number(m[2]), unit };
 }
 
@@ -131,16 +131,18 @@ export function ShoppingTab() {
 
       {moving && (
         <MoveToFridgeSheet items={done} onClose={() => setMoving(false)}
-          onConfirm={async (inputs) => {
-            await addFridgeItems(familyId, user.uid, inputs, (ids) => dropIntoFridge(ids, `🎉 장본 것 ${ids.length}개를 냉장고에 넣었어요`));
-            await deleteShoppingItems(familyId, done.map((d) => d.id));
+          onConfirm={async (inputs, movedIds) => {
+            const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => dropIntoFridge(ids, `🎉 장본 것 ${ids.length}개를 냉장고에 넣었어요`));
+            // 시트를 연 뒤 다른 가족이 새로 체크한 항목은 지우지 않는다 (실제로 옮긴 것만)
+            await deleteShoppingItems(familyId, movedIds);
+            void normalizeKeysInBackground(familyId, "fridge_items", ids.map((id, i) => ({ id, name: inputs[i].name, key: inputs[i].key })));
           }} />
       )}
       {editing && (
         <EditShoppingSheet item={editing} onClose={() => setEditing(null)}
           onSave={async (patch) => {
-            await updateShoppingItem(familyId, editing.id, patch);
-            if (patch.name && patch.name !== editing.name) void normalizeKeysInBackground(familyId, "shopping_items", [{ id: editing.id, name: patch.name }]);
+            const renamed = await updateShoppingItem(familyId, editing.id, patch, editing);
+            if (renamed) void normalizeKeysInBackground(familyId, "shopping_items", [{ id: editing.id, name: patch.name }]);
           }} />
       )}
     </div>
@@ -150,7 +152,7 @@ export function ShoppingTab() {
 type MoveRow = { id: string; name: string; key: string; qty: number | null; unit: Unit; location: StorageLocation; expiresAt: string | null; category: FoodCategory; emoji: string; memo?: string };
 
 /** 장본 것을 냉장고로: 보관 위치와 유통기한만 확인 */
-function MoveToFridgeSheet({ items, onClose, onConfirm }: { items: ShoppingDoc[]; onClose: () => void; onConfirm: (inputs: (FridgeInput & { key: string })[]) => Promise<void> }) {
+function MoveToFridgeSheet({ items, onClose, onConfirm }: { items: ShoppingDoc[]; onClose: () => void; onConfirm: (inputs: (FridgeInput & { key: string })[], movedIds: string[]) => Promise<void> }) {
   const today = localDate();
   const [rows, setRows] = useState<MoveRow[]>(() => items.map((it) => {
     const guess = guessFood(it.name);
@@ -189,7 +191,7 @@ function MoveToFridgeSheet({ items, onClose, onConfirm }: { items: ShoppingDoc[]
             setBusy(true); setErr(null);
             try {
               await onConfirm(rows.map((r) => ({ name: r.name, key: r.key, qty: r.qty, unit: r.unit, location: r.location, expiresAt: r.expiresAt,
-                memo: r.memo, category: r.category, emoji: r.emoji, source: "manual", purchasedAt: today })));
+                memo: r.memo, category: r.category, emoji: r.emoji, source: "manual", purchasedAt: today })), rows.map((r) => r.id));
               onClose();
             } catch (e) { setErr(e instanceof Error ? e.message : "넣지 못했습니다"); setBusy(false); }
           }}>🧊 {rows.length}개 넣기</button>
@@ -214,7 +216,7 @@ function EditShoppingSheet({ item, onClose, onSave }: { item: ShoppingDoc; onClo
         </div>
         <input className={field} placeholder="메모 (브랜드, 가게 등)" value={memo} onChange={(e) => setMemo(e.target.value)} />
         <button className="rounded-xl bg-orange-500 py-3 font-semibold text-white" disabled={!name.trim()}
-          onClick={async () => { await onSave({ name: name.trim(), qty: qty === "" ? null : Number(qty), unit, memo: memo.trim() || undefined }); onClose(); }}>저장</button>
+          onClick={async () => { await onSave({ name: name.trim(), qty: qty === "" ? null : Number(qty), unit, memo: memo.trim() }); onClose(); }}>저장</button>
       </div>
     </Sheet>
   );

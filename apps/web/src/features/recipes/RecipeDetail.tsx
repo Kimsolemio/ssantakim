@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { IngredientMatch, Recipe } from "@cook/shared";
+import { isStandardKey, type IngredientMatch, type Recipe } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { Sheet } from "../../components/Sheet";
 import { IngredientList } from "./IngredientList";
@@ -9,9 +9,9 @@ import { useFamily } from "../../lib/family";
 import { useAuth } from "../../lib/auth";
 import { useFridge, applyFridgeUpdates, setFridgeItemKey, type FridgeDoc } from "../fridge/useFridge";
 import { useShopping, addShoppingItems } from "../shopping/useShopping";
-import { normalizeKeysInBackground } from "../../lib/normalize";
+import { normalizeKeysInBackground, remapStepKeys } from "../../lib/normalize";
 import { useRecipeMatches, statusLabel, FridgeSummary, AddToShoppingSheet, LinkSheet } from "./FridgeCheck";
-import type { FolderDoc } from "./useRecipes";
+import { updateRecipe, type FolderDoc } from "./useRecipes";
 
 type Props = {
   recipe: Recipe;
@@ -48,13 +48,34 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
   const [cooking, setCooking] = useState(false);
   const [useUp, setUseUp] = useState<IngredientMatch<FridgeDoc>[] | null>(null);
   const [shopSheet, setShopSheet] = useState(false);
-  const [linking, setLinking] = useState<IngredientMatch<FridgeDoc> | null>(null);
+  const [linking, setLinking] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const { familyId } = useFamily();
+  const { familyId, family } = useFamily();
   const { user } = useAuth();
-  const { items: fridge } = useFridge(familyId);
-  const { items: shopping } = useShopping(familyId);
-  const matches = useRecipeMatches(recipe, servings, fridge);
+  const { items: fridge, loading: fridgeLoading } = useFridge(familyId);
+  const { items: shopping, loading: shoppingLoading } = useShopping(familyId);
+  const matches = useRecipeMatches(recipe, servings, fridge, family?.profile.staples);
+  // 냉장고·장보기를 다 불러오기 전에는 "없음"으로 잘못 보이지 않게 대조 결과를 숨긴다
+  const ready = !fridgeLoading && !shoppingLoading;
+
+  /**
+   * 재료 ↔ 냉장고 품목 연결. AI가 정리한 표준 key 쪽으로 맞춘다
+   * (한글 임시 key 는 나중에 이름 정리가 덮어쓰므로 연결이 풀린다).
+   */
+  const link = async (index: number, f: FridgeDoc) => {
+    if (!familyId) return;
+    const ing = recipe.ingredients[index];
+    if (isStandardKey(ing.key) || !isStandardKey(f.key)) {
+      await setFridgeItemKey(familyId, f.id, ing.key);
+    } else if (recipeId) {
+      const map = new Map([[ing.key, f.key]]);
+      await updateRecipe(familyId, recipeId, {
+        ingredients: recipe.ingredients.map((x, i) => (i === index ? { ...x, key: f.key } : x)),
+        steps: remapStepKeys(recipe.steps, map),
+      });
+    }
+    say(`🔗 ${f.name}을(를) ${ing.name}(으)로 연결했어요`);
+  };
 
   const say = (msg: string) => { setNotice(msg); setTimeout(() => setNotice((m) => (m === msg ? null : m)), 3500); };
   const addToShopping = async (items: { name: string; key: string; qty: number | null; unit: FridgeDoc["unit"] }[], fromRecipe: boolean) => {
@@ -96,10 +117,13 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
             <ServingsStepper value={servings} onChange={setServings} />
           </div>
           {servings !== recipe.servingsBase && <p className="mb-2 text-xs text-gray-500">기준 {recipe.servingsBase}인분에서 자동 환산했어요. "약간"은 그대로 둡니다.</p>}
-          <div className="mb-2"><FridgeSummary matches={matches} onAddToShopping={() => setShopSheet(true)} /></div>
+          <div className="mb-2">
+            {ready ? <FridgeSummary matches={matches} onAddToShopping={() => setShopSheet(true)} />
+              : <p className="rounded-2xl bg-white p-3 text-sm text-gray-500" data-testid="fridge-summary-loading">🧊 냉장고 확인 중…</p>}
+          </div>
           <IngredientList ingredients={recipe.ingredients} servingsBase={recipe.servingsBase} servings={servings}
-            statuses={matches.map((m) => ({ status: m.status, label: statusLabel(m) }))}
-            onStatusClick={(i) => { if (matches[i].status !== "always") setLinking(matches[i]); }} />
+            statuses={ready ? matches.map((m) => ({ status: m.status, label: statusLabel(m) })) : undefined}
+            onStatusClick={(i) => { if (matches[i].status !== "always") setLinking(i); }} />
         </section>
 
         <section>
@@ -130,7 +154,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
         )}
       </div>
 
-      <button onClick={() => setCooking(true)}
+      <button onClick={() => setCooking(true)} disabled={!ready}
         className="fixed inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl bg-orange-500 py-3.5 text-center text-lg font-bold text-white shadow-lg active:scale-[0.99]"
         style={{ bottom: "calc(var(--safe-bottom) + 16px)" }}>🍳 요리 시작</button>
       {cooking && (
@@ -142,9 +166,8 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
       {shopSheet && (
         <AddToShoppingSheet matches={matches} recipeTitle={recipe.title} onClose={() => setShopSheet(false)} onConfirm={(items) => addToShopping(items, true)} />
       )}
-      {linking && familyId && (
-        <LinkSheet match={linking} fridge={fridge} onClose={() => setLinking(null)}
-          onLink={async (f) => { await setFridgeItemKey(familyId, f.id, linking.ingredient.key); say(`🔗 ${f.name}을(를) ${linking.ingredient.name}(으)로 연결했어요`); }} />
+      {linking != null && matches[linking] && (
+        <LinkSheet match={matches[linking]} fridge={fridge} onClose={() => setLinking(null)} onLink={(f) => link(linking, f)} />
       )}
       {notice && (
         <div role="status" className="pointer-events-none fixed inset-x-0 z-50 mx-auto w-fit max-w-[90%] rounded-full bg-slate-900/90 px-4 py-2 text-sm text-white shadow-lg"

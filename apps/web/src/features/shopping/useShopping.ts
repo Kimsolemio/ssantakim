@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, writeBatch, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, orderBy, query, writeBatch, updateDoc, deleteDoc, deleteField } from "firebase/firestore";
 import { ShoppingItem, convertQty, guessFood, provisionalKey, roundQty, sameFood } from "@cook/shared";
 import { getDb } from "../../lib/firebase";
 
@@ -65,8 +65,14 @@ export async function addShoppingItems(familyId: string, uid: string, inputs: Sh
 export async function setShoppingChecked(familyId: string, id: string, checked: boolean) {
   await updateDoc(doc(col(familyId), id), { checked });
 }
-export async function updateShoppingItem(familyId: string, id: string, patch: Partial<ShoppingItem>) {
-  await updateDoc(doc(col(familyId), id), patch);
+/** 고치기. 이름이 바뀌면 key 를 새로 만들고, 지운 메모는 필드째 지운다. 돌려주는 값: 이름이 바뀌었는가 */
+export async function updateShoppingItem(familyId: string, id: string, patch: Partial<ShoppingItem>, current?: Pick<ShoppingItem, "name">): Promise<boolean> {
+  const data: Record<string, unknown> = { ...patch };
+  const renamed = !!current && typeof patch.name === "string" && provisionalKey(patch.name) !== provisionalKey(current.name);
+  if (renamed) data.key = provisionalKey(patch.name!);
+  if ("memo" in patch && !patch.memo) data.memo = deleteField();
+  await updateDoc(doc(col(familyId), id), data);
+  return renamed;
 }
 export async function deleteShoppingItem(familyId: string, id: string) {
   await deleteDoc(doc(col(familyId), id));

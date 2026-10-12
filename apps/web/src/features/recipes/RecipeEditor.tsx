@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IngredientGroup, RecipeDraft, Unit, provisionalKey, type Ingredient, type Step } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
+import { remapStepKeys } from "../../lib/normalize";
 
 type Props = {
   title: string;
@@ -9,6 +10,10 @@ type Props = {
   note?: string | null;
   onSave: (draft: RecipeDraft) => Promise<void>;
   onClose: () => void;
+  /** 아직 저장하지 않은 AI 결과면 true: 고치지 않았어도 닫기 전에 묻는다 */
+  fresh?: boolean;
+  /** 고칠 때마다 불린다 (기기에 임시 보관용) */
+  onChange?: (draft: RecipeDraft) => void;
 };
 
 const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-base outline-none focus:border-orange-400";
@@ -19,27 +24,44 @@ function emptyIngredient(): Ingredient {
 }
 
 /** AI 결과를 저장하기 전에 사람이 고치는 화면. 저장 시 zod로 검증한다. */
-export function RecipeEditor({ title, initial, note, onSave, onClose }: Props) {
+export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onChange }: Props) {
   const [d, setD] = useState<RecipeDraft>(initial);
   const [tagsText, setTagsText] = useState(initial.tags.join(", "));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 재료 이름을 바꾸면 예전 key(예전 이름의 것)를 버린다. 처음 key 는 단계의 ingredientKeys 를 고칠 때 쓴다
+  const [origKeys, setOrigKeys] = useState<(string | null)[]>(() => initial.ingredients.map((i) => i.key));
   const setIng = (i: number, patch: Partial<Ingredient>) =>
-    setD((p) => ({ ...p, ingredients: p.ingredients.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) }));
+    setD((p) => ({ ...p, ingredients: p.ingredients.map((x, idx) => {
+      if (idx !== i) return x;
+      const renamed = patch.name !== undefined && provisionalKey(patch.name) !== provisionalKey(x.name);
+      return { ...x, ...patch, ...(renamed ? { key: "" } : {}) };
+    }) }));
+  const removeIng = (i: number) => {
+    setD((p) => ({ ...p, ingredients: p.ingredients.filter((_, idx) => idx !== i) }));
+    setOrigKeys((k) => k.filter((_, idx) => idx !== i));
+  };
   const setStep = (i: number, patch: Partial<Step>) =>
     setD((p) => ({ ...p, steps: p.steps.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) }));
 
+  const dirty = d !== initial || tagsText !== initial.tags.join(", ");
+  useEffect(() => { if (dirty) onChange?.({ ...d, tags: tagsText.split(/[,，]/).map((t) => t.trim()).filter(Boolean) }); }, [d, tagsText]); // eslint-disable-line react-hooks/exhaustive-deps
+  const confirmClose = busy ? null
+    : fresh ? "저장하지 않고 닫을까요? (이 기기에 초안이 남아 있어 레시피 탭에서 다시 열 수 있어요)"
+    : dirty ? "고친 내용을 저장하지 않고 닫을까요?" : null;
+
   const save = async () => {
     setErr(null);
+    const keyed = d.ingredients.map((i) => ({ ...i, name: i.name.trim(), key: i.key.trim() || provisionalKey(i.name), note: i.note?.trim() || undefined }));
+    const keyMap = new Map<string, string>();
+    keyed.forEach((i, idx) => { const o = origKeys[idx]; if (o && o !== i.key) keyMap.set(o, i.key); });
     const cleaned: RecipeDraft = {
       ...d,
       title: d.title.trim(),
       tags: tagsText.split(/[,，]/).map((t) => t.trim().replace(/^#/, "")).filter(Boolean),
-      ingredients: d.ingredients
-        .filter((i) => i.name.trim())
-        .map((i) => ({ ...i, name: i.name.trim(), key: i.key.trim() || provisionalKey(i.name), note: i.note?.trim() || undefined })),
-      steps: d.steps.filter((s) => s.text.trim()).map((s, idx) => ({ ...s, order: idx + 1, text: s.text.trim() })),
+      ingredients: keyed.filter((i) => i.name),
+      steps: remapStepKeys(d.steps.filter((s) => s.text.trim()).map((s, idx) => ({ ...s, order: idx + 1, text: s.text.trim() })), keyMap),
       tips: d.tips.map((t) => t.trim()).filter(Boolean),
     };
     const parsed = RecipeDraft.safeParse(cleaned);
@@ -56,7 +78,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose }: Props) {
   };
 
   return (
-    <FullScreen title={title} onClose={onClose}
+    <FullScreen title={title} onClose={onClose} confirmClose={confirmClose}
       right={<button disabled={busy} onClick={save} className="rounded-full bg-orange-500 px-4 py-1.5 font-semibold text-white disabled:opacity-50">{busy ? "저장 중…" : "저장"}</button>}>
       <div className="flex flex-col gap-5 p-4">
         {note && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800" data-testid="import-note">✅ {note}{initial.source.url ? " · 원본 링크가 함께 저장돼요" : ""}. 저장 전에 재료와 순서를 확인해 주세요.</p>}
@@ -99,11 +121,11 @@ export function RecipeEditor({ title, initial, note, onSave, onClose }: Props) {
                   <label className="flex items-center gap-1"><input type="checkbox" checked={ing.optional} onChange={(e) => setIng(i, { optional: e.target.checked })} />선택 재료</label>
                   <label className="flex items-center gap-1"><input type="checkbox" checked={!ing.scalable} onChange={(e) => setIng(i, { scalable: !e.target.checked })} />인분 고정</label>
                   <input className={small + " min-w-0 flex-1 py-1"} placeholder="메모 (다진 것, 대체: …)" value={ing.note ?? ""} onChange={(e) => setIng(i, { note: e.target.value })} />
-                  <button className="text-red-500" onClick={() => setD({ ...d, ingredients: d.ingredients.filter((_, idx) => idx !== i) })}>삭제</button>
+                  <button className="text-red-500" onClick={() => removeIng(i)}>삭제</button>
                 </div>
               </div>
             ))}
-            <button className="rounded-xl border border-dashed border-orange-300 py-2 text-sm text-orange-700" onClick={() => setD({ ...d, ingredients: [...d.ingredients, emptyIngredient()] })}>+ 재료 추가</button>
+            <button className="rounded-xl border border-dashed border-orange-300 py-2 text-sm text-orange-700" onClick={() => { setD({ ...d, ingredients: [...d.ingredients, emptyIngredient()] }); setOrigKeys((k) => [...k, null]); }}>+ 재료 추가</button>
           </div>
         </section>
 

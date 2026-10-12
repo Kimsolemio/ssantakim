@@ -24,7 +24,8 @@ function installGlobal() {
   });
 }
 
-export function useBackButton(active: boolean, onBack: () => void) {
+/** onBack 이 false 를 돌려주면 닫지 않는다 (예: "저장하지 않고 나갈까요?"에서 취소) */
+export function useBackButton(active: boolean, onBack: () => void | boolean) {
   const cb = useRef(onBack);
   cb.current = onBack;
   const token = useRef<string>("");
@@ -48,7 +49,11 @@ export function useBackButton(active: boolean, onBack: () => void) {
     const handler = () => {
       if ((current()?.depth ?? 0) >= depth.current) return; // 아직 내 항목이 살아 있다
       closedByPop = true;
-      cb.current();
+      if (cb.current() === false) {
+        // 닫기를 취소했다: 걷힌 내 항목을 다시 쌓는다
+        closedByPop = false;
+        history.pushState({ layer: t, depth: depth.current }, "");
+      }
     };
     window.addEventListener("popstate", handler);
     return () => {

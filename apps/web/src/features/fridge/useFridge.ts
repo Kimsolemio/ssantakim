@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, writeBatch,
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, deleteField, doc, query, orderBy, writeBatch,
 } from "firebase/firestore";
 import { FridgeItem, provisionalKey } from "@cook/shared";
 import { getDb } from "../../lib/firebase";
@@ -36,6 +36,7 @@ export type FridgeInput = Omit<FridgeItem, "key" | "addedBy" | "addedAt" | "phot
 export async function addFridgeItem(familyId: string, uid: string, input: FridgeInput): Promise<string> {
   const item: FridgeItem = FridgeItem.parse({
     ...input,
+    memo: input.memo || undefined,
     key: provisionalKey(input.name),
     addedBy: uid,
     addedAt: new Date().toISOString(),
@@ -58,10 +59,18 @@ export async function applyFridgeUpdates(familyId: string, updates: { id: string
   await batch.commit();
 }
 
-export async function updateFridgeItem(familyId: string, id: string, input: Partial<FridgeInput>) {
+/**
+ * 품목 고치기. 이름이 실제로 바뀐 경우에만 key 를 새로 만든다 (그대로면 AI가 정리한 key 를 지킨다).
+ * 지운 메모는 필드째 지운다 (undefined 는 Firestore가 무시하므로).
+ * 돌려주는 값: 이름이 바뀌었는가 (이름 정리를 다시 할지)
+ */
+export async function updateFridgeItem(familyId: string, id: string, input: Partial<FridgeInput>, current: Pick<FridgeItem, "name">): Promise<boolean> {
   const patch: Record<string, unknown> = { ...input };
-  if (typeof input.name === "string") patch.key = provisionalKey(input.name);
+  const renamed = typeof input.name === "string" && provisionalKey(input.name) !== provisionalKey(current.name);
+  if (renamed) patch.key = provisionalKey(input.name!);
+  if ("memo" in input && !input.memo) patch.memo = deleteField();
   await updateDoc(doc(getDb(), "families", familyId, "fridge_items", id), patch);
+  return renamed;
 }
 
 export async function deleteFridgeItem(familyId: string, id: string) {

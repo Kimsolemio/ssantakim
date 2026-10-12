@@ -7,7 +7,8 @@ import type { FamilyProfile } from "@cook/shared";
 /** 레시피 JSON 의 형식 규칙 (AI 생성과 링크 가져오기가 같이 쓴다) */
 export const RECIPE_FORMAT_RULES = `## 재료 규칙
 - 한국 마트·온라인몰에서 구하기 쉬운 재료를 쓰고, 구하기 어려운 재료는 대체 재료를 note에 적습니다.
-- qty/unit는 요청한 인분 기준의 실제 분량입니다. 단위는 g, kg, ml, L, 개, 큰술, 작은술, 컵, 줌, 쪽, 장, 봉, 팩, 캔 중에서 고릅니다.
+- qty/unit는 요청한 인분 기준의 실제 분량입니다. 단위는 g, kg, ml, L, 개, 큰술, 작은술, 컵, 줌, 쪽, 장, 봉, 팩, 캔, 모, 단, 대, 마리, 송이, 포기, 알, 병, 꼬집 중에서 고릅니다.
+  고기·면·채소처럼 무게로 사는 재료는 g, 액체는 ml나 숟가락, 낱개로 세는 재료는 개(달걀·양파)·모(두부)·대(대파)·쪽(마늘)을 씁니다.
   "약간", "적당량", "취향껏"처럼 계량할 수 없는 경우만 unit="기타", qty=null, scalable=false 로 표시하고 note에 "약간" 등으로 적습니다.
 - key는 재료의 표준 영문 snake_case 이름입니다 (예: green_onion, garlic, egg, soy_sauce, pork_belly, olive_oil, spaghetti).
   같은 재료는 손질 상태가 달라도 같은 key를 씁니다 (다진 마늘 → key "garlic", note "다진 것").
@@ -59,8 +60,9 @@ export const RECEIPT_SYSTEM_PROMPT = `당신은 한국 가정의 냉장고 관�
 - rawText: 영수증에 적힌 상품명 그대로.
 - name: 브랜드·용량·수식어를 뺀 일반 재료 이름 (예: "국산 깐마늘 200g" → "깐마늘", "서울우유 1L" → "우유", "CJ 비비고 왕교자 1.05kg" → "만두").
 - key: 재료의 표준 영문 snake_case 이름 (예: garlic, milk, dumpling, green_onion, pork_belly, egg, tofu).
-- qty/unit: 실제로 산 양. 무게·부피가 적혀 있으면 그 단위(g, kg, ml, L), 개수로 파는 것은 개·팩·봉·캔 등. 같은 상품을 여러 개 샀으면 개수를 qty에 반영하고 한 개당 용량은 memo에 적습니다 (예: 우유 1L 2개 → qty 2, unit "팩", memo "1L").
-  단위는 g, kg, ml, L, 개, 큰술, 작은술, 컵, 줌, 쪽, 장, 봉, 팩, 캔, 기타 중에서 고르고, 알 수 없으면 qty null, unit "개".
+- qty/unit: 실제로 산 총량. 레시피와 맞춰 볼 수 있도록 용량이 적혀 있으면 무게·부피 총량으로 적습니다 (예: 우유 1L 2개 → qty 2, unit "L", memo "1L × 2" / 삼겹살 600g → qty 600, unit "g" / 비비고 왕교자 1.05kg → qty 1.05, unit "kg").
+  용량이 없고 낱개로 파는 것은 셈 단위로 적습니다 (달걀 30구 → qty 30, unit "개" / 두부 1모 → unit "모" / 대파 1단 → unit "단" / 라면 5봉 → unit "봉" / 고등어 2마리 → unit "마리" / 배추 1포기 → unit "포기").
+  단위는 g, kg, ml, L, 개, 큰술, 작은술, 컵, 줌, 쪽, 장, 봉, 팩, 캔, 모, 단, 대, 마리, 송이, 포기, 알, 병, 꼬집, 기타 중에서 고르고, 알 수 없으면 qty null, unit "개".
 - location: 한국 가정에서 보통 보관하는 곳. 냉장 / 냉동 / 실온. 냉동식품·아이스크림은 냉동, 라면·쌀·과자·통조림은 실온, 감자·고구마·양파는 실온.
 - category: 채소 / 과일 / 육류 / 해산물 / 유제품 / 달걀 / 두부·콩 / 음료 / 소스·양념 / 반찬·가공 / 곡물·면 / 간식 / 냉동식품 / 기타.
 - emoji: 그 품목을 가장 잘 나타내는 이모지 한 글자 (예: 🥛 🥚 🧅 🥩 🐟 🍎 🥟).
@@ -80,7 +82,8 @@ export const NORMALIZE_SYSTEM_PROMPT = `한국어 식재료 이름을 표준 영
 
 - key는 소문자 영문 snake_case 일반명사입니다 (예: green_onion, garlic, egg, tofu, soy_sauce, pork_belly, spaghetti, olive_oil, kimchi, milk).
 - 같은 재료는 손질 상태·브랜드·원산지·용량이 달라도 같은 key를 씁니다 (깐마늘, 다진 마늘, 편마늘 → garlic / 서울우유 → milk / 냉동 만두 → dumpling).
-- 다른 재료는 다른 key를 씁니다 (고추 → chili_pepper, 고추장 → gochujang, 고춧가루 → chili_flakes / 돼지고기 → pork, 소고기 → beef).
+- 다른 재료는 다른 key를 씁니다 (고추 → chili_pepper, 청양고추 → cheongyang_pepper, 고추장 → gochujang, 고춧가루 → chili_flakes / 돼지고기 → pork, 소고기 → beef / 대파 → green_onion, 쪽파 → scallion / 배추 → napa_cabbage, 양배추 → cabbage / 버터 → butter, 땅콩버터 → peanut_butter / 우유 → milk, 바나나우유 → banana_milk / 두부 → tofu, 순두부 → soft_tofu).
+- key는 단수형으로 씁니다 (egg, tomato, onion).
 - 입력 순서와 개수를 그대로 지켜 items에 넣고, name에는 입력한 이름을 그대로 적습니다.`;
 
 export function buildNormalizeUserMessage(names: string[]): string {

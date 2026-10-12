@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StorageLocation, Unit, addDays, daysUntil, localDate, type ReceiptScan, type ReceiptItem } from "@cook/shared";
+import { StorageLocation, Unit, addDays, daysUntil, localDate, provisionalKey, type ReceiptScan, type ReceiptItem } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { prepareImage, type PreparedImage } from "../../lib/image";
 import type { FridgeInput } from "./useFridge";
+import { useFamily } from "../../lib/family";
+import { loadPending, savePending, clearPending } from "../../lib/drafts";
+
+type PendingReceipt = { scan: ReceiptScan; cands: Candidate[] };
 
 type ScanResponse = { scan: ReceiptScan; provider: string; model: string; usage: { input: number; output: number } };
 
@@ -22,6 +26,9 @@ export type Candidate = {
   memo: string;
   rawText: string;
   isFood: boolean;
+  /** AI가 읽은 이름과 key. 이름을 고치면 key 를 새로 만들고, 되돌리면 AI key 로 돌아간다 */
+  aiName: string;
+  aiKey: string;
 };
 
 const MAX_IMAGES = 4;
@@ -42,6 +49,7 @@ export function toCandidates(scan: ReceiptScan, today: string): Candidate[] {
     name: it.name, key: it.key, qty: it.qty, unit: it.unit, location: it.location,
     expiresAt: it.shelfLifeDays != null ? addDays(base, it.shelfLifeDays) : null,
     emoji: it.emoji || "📦", category: it.category, memo: it.memo, rawText: it.rawText, isFood: it.isFood,
+    aiName: it.name, aiKey: it.key,
   }));
 }
 
@@ -65,6 +73,11 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const today = useMemo(() => localDate(), []);
+  // 인식 결과는 이 기기에 보관해 두었다가, 넣기 전에 닫아도 다시 열면 이어서 볼 수 있게 한다
+  const { familyId } = useFamily();
+  const pendingName = `receipt:${familyId ?? ""}`;
+  const [stored, setStored] = useState<PendingReceipt | null>(() => loadPending<PendingReceipt>(pendingName));
+  useEffect(() => { if (step === "review" && scan) savePending<PendingReceipt>(pendingName, { scan, cands }); }, [step, scan, cands, pendingName]);
 
   useEffect(() => () => { abort.current?.abort(); images.forEach((im) => URL.revokeObjectURL(im.previewUrl)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -100,6 +113,7 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
       }, abort.current.signal);
       setScan(res.scan);
       setCands(toCandidates(res.scan, today));
+      setStored(null);
       setStep("review");
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "영수증을 읽지 못했습니다");
@@ -114,12 +128,14 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
   const confirm = async () => {
     setSaving(true); setErr(null);
     try {
+      clearPending(pendingName);
       await onConfirm(chosen.map((c) => ({
         name: c.name.trim(), key: c.key, qty: c.qty, unit: c.unit, location: c.location, expiresAt: c.expiresAt,
         memo: c.memo.trim() || undefined, category: c.category, emoji: c.emoji, source: "receipt",
         purchasedAt: scan ? purchaseBase(scan.purchasedAt, today) : today,
       })));
     } catch (e) {
+      if (scan) savePending<PendingReceipt>(pendingName, { scan, cands });
       setErr(e instanceof Error ? e.message : "저장하지 못했습니다");
       setSaving(false);
     }
@@ -132,7 +148,8 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
       <div className="flex items-center gap-2">
         <input type="checkbox" aria-label={`${c.name} 넣기`} checked={c.checked} onChange={(e) => set(c.id, { checked: e.target.checked })} className="h-5 w-5 accent-orange-500" />
         <span className="text-2xl" aria-hidden>{c.emoji}</span>
-        <input className={small + " min-w-0 flex-1 font-medium"} value={c.name} onChange={(e) => set(c.id, { name: e.target.value })} aria-label="이름" />
+        <input className={small + " min-w-0 flex-1 font-medium"} value={c.name} aria-label="이름"
+          onChange={(e) => set(c.id, { name: e.target.value, ...(provisionalKey(e.target.value) !== provisionalKey(c.aiName) ? { key: provisionalKey(e.target.value) } : { key: c.aiKey }) })} />
         <input className={small + " w-16"} type="number" inputMode="decimal" min={0} step="any" value={c.qty ?? ""} aria-label="수량"
           onChange={(e) => set(c.id, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
         <select className={small + " w-16"} value={c.unit} onChange={(e) => set(c.id, { unit: e.target.value as Unit })} aria-label="단위">
@@ -155,9 +172,18 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
   );
 
   return (
-    <FullScreen title="영수증으로 채우기" onClose={() => { abort.current?.abort(); onClose(); }}>
+    <FullScreen title="영수증으로 채우기" onClose={() => { abort.current?.abort(); onClose(); }}
+      confirmClose={step === "review" && !saving ? "읽은 품목을 냉장고에 넣지 않고 닫을까요? (다음에 열면 이어서 볼 수 있어요)" : step === "loading" ? "영수증을 읽는 중이에요. 그만둘까요?" : null}>
       {step === "pick" && (
         <div className="flex flex-col gap-4 p-4">
+          {stored && (
+            <div className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="pending-receipt">
+              <span className="min-w-0 flex-1">🧾 넣지 않은 영수증 결과 {stored.cands.filter((c) => c.isFood).length}개가 남아 있어요{stored.scan.store ? ` (${stored.scan.store})` : ""}</span>
+              <button type="button" className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white"
+                onClick={() => { setScan(stored.scan); setCands(stored.cands); setStored(null); setStep("review"); }}>이어서</button>
+              <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { clearPending(pendingName); setStored(null); }}>버리기</button>
+            </div>
+          )}
           <p className="text-sm text-gray-600">장본 영수증 사진이나 쿠팡·마켓컬리 같은 주문내역 캡처를 올리면 AI가 품목을 읽어 냉장고에 넣어 드려요. 긴 영수증은 나눠 찍어 최대 {MAX_IMAGES}장까지 올릴 수 있어요.</p>
           {!workerConfigured && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버 주소(VITE_WORKER_URL)가 설정되지 않았습니다.</p>}
           <div className="grid grid-cols-2 gap-2">

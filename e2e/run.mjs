@@ -240,7 +240,22 @@ assert.equal(await status("스파게티면").getAttribute("data-status"), "enoug
 assert.equal(await status("마늘").getAttribute("data-status"), "unknown_amount"); // 12쪽 vs 200g → 양 확인
 // 올리브오일 ↔ 올리브유: 이름이 달라 AI 이름 정리(olive_oil)가 끝나야 맞춰진다
 await status("올리브오일").and(mom.locator('[data-status="enough"]')).waitFor({ timeout: 10000 });
-assert.equal(await status("소금").getAttribute("data-status"), "missing");
+// 소금은 기본 "늘 있는 양념" → 없음으로 세지 않는다
+assert.equal(await status("소금").getAttribute("data-status"), "staple");
+await mom.getByText("냉장고에 3/5개 있어요").waitFor();
+await mom.getByText(/필수 재료는 다 있어요 · 늘 있는 양념 1개 제외/).waitFor();
+// 가족 설정에서 소금을 빼면 다시 "없음"
+await mom.getByLabel("뒤로").click();
+await mom.getByText("👨‍👩‍👧 테스트네").click();
+const staplesBox = mom.getByPlaceholder("소금, 설탕, 간장");
+assert.match(await staplesBox.inputValue(), /^소금, 설탕/);
+await staplesBox.fill((await staplesBox.inputValue()).replace(/^소금, /, ""));
+await mom.getByText("취향 저장").click();
+await mom.getByText("저장했어요").waitFor();
+await mom.getByRole("button", { name: "닫기", exact: true }).click();
+await mom.locator("li", { hasText: "알리오올리오" }).first().click();
+await mom.getByTestId("fridge-summary").waitFor();
+await status("소금").and(mom.locator('[data-status="missing"]')).waitFor();
 assert.equal(await status("페페론치노").getAttribute("data-status"), "missing");
 await mom.getByText("냉장고에 3/6개 있어요").waitFor();
 await mom.getByText("필수 재료 1개가 없거나 부족해요").waitFor();

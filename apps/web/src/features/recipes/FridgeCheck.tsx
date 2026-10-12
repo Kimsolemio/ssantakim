@@ -9,27 +9,30 @@ export function statusLabel(m: IngredientMatch<FridgeDoc>): string {
   switch (m.status) {
     case "enough": return "있음";
     case "always": return "물";
+    case "staple": return "늘 있음";
     case "unknown_amount": return "있음·양 확인";
     case "short": return `${formatAmount({ qty: m.shortBy, unit: u })} 부족`;
-    case "missing": return "없음";
+    case "missing": return m.similar.length ? "없음·비슷한 것?" : "없음";
   }
 }
 
-/** 현재 인분 기준으로 재료를 냉장고와 대조 */
-export function useRecipeMatches(recipe: Recipe, servings: number, fridge: FridgeDoc[]) {
-  return useMemo(() => matchIngredients(scaleIngredients(recipe.ingredients, recipe.servingsBase, servings), fridge), [recipe, servings, fridge]);
+/** 현재 인분 기준으로 재료를 냉장고와 대조 (늘 있는 양념은 가족 설정에서) */
+export function useRecipeMatches(recipe: Recipe, servings: number, fridge: FridgeDoc[], staples: readonly string[] | undefined) {
+  return useMemo(() => matchIngredients(scaleIngredients(recipe.ingredients, recipe.servingsBase, servings), fridge, { staples }),
+    [recipe, servings, fridge, staples]);
 }
 
 export function FridgeSummary({ matches, onAddToShopping }: { matches: IngredientMatch<FridgeDoc>[]; onAddToShopping: () => void }) {
-  const counted = matches.filter((m) => m.status !== "always");
+  const counted = matches.filter((m) => m.status !== "always" && m.status !== "staple");
   const have = counted.filter((m) => m.status === "enough" || m.status === "unknown_amount").length;
+  const staples = matches.filter((m) => m.status === "staple").length;
   const need = counted.filter((m) => (m.status === "missing" || m.status === "short") && !m.ingredient.optional).length;
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-white p-3" data-testid="fridge-summary">
       <span className="text-2xl" aria-hidden>🧊</span>
       <div className="min-w-0 flex-1 text-sm">
         <p className="font-semibold">냉장고에 {have}/{counted.length}개 있어요</p>
-        <p className="text-xs text-gray-500">{need > 0 ? `필수 재료 ${need}개가 없거나 부족해요` : "필수 재료는 다 있어요"}</p>
+        <p className="text-xs text-gray-500">{need > 0 ? `필수 재료 ${need}개가 없거나 부족해요` : "필수 재료는 다 있어요"}{staples > 0 ? ` · 늘 있는 양념 ${staples}개 제외` : ""}</p>
       </div>
       {matches.some((m) => m.status === "missing" || m.status === "short") && (
         <button type="button" onClick={onAddToShopping} className="shrink-0 rounded-xl bg-orange-500 px-3 py-2 text-sm font-semibold text-white">🛒 장보기에 담기</button>
@@ -47,7 +50,8 @@ export function AddToShoppingSheet({ matches, recipeTitle, onClose, onConfirm }:
   onClose: () => void;
   onConfirm: (items: { name: string; key: string; qty: number | null; unit: Unit }[]) => Promise<void>;
 }) {
-  const rows = matches.filter((m) => m.status === "missing" || m.status === "short");
+  // 열려 있는 동안 냉장고가 바뀌어도 줄이 바뀌지 않게 처음 목록을 고정한다
+  const [rows] = useState(() => matches.filter((m) => m.status === "missing" || m.status === "short"));
   const [picks, setPicks] = useState<Pick[]>(() => rows.map((m) => ({
     checked: !m.ingredient.optional,
     qty: m.status === "short" ? m.shortBy : m.ingredient.qty,
@@ -96,23 +100,34 @@ export function LinkSheet({ match, fridge, onClose, onLink }: {
   onLink: (item: FridgeDoc) => Promise<void>;
 }) {
   const [q, setQ] = useState("");
-  const list = fridge.filter((f) => !q.trim() || f.name.includes(q.trim()));
+  const [err, setErr] = useState<string | null>(null);
   const status: MatchStatus = match.status;
+  const similarIds = new Set(match.similar.map((f) => f.id));
+  const list = fridge
+    .filter((f) => !q.trim() || f.name.includes(q.trim()))
+    .sort((a, b) => Number(similarIds.has(b.id)) - Number(similarIds.has(a.id)));
   return (
     <Sheet title={`${match.ingredient.name} 연결`} onClose={onClose}>
       <div className="flex max-h-[70vh] flex-col gap-2">
         {status === "missing" ? (
-          <p className="text-sm text-gray-600">냉장고에서 "{match.ingredient.name}"을(를) 못 찾았어요. 같은 재료가 다른 이름으로 들어 있다면 골라 주세요. 다음부터는 자동으로 맞춰져요.</p>
+          <p className="text-sm text-gray-600">냉장고에서 "{match.ingredient.name}"을(를) 못 찾았어요. 같은 재료가 다른 이름으로 들어 있다면 골라 주세요. 그 품목이 냉장고에 있는 동안은 다른 레시피에서도 "{match.ingredient.name}"(으)로 맞춰 봐요.</p>
+        ) : status === "staple" ? (
+          <p className="text-sm text-gray-600">"{match.ingredient.name}"은(는) 늘 있는 양념으로 설정돼 있어요 (가족 설정에서 바꿀 수 있어요). 냉장고 품목과 연결하면 그 양으로 맞춰 봐요.</p>
         ) : (
           <p className="text-sm text-gray-600">지금 맞춰진 품목: {match.items.map((i) => i.name).join(", ")}. 다른 품목을 연결할 수도 있어요.</p>
         )}
-        <input className="rounded-xl border border-orange-200 bg-white px-3 py-2" placeholder="냉장고에서 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="rounded-xl border border-orange-200 bg-white px-3 py-2 text-base" placeholder="냉장고에서 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
+        {err && <p className="text-sm text-red-600">{err}</p>}
         <ul className="flex flex-col gap-1 overflow-y-auto">
           {list.length === 0 && <li className="p-3 text-sm text-gray-500">냉장고에 맞는 품목이 없어요.</li>}
           {list.map((f) => (
             <li key={f.id}>
-              <button type="button" onClick={async () => { await onLink(f); onClose(); }} className="flex w-full items-center gap-2 rounded-xl bg-white px-3 py-2 text-left">
-                <span aria-hidden>{itemLook(f).emoji}</span><span className="flex-1">{f.name}</span>
+              <button type="button" onClick={async () => {
+                setErr(null);
+                try { await onLink(f); onClose(); } catch (e) { setErr(e instanceof Error ? e.message : "연결하지 못했어요"); }
+              }} className="flex w-full items-center gap-2 rounded-xl bg-white px-3 py-2 text-left">
+                <span aria-hidden>{itemLook(f).emoji}</span>
+                <span className="flex-1">{f.name}{similarIds.has(f.id) && <span className="ml-1 rounded-full bg-amber-100 px-1.5 text-[11px] text-amber-800">비슷한 이름</span>}</span>
                 <span className="text-sm text-gray-500">{formatAmount({ qty: f.qty, unit: f.unit })} · {f.location}</span>
               </button>
             </li>

@@ -1,13 +1,18 @@
 import type { Ingredient, Unit } from "./schemas";
+import { COUNT_UNITS } from "./matching";
 
-/** 개수 단위는 0.5 단위로, 나머지는 소수 첫째 자리까지 반올림 */
-const HALF_STEP_UNITS: ReadonlySet<Unit> = new Set<Unit>(["개", "쪽", "장", "봉", "팩", "캔", "컵", "큰술", "작은술", "줌"]);
+/** 숟가락·컵: 0.5 단위가 기본, 아주 적은 양은 0.25 (1/4작은술)까지 */
+const SPOON_UNITS: ReadonlySet<Unit> = new Set<Unit>(["컵", "큰술", "작은술"]);
 
 export function scaleQty(qty: number | null, unit: Unit, base: number, target: number): number | null {
   if (qty == null) return null;
-  if (base <= 0 || target <= 0) return qty;
+  if (base <= 0 || target <= 0 || base === target) return qty;
   const raw = (qty * target) / base;
-  if (HALF_STEP_UNITS.has(unit)) return Math.max(0.5, Math.round(raw * 2) / 2);
+  if (SPOON_UNITS.has(unit)) {
+    if (raw < 0.5) return Math.max(0.25, Math.round(raw * 4) / 4);
+    return Math.round(raw * 2) / 2;
+  }
+  if (COUNT_UNITS.has(unit)) return Math.max(0.5, Math.round(raw * 2) / 2);
   if (raw >= 100) return Math.round(raw);
   if (raw >= 10) return Math.round(raw * 2) / 2;
   return Math.round(raw * 10) / 10;
@@ -22,10 +27,12 @@ export function scaleIngredients(list: Ingredient[], base: number, target: numbe
   return list.map((i) => scaleIngredient(i, base, target));
 }
 
-/** 2 → "2", 1.5 → "1.5", 0.33 → "0.3", null → "" */
+/** 2 → "2", 1.5 → "1.5", 0.25 → "1/4", 0.33 → "0.3", null → "" */
 export function formatQty(qty: number | null): string {
   if (qty == null) return "";
   if (Number.isInteger(qty)) return String(qty);
+  if (qty === 0.25) return "1/4";
+  if (qty === 0.75) return "3/4";
   return String(Math.round(qty * 10) / 10);
 }
 

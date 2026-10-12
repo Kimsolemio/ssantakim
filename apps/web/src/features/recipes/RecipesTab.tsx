@@ -10,7 +10,10 @@ import type { SharedPayload } from "../../lib/share";
 import { RecipeEditor } from "./RecipeEditor";
 import { RecipeDetail, SOURCE_LABEL } from "./RecipeDetail";
 import { Sheet } from "../../components/Sheet";
-import { normalizeIngredientKeys } from "../../lib/normalize";
+import { normalizeRecipeKeys } from "../../lib/normalize";
+import { loadPending, savePending, clearPending } from "../../lib/drafts";
+
+type PendingDraft = { draft: RecipeDraft; note: string | null };
 
 type Filter = { kind: "all" } | { kind: "fav" } | { kind: "folder"; id: string };
 
@@ -30,7 +33,16 @@ export function RecipesTab() {
     consumeImport();
     setImporting({ initial: pendingImport });
   }, [pendingImport]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [draft, setDraft] = useState<RecipeDraft | null>(null);
+  const [draft, setDraftState] = useState<RecipeDraft | null>(null);
+  // 저장하지 않은 AI 초안은 이 기기에 보관해 두었다가 다시 열 수 있게 한다
+  const pendingName = `draft:${familyId ?? ""}`;
+  const [stored, setStored] = useState<PendingDraft | null>(() => (familyId ? loadPending<PendingDraft>(`draft:${familyId}`) : null));
+  const setDraft = (d: RecipeDraft | null, note: string | null = null) => {
+    setDraftState(d);
+    if (d) { savePending<PendingDraft>(pendingName, { draft: d, note }); setStored(null); }
+  };
+  const discardDraft = () => { clearPending(pendingName); setStored(null); };
+  useEffect(() => { setStored(familyId ? loadPending<PendingDraft>(`draft:${familyId}`) : null); }, [familyId]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<RecipeDoc | null>(null);
   const [folderMenu, setFolderMenu] = useState(false);
@@ -72,6 +84,14 @@ export function RecipesTab() {
         <button className="shrink-0 rounded-full border border-dashed border-orange-300 px-3 py-1.5 text-sm text-orange-700" onClick={() => setFolderMenu(true)}>폴더 관리</button>
       </div>
 
+      {stored && !draft && (
+        <div className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="pending-draft">
+          <span className="min-w-0 flex-1">📝 저장하지 않은 레시피 초안: <b>{stored.draft.title}</b></span>
+          <button type="button" className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white"
+            onClick={() => { setDraftNote(stored.note); setDraftState(stored.draft); setStored(null); }}>이어서</button>
+          <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { if (confirm("이 초안을 버릴까요?")) discardDraft(); }}>버리기</button>
+        </div>
+      )}
       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {loading && <p className="text-sm text-gray-500">불러오는 중…</p>}
       {!loading && recipes.length === 0 && (
@@ -110,15 +130,17 @@ export function RecipesTab() {
       )}
       {importing && (
         <ImportSheet initial={importing.initial} onClose={() => setImporting(false)}
-          onResult={(d, note) => { setImporting(false); setDraftNote(note); setDraft(d); }}
+          onResult={(d, note) => { setImporting(false); setDraftNote(note); setDraft(d, note); }}
           onMakeWithAi={(dish) => { setImporting(false); setGenerating({ dish }); }} />
       )}
       {draft && (
-        <RecipeEditor title="레시피 확인·수정" initial={draft} note={draftNote} onClose={() => setDraft(null)}
+        <RecipeEditor title="레시피 확인·수정" initial={draft} note={draftNote} fresh
+          onChange={(d) => savePending<PendingDraft>(pendingName, { draft: d, note: draftNote })}
+          onClose={() => { setDraftState(null); setStored(loadPending<PendingDraft>(pendingName)); }}
           onSave={async (d) => {
             const id = await createRecipe(familyId, user.uid, d, filter.kind === "folder" ? filter.id : null);
-            setDraft(null); setOpenId(id);
-            void normalizeIngredientKeys(d.ingredients).then((next) => next && updateRecipe(familyId, id, { ingredients: next }));
+            discardDraft(); setDraftState(null); setOpenId(id);
+            void normalizeRecipeKeys(d).then((next) => next && updateRecipe(familyId, id, next));
           }} />
       )}
       {open && (
@@ -134,7 +156,7 @@ export function RecipesTab() {
           onSave={async (d) => {
             const id = editing.id;
             await updateRecipe(familyId, id, d); setEditing(null);
-            void normalizeIngredientKeys(d.ingredients).then((next) => next && updateRecipe(familyId, id, { ingredients: next }));
+            void normalizeRecipeKeys(d).then((next) => next && updateRecipe(familyId, id, next));
           }} />
       )}
       {folderMenu && (

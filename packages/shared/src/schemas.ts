@@ -1,8 +1,15 @@
 import { z } from "zod";
 import { FoodCategory } from "./food";
 
+export const DEFAULT_STAPLES = ["소금", "설탕", "후춧가루", "간장", "식용유", "참기름", "식초", "참깨", "고춧가루"] as const;
+
 /** 재료 표준 단위. "약간/적당량" 같은 비계량 표현은 unit="기타" + scalable=false 로 저장한다. */
-export const Unit = z.enum(["g", "kg", "ml", "L", "개", "큰술", "작은술", "컵", "줌", "쪽", "장", "봉", "팩", "캔", "기타"]);
+export const Unit = z.enum([
+  "g", "kg", "ml", "L", "개", "큰술", "작은술", "컵", "줌", "쪽", "장", "봉", "팩", "캔",
+  // 한국 장보기·요리에서 흔한 셈 단위 (두부 1모, 대파 1단·1대, 생선 1마리, 배추 1포기, 소금 1꼬집 …)
+  "모", "단", "대", "마리", "송이", "포기", "알", "병", "꼬집",
+  "기타",
+]);
 export type Unit = z.infer<typeof Unit>;
 
 export const StorageLocation = z.enum(["냉장", "냉동", "실온"]);
@@ -146,6 +153,8 @@ export const FamilyProfile = z.object({
   dislikes: z.array(z.string()).default([]),
   kidsFriendly: z.boolean().default(false),
   defaultServings: z.number().positive().default(2),
+  /** 늘 집에 있는 양념. 냉장고에 등록하지 않아도 "있음"으로 보고 장보기에 넣지 않는다 */
+  staples: z.array(z.string()).default(() => [...DEFAULT_STAPLES]),
 });
 export type FamilyProfile = z.infer<typeof FamilyProfile>;
 

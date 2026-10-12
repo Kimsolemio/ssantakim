@@ -8,6 +8,8 @@ type Props = {
   title: string;
   onSubmit: (v: FridgeInput) => Promise<void>;
   onDelete?: () => Promise<void>;
+  /** 다 먹었어요: 냉장고에서 빼고, 원하면 장보기에 담는다 */
+  onUsedUp?: (toShopping: boolean) => Promise<void>;
   onClose: () => void;
 };
 
@@ -16,7 +18,7 @@ function addDays(n: number): string {
   return addDaysTo(localDate(), n);
 }
 
-export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: Props) {
+export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, onClose }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
   const [qty, setQty] = useState(initial?.qty != null ? String(initial.qty) : "");
   const [unit, setUnit] = useState<Unit>(initial?.unit ?? "개");
@@ -43,7 +45,7 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: 
         qty: qty.trim() === "" ? null : Number(qty),
         unit, location,
         expiresAt: expiresAt || null,
-        memo: memo.trim() || undefined,
+        memo: memo.trim(),
         category: cat,
         emoji,
         source: initial?.source ?? "manual",
@@ -53,6 +55,13 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: 
     } catch (e) {
       setErr(e instanceof Error ? e.message : "저장에 실패했습니다");
     } finally { setBusy(false); }
+  };
+
+  const usedUp = async (toShopping: boolean) => {
+    if (!onUsedUp) return;
+    setBusy(true); setErr(null);
+    try { await onUsedUp(toShopping); onClose(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "저장에 실패했습니다"); setBusy(false); }
   };
 
   const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-3 text-base outline-none focus:border-orange-400";
@@ -93,8 +102,14 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: 
         <button disabled={busy} className="rounded-xl bg-orange-500 py-3 font-semibold text-white disabled:opacity-50">
           {busy ? "저장 중…" : "저장"}
         </button>
+        {onUsedUp && (
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" disabled={busy} onClick={() => usedUp(true)} className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-700 ring-1 ring-orange-200">🛒 다 썼어요 · 또 살래요</button>
+            <button type="button" disabled={busy} onClick={() => usedUp(false)} className="rounded-xl bg-white py-3 text-sm font-semibold text-gray-700 ring-1 ring-orange-200">🍽️ 다 썼어요</button>
+          </div>
+        )}
         {onDelete && (
-          <button type="button" disabled={busy} onClick={async () => { if (confirm("삭제할까요?")) { setBusy(true); await onDelete(); onClose(); } }}
+          <button type="button" disabled={busy} onClick={async () => { if (confirm("잘못 넣은 품목인가요? 삭제할까요?")) { setBusy(true); await onDelete(); onClose(); } }}
             className="py-2 text-sm text-red-600">삭제</button>
         )}
       </form>
