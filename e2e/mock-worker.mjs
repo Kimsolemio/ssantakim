@@ -58,6 +58,25 @@ createServer((req, res) => {
       setTimeout(() => { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ recipe: r, model: "mock", usage: { input: 1, output: 1 } })); }, 800);
       return;
     }
+    if (req.url === "/import/url" || req.url === "/import/text") {
+      const b = JSON.parse(body || "{}");
+      console.log("mock " + req.url, JSON.stringify({ url: b.url, text: b.text?.slice(0, 40), images: b.images?.length }));
+      const send = (status, data) => { res.writeHead(status, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify(data)); };
+      const make = (title, source) => ({ ...recipe, title, servingsBase: 2, source });
+      if (req.url === "/import/url") {
+        const u = String(b.url ?? "");
+        if (u.includes("instagram.com")) return send(422, { error: "인스타그램은 링크만으로 내용을 볼 수 없어요. 캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요.", code: "instagram" });
+        if (u.includes("noRecipe")) return setTimeout(() => send(200, { result: { hasRecipe: false, reason: "설명란에 레시피가 없어요", dishName: "김치볶음밥", recipe: null }, via: "youtube_description", provider: "mock", model: "mock" }), 500);
+        if (u.includes("youtu")) {
+          const id = /([\w-]{11})/.exec(u.split("/").pop().replace("watch?v=", ""))?.[1] ?? "mockRecipe1";
+          return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "김치찌개", recipe: make("유튜브 김치찌개", { type: "youtube", url: `https://www.youtube.com/watch?v=${id}`, channel: "엄마손", title: "10분 김치찌개" }) }, via: "youtube_description", provider: "mock", model: "mock" }), 700);
+        }
+        return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "된장찌개", recipe: make("블로그 된장찌개", { type: "web", url: u, title: "된장찌개 황금레시피" }) }, via: "jsonld", provider: "mock", model: "mock" }), 700);
+      }
+      if (!(b.text && b.text.trim()) && !(b.images?.length)) return send(400, { error: "글이나 사진이 필요합니다" });
+      const insta = String(b.url ?? "").includes("instagram.com");
+      return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make(insta ? "인스타 떡볶이" : "메모 떡볶이", insta ? { type: "instagram", url: b.url } : { type: b.text ? "text" : "photo" }) }, via: b.text ? "caption" : "photo", provider: "mock", model: "mock" }), 700);
+    }
     if (req.url === "/normalize") {
       const b = JSON.parse(body || "{}");
       const dict = { "스파게티면": "spaghetti", "깐마늘": "garlic", "올리브유": "olive_oil", "대파": "green_onion", "두부": "tofu", "소금": "salt", "우유": "milk" };

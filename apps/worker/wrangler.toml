@@ -5,7 +5,8 @@ compatibility_flags = ["nodejs_compat"]
 
 # AI 키는 비밀값으로 넣는다. 둘 중 하나만 있어도 된다 (AI_PROVIDER=auto 면 Claude 우선).
 #   pnpm --filter @cook/worker exec wrangler secret put ANTHROPIC_API_KEY   # Claude (유료 종량제)
-#   pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY      # Gemini (무료 등급)
+#   pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY      # Gemini (무료 등급, 유튜브 영상 이해에도 쓴다)
+#   pnpm --filter @cook/worker exec wrangler secret put YOUTUBE_API_KEY     # 선택: 유튜브 설명란을 더 안정적으로 읽는다 (무료)
 # 아래 vars는 배포 시 자신의 값으로 바꾼다 (또는 Cloudflare 대시보드 > Settings > Variables).
 [vars]
 FIREBASE_PROJECT_ID = ""

@@ -298,6 +298,59 @@ await mom.locator("nav").getByText("장보기", { exact: true }).click();
 await mom.getByTestId("shopping-row").filter({ hasText: "우유" }).waitFor();
 assert.equal(await mom.getByTestId("shopping-row").count(), 1, "장본 것은 장보기에서 빠지고 우유만 남는다");
 
+// ---------- 5단계: 링크·캡션·사진으로 가져오기, 공유로 들어오기 ----------
+await mom.locator("nav").getByText("레시피", { exact: true }).click();
+await mom.getByTestId("open-import").click();
+await mom.getByLabel("링크").fill("https://youtu.be/mockRecipe1?si=share");
+await mom.screenshot({ path: `${shots}/20-import-link.png` });
+await mom.getByText("가져오기", { exact: true }).click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+await mom.getByTestId("import-note").getByText(/유튜브 설명란에서 찾았어요 · 원본 링크가 함께 저장돼요/).waitFor();
+assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue(), "유튜브 김치찌개");
+await mom.getByText("저장", { exact: true }).click();
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+await mom.getByText("유튜브", { exact: true }).waitFor();
+assert.equal(await mom.getByRole("link", { name: "원본 보기" }).getAttribute("href"), "https://www.youtube.com/watch?v=mockRecipe1");
+await mom.getByLabel("뒤로").click();
+
+// 인스타 링크 → 캡션·사진 탭으로 전환 → 캡션 + 스크린샷
+await mom.getByTestId("open-import").click();
+await mom.getByLabel("링크").fill("https://www.instagram.com/reel/C1abcDEF/");
+await mom.getByText("가져오기", { exact: true }).click();
+await mom.getByTestId("import-info").getByText(/인스타그램은 링크만으로/).waitFor();
+assert.equal(await mom.getByLabel("원본 링크").inputValue(), "https://www.instagram.com/reel/C1abcDEF/");
+await mom.getByLabel("캡션·본문").fill("#떡볶이 황금레시피\n떡 300g, 고추장 2큰술, 설탕 1큰술, 어묵 2장");
+const shot = await mom.screenshot({ type: "png" });
+await mom.getByTestId("import-files").setInputFiles({ name: "insta.png", mimeType: "image/png", buffer: shot });
+await mom.getByLabel("사진 1 빼기").waitFor();
+await mom.screenshot({ path: `${shots}/21-import-instagram.png` });
+await mom.getByText("정리하기", { exact: true }).click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+await mom.getByTestId("import-note").getByText(/붙여넣은 글에서 찾았어요/).waitFor();
+await mom.getByText("저장", { exact: true }).click();
+await mom.getByText("인스타그램", { exact: true }).waitFor();
+await mom.getByLabel("뒤로").click();
+
+// 레시피 없는 영상 → AI 레시피로 만들기 제안
+await mom.getByTestId("open-import").click();
+await mom.getByLabel("링크").fill("https://www.youtube.com/watch?v=noRecipe001");
+await mom.getByText("가져오기", { exact: true }).click();
+await mom.getByTestId("import-miss").getByText("설명란에 레시피가 없어요").waitFor({ timeout: 15000 });
+await mom.getByText("✨ ‘김치볶음밥’ AI 레시피로 만들기").click();
+assert.equal(await mom.getByPlaceholder(/알리오올리오/).inputValue(), "김치볶음밥");
+await mom.getByRole("button", { name: "닫기", exact: true }).click();
+
+// 공유로 들어오기: 안드로이드 공유 대상이 /share?text=… 로 앱을 연다 → 바로 가져오기
+await mom.waitForTimeout(300); // 방금 닫은 시트의 뒤로가기 기록 정리가 끝나도록
+await mom.goto(`${APP}share?title=${encodeURIComponent("10분 김치찌개")}&text=${encodeURIComponent("이거 맛있대 https://youtu.be/mockRecipe2")}`);
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 20000 });
+assert.equal(new URL(mom.url()).pathname, "/", "공유 주소는 / 로 정리된다");
+await mom.getByTestId("import-note").waitFor();
+await mom.getByText("저장", { exact: true }).click();
+assert.equal(await mom.getByRole("link", { name: "원본 보기" }).getAttribute("href"), "https://www.youtube.com/watch?v=mockRecipe2");
+await mom.getByLabel("뒤로").click();
+await mom.locator("li", { hasText: "인스타 떡볶이" }).waitFor();
+
 // ---------- 사용자 2: 초대 코드로 참여 → 같은 데이터 ----------
 const dad = await newUserTracked("dad@test.local", "아빠");
 await dad.getByRole("button", { name: "초대 코드로 참여" }).click();
