@@ -146,6 +146,7 @@ export function TodayTab() {
             </>
           )}
         </section>
+        <PlanSection />
         {sheets}
       </div>
     );
@@ -156,6 +157,8 @@ export function TodayTab() {
   return (
     <div style={{ paddingBottom: "calc(var(--safe-bottom) + 56px + 32px)" }}>
       <TabHeader title="오늘 뭐 먹지?" />
+      {/* 오늘 정해 둔 식단이 있으면 그게 답이라 맨 위에 */}
+      <PlanSection where="top" />
 
       {t.expiring.length > 0 && (
         <section>
@@ -232,7 +235,7 @@ export function TodayTab() {
         </section>
       )}
 
-      <PlanSection />
+      <PlanSection where="bottom" />
 
       {!busy && hasResults && (
         <div className="px-5 pt-6">

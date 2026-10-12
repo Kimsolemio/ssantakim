@@ -2,6 +2,7 @@ import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "
 import { ArrowUpRight, Globe, LoaderCircle, Sparkles } from "lucide-react";
 import { Button } from "./Button";
 import { rowLine } from "./Section";
+import { useOnline } from "../../lib/online";
 
 /** AI 입구 여러 개를 한 줄로. 반짝이는 줄 앞 라벨에 한 번만 */
 export function AiToolbar({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -13,8 +14,9 @@ export function AiToolbar({ children, className = "" }: { children: ReactNode; c
   );
 }
 
-export function AiPill({ className = "", ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button type="button" className={`h-11 shrink-0 whitespace-nowrap rounded-full bg-surface-2 px-4 text-callout font-semibold text-ink transition-colors active:bg-fill-pressed disabled:text-ink-disabled ${className}`} {...rest} />;
+export function AiPill({ className = "", disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const online = useOnline();
+  return <button type="button" disabled={disabled || !online} className={`h-11 shrink-0 whitespace-nowrap rounded-full bg-surface-2 px-4 text-callout font-semibold text-ink transition-colors active:bg-fill-pressed disabled:text-ink-disabled ${className}`} {...rest} />;
 }
 
 /** 지난 초 (AI 진행 표시용) */

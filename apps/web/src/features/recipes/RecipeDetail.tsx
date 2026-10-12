@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUpRight, CalendarPlus, Check, ChevronRight, Ellipsis, Folder, Pencil, Star, Timer, Trash2 } from "lucide-react";
+import { ArrowUpRight, Check, ChevronRight, Ellipsis, Folder, Pencil, Star, Timer, Trash2 } from "lucide-react";
 import { findDislikes, isStandardKey, type Ingredient, type IngredientMatch, type Recipe } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { Sheet } from "../../components/Sheet";
@@ -168,7 +168,12 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
         </IconButton>
         <IconButton aria-label="더보기" onClick={() => setMenu("main")}><Ellipsis size={24} /></IconButton>
       </>}
-      footer={<Button block onClick={() => setCooking(true)} disabled={!ready}>요리 시작</Button>}>
+      footer={recipeId
+        ? <div className="flex gap-2">
+            <Button variant="secondary" className="min-w-0 flex-1 px-3" onClick={() => setPlanning(true)}>식단에 넣기</Button>
+            <Button className="min-w-0 flex-[1.3] px-3" onClick={() => setCooking(true)} disabled={!ready}>요리 시작</Button>
+          </div>
+        : <Button block onClick={() => setCooking(true)} disabled={!ready}>요리 시작</Button>}>
       <div className="px-5 pb-4 pt-2">
         <h1 ref={titleRef} className="text-title1 text-ink">{recipe.title}</h1>
         <p className="mt-1 text-caption text-ink-3 tabular-nums">
@@ -274,7 +279,6 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
           {menu === "main" ? (
             <ul>
               <ActionRow icon={<Pencil size={20} />} title="수정하기" disabled={busy} onClick={() => { setMenu(false); onEdit(); }} />
-              {recipeId && <ActionRow icon={<CalendarPlus size={20} />} title="식단에 넣기" disabled={busy} onClick={() => { setMenu(false); setPlanning(true); }} />}
               {(folders.length > 0 || recipe.folderId) && (
                 <ActionRow icon={<Folder size={20} />} title="폴더 옮기기" value={folderName} disabled={busy} onClick={() => setMenu("folder")} />
               )}

@@ -30,13 +30,18 @@ scripts/        아이콘 생성기 등
 
 ## 한눈에 보는 설치 순서
 
-1. Firebase 프로젝트 만들기 → `apps/web/.env` 채우기 ([처음 설정](#처음-설정-1회))
+1. Firebase 프로젝트 만들기 → `apps/web/.env` 채우기 ([처음 설정](#처음-설정-1회)). 아이폰을 쓰면 **처음부터** `VITE_FIREBASE_AUTH_DOMAIN`을 앱을 올릴 주소(`<프로젝트>.web.app`)로 적는다 ([아이폰 로그인](#아이폰-로그인-중요))
 2. Claude API 키 발급 + **월 지출 한도** → Worker 설정·배포 ([AI 서버 설정](#ai-서버worker-설정--2단계부터))
-3. Worker 주소를 `VITE_WORKER_URL`에 넣고 `pnpm build` → Firebase Hosting 배포 (`npx firebase-tools deploy --only hosting`)
-4. 아이폰은 [아이폰 로그인](#아이폰-로그인-중요)대로 authDomain을 앱 주소와 맞춘다
-5. 가족 폰에 설치(홈 화면에 추가) → 한 사람이 가족을 만들고 초대 코드로 나머지가 참여
-6. (선택) 아이폰 [공유 단축어](#다른-앱에서-공유로-레시피-보내기) 설치
-7. [전체 수동 테스트 체크리스트](docs/manual-test.md)를 폰에서 한 번 쭉 해 본다
+3. Worker 주소를 `VITE_WORKER_URL`에 넣고 빌드·배포
+   ```bash
+   npx firebase-tools login
+   pnpm build
+   npx firebase-tools deploy --only hosting,firestore:rules --project <프로젝트-ID>
+   ```
+   보안 규칙(`firestore.rules`)이 바뀐 버전으로 올릴 때도 같은 명령을 쓴다(7단계에서 식단 `meal_plans`가 추가됐다).
+4. 가족 폰에 설치(홈 화면에 추가) → 한 사람이 가족을 만들고 초대 코드로 나머지가 참여
+5. (선택) 아이폰 [공유 단축어](#다른-앱에서-공유로-레시피-보내기) 설치
+6. [전체 수동 테스트 체크리스트](docs/manual-test.md)를 폰에서 한 번 쭉 해 본다
 
 ## 처음 설정 (1회)
 
@@ -56,7 +61,7 @@ pnpm typecheck
 
 폰에 설치: 사파리/크롬에서 열고 "홈 화면에 추가".
 
-배포(권장 무료): **Firebase Hosting**에 `apps/web/dist` 업로드(`npx firebase-tools deploy --only hosting`). Firebase 콘솔 Authentication → 승인된 도메인에 배포 도메인 추가.
+배포(권장 무료): **Firebase Hosting**에 `apps/web/dist` 업로드(`npx firebase-tools login` 후 `npx firebase-tools deploy --only hosting,firestore:rules --project <프로젝트-ID>`, 저장소에 `.firebaserc`가 없으므로 `--project`를 꼭 붙인다). Firebase 콘솔 Authentication → 승인된 도메인에 배포 도메인 추가.
 
 ### 아이폰 로그인 (중요)
 

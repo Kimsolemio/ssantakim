@@ -40,7 +40,9 @@ export async function addShoppingItems(familyId: string, uid: string, inputs: Sh
   const pending = existing.filter((e) => !e.checked).map((e) => ({ ...e }));
   for (const input of inputs) {
     const key = input.key?.trim() || provisionalKey(input.name);
-    const same = pending.find((e) => sameFood(e, { key, name: input.name }));
+    const found = pending.find((e) => sameFood(e, { key, name: input.name }));
+    // 양을 둘 다 아는데 단위를 바꿀 수 없으면(두부 1모 + 두부 150g) 합치지 않고 새 줄로 둔다 (양이 사라지지 않게)
+    const same = found && found.qty != null && input.qty != null && convertQty(input.qty, input.unit, found.unit) == null ? undefined : found;
     if (same) {
       if (same.qty != null && input.qty != null) {
         const c = convertQty(input.qty, input.unit, same.unit);

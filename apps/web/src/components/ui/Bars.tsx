@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, Plus, Users } from "lucide-react";
 import { IconButton } from "./IconButton";
+import { OfflinePill } from "../OfflinePill";
 
 /** 탭 화면 머리: 위쪽 줄(오른쪽 버튼들) + 큰 제목. 제목이 스크롤로 사라지면 위쪽 줄 가운데에 작은 제목이 나타난다 */
 export function LargeTitleBar({ title, right, left }: { title: string; right?: ReactNode; left?: ReactNode }) {
@@ -48,6 +49,7 @@ export function BackBar({ title, onBack, right, scrolled, canvas, titleHidden }:
       <div className="flex h-14 items-center gap-1 px-1">
         <IconButton aria-label="뒤로" onClick={onBack}><ChevronLeft size={26} /></IconButton>
         <h1 className={`min-w-0 flex-1 truncate text-headline text-ink transition-opacity duration-150 ${titleHidden ? "opacity-0" : "opacity-100"}`}>{title}</h1>
+        <OfflinePill />
         {right && <div className="flex shrink-0 items-center">{right}</div>}
       </div>
     </header>

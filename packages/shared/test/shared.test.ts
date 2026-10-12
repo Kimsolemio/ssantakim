@@ -302,3 +302,33 @@ describe("meal plan", () => {
     expect(planShopping(needs, [])).toHaveLength(1);
   });
 });
+
+describe("meal plan shopping", () => {
+  const r = (title: string, ings: Ingredient[], base = 1) => ({ recipe: { title, servingsBase: base, ingredients: ings }, servings: base });
+  it("subtracts what is already on the shopping list (bought or not)", () => {
+    const needs = combinePlanIngredients([r("A", [ing({ name: "스파게티면", key: "spaghetti", qty: 500, unit: "g" })])]);
+    const fridge = [fr({ id: "1", name: "스파게티면", key: "spaghetti", qty: 200, unit: "g" })];
+    const [row] = planShopping(needs, fridge, {}, [{ name: "파스타면", key: "spaghetti", qty: 100, unit: "g" }]);
+    expect(row).toMatchObject({ qty: 200, listed: 100, covered: false }); // 300 모자람 - 장보기 100
+    const [done] = planShopping(needs, fridge, {}, [{ name: "스파게티면", key: "spaghetti", qty: 0.5, unit: "kg" }]);
+    expect(done).toMatchObject({ qty: 0, covered: true });
+    const [vague] = planShopping(needs, fridge, {}, [{ name: "스파게티면", key: "spaghetti", qty: null, unit: "기타" }]);
+    expect(vague.covered).toBe(true);
+  });
+  it("keeps ingredients whose amount cannot be compared, flagged as unsure", () => {
+    const needs = combinePlanIngredients([r("A", [ing({ name: "양파", key: "onion", qty: 600, unit: "g" })])]);
+    const rows = planShopping(needs, [fr({ id: "1", name: "양파", key: "onion", qty: 2, unit: "개" })]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ unsure: true, covered: false });
+  });
+  it("adds mixed units in a readable unit", () => {
+    const needs = combinePlanIngredients([
+      r("A", [ing({ name: "설탕", key: "sugar", qty: 1, unit: "작은술" })]),
+      r("B", [ing({ name: "설탕", key: "sugar", qty: 1, unit: "큰술" })]),
+      r("C", [ing({ name: "우유", key: "milk", qty: 1, unit: "컵" })]),
+      r("D", [ing({ name: "우유", key: "milk", qty: 100, unit: "ml" })]),
+    ]);
+    expect(needs.find((n) => n.ingredient.key === "sugar")!.ingredient).toMatchObject({ unit: "큰술" }); // 1작은술 + 1큰술
+    expect(needs.find((n) => n.ingredient.key === "milk")!.ingredient).toMatchObject({ qty: 300, unit: "ml" });
+  });
+});

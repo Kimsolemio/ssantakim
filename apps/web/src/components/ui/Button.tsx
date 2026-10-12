@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { LoaderCircle, Sparkles } from "lucide-react";
+import { useOnline } from "../../lib/online";
 
 const base = "inline-flex items-center justify-center gap-2 rounded-control font-semibold whitespace-nowrap select-none "
   + "transition-[background-color,color,transform] duration-150 active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100";
@@ -23,8 +24,10 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 export function Button({ variant = "primary", size = "lg", block, ai, loading, icon, className = "", children, type = "button", disabled, ...rest }: ButtonProps) {
   const iconSize = size === "lg" ? 20 : 18;
+  // AI 요청 단추는 인터넷이 끊기면 누를 수 없다 (머리의 '오프라인' 표시가 이유를 알려 준다)
+  const online = useOnline();
   return (
-    <button type={type} disabled={disabled || loading} aria-busy={loading || undefined}
+    <button type={type} disabled={disabled || loading || (ai && !online)} aria-busy={loading || undefined}
       className={`${base} ${sizes[size]} ${variants[variant]} ${block ? "w-full" : ""} ${className}`} {...rest}>
       {loading ? <LoaderCircle size={iconSize} className="animate-spin" aria-hidden />
         : ai ? <Sparkles size={iconSize} strokeWidth={2} aria-hidden /> : icon}

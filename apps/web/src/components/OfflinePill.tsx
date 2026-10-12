@@ -6,10 +6,13 @@ import { useToast } from "./ui/Toast";
 export function OfflinePill() {
   const online = useOnline();
   const toast = useToast();
-  if (online) return null;
+  return <span role="status" className="contents">{online ? null : <Pill onClick={() => toast.show("고친 건 연결되면 가족에게 보내요 · AI는 잠시 못 써요")} />}</span>;
+}
+
+function Pill({ onClick }: { onClick: () => void }) {
   return (
     <button type="button" data-testid="offline-pill"
-      onClick={() => toast.show("인터넷이 끊겼어요 · 보고 고치는 건 되고, 연결되면 저장돼요. AI는 연결된 뒤에 써 주세요")}
+      onClick={onClick}
       className="inline-flex h-11 items-center px-1 active:opacity-70">
       <span className="inline-flex h-8 items-center gap-1.5 rounded-full bg-warning-soft px-3 text-caption font-semibold text-warning">
         <WifiOff size={14} aria-hidden />오프라인

@@ -31,6 +31,8 @@ export default defineConfig({
         // 글꼴 조각(수백 개)은 미리 다 받지 않고, 쓴 것만 처음 받을 때 저장해 둔다
         globPatterns: ["**/*.{js,css,html,svg,png}"],
         navigateFallback: "/index.html",
+        // Firebase 로그인 처리 주소(/__/auth/…)는 서비스워커가 앱 화면으로 바꿔치지 않게 (authDomain을 앱 주소로 맞춘 아이폰 로그인)
+        navigateFallbackDenylist: [/^\/__\//],
         runtimeCaching: [{
           urlPattern: ({ url }) => url.pathname.endsWith(".woff2"),
           handler: "CacheFirst",

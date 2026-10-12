@@ -27,6 +27,10 @@ type NavState = {
   openRecipe: (id: string) => void;
   pendingRecipe: string | null;
   consumeRecipe: () => void;
+  /** 식단 화면 (탭과 상관없이 위에 뜬다: 레시피를 열었다 돌아와도 남아 있게). 값은 처음 보여 줄 주의 월요일 */
+  planStart: string | null;
+  openPlan: (start?: string) => void;
+  closePlan: () => void;
 };
 
 export type GenerateRequest = { dish: string; notes?: string; auto?: boolean; servings?: number };
@@ -50,10 +54,13 @@ export function NavProvider({ initialTab, children }: { initialTab: Tab; childre
   const [pendingRecipe, setPendingRecipe] = useState<string | null>(null);
   const openRecipe = useCallback((id: string) => { setPendingRecipe(id); setTab("recipes"); }, []);
   const consumeRecipe = useCallback(() => setPendingRecipe(null), []);
+  const [planStart, setPlanStart] = useState<string | null>(null);
+  const openPlan = useCallback((start?: string) => setPlanStart(start ?? ""), []);
+  const closePlan = useCallback(() => setPlanStart(null), []);
   return (
     <NavCtx.Provider value={{
       tab, setTab, dropIntoFridge, fridgeDrop, consumeFridgeDrop, openReceipt, pendingReceipt, consumeReceipt, openImport, pendingImport, consumeImport,
-      openGenerate, pendingGenerate, consumeGenerate, openRecipe, pendingRecipe, consumeRecipe,
+      openGenerate, pendingGenerate, consumeGenerate, openRecipe, pendingRecipe, consumeRecipe, planStart, openPlan, closePlan,
     }}>
       {children}
     </NavCtx.Provider>

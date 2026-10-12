@@ -11,6 +11,7 @@ import { useEffect } from "react";
 import { ToastProvider, useToast } from "./components/ui/Toast";
 import { FamilySetup } from "./features/family/FamilySetup";
 import { TodayTab } from "./features/today/TodayTab";
+import { PlanScreen } from "./features/plan/PlanScreen";
 import { SetupScreen } from "./pages/SetupScreen";
 import { SignInScreen } from "./pages/SignInScreen";
 
@@ -26,7 +27,7 @@ function WriteFailureToast() {
 }
 
 function Tabs() {
-  const { tab, setTab, openImport } = useNav();
+  const { tab, setTab, openImport, planStart, closePlan } = useNav();
   // 공유로 들어온 링크가 있으면 가져오기 화면을 연다 (로그인을 거친 뒤에도)
   useEffect(() => {
     const shared = takePendingShare();
@@ -40,6 +41,7 @@ function Tabs() {
       {tab === "shopping" && <ShoppingTab />}
       {tab === "today" && <TodayTab />}
       <TabBar active={tab} onChange={setTab} />
+      {planStart != null && <PlanScreen initialStart={planStart || undefined} onClose={closePlan} />}
     </div>
   );
 }

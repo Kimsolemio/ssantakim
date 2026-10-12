@@ -487,7 +487,7 @@ const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${Str
 const tomorrowStr = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
 await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
 await mom.getByTestId("open-plan").click();
-await mom.getByText("이번 주 식단").first().waitFor();
+await mom.getByTestId("plan-range").waitFor();
 const planDay = (d) => mom.locator(`[data-testid="plan-day"][data-date="${d}"]`);
 await planDay(todayStr).getByRole("button", { name: /식단 추가$/ }).click();
 await mom.getByTestId("plan-pick").getByRole("button", { name: "알리오올리오", exact: true }).click();
@@ -506,20 +506,27 @@ await mom.screenshot({ path: `${shots}/28-week-plan.png` });
 await mom.getByTestId("plan-shopping").click();
 const planRows = mom.getByTestId("plan-shopping-row");
 const spaghettiRow = planRows.filter({ hasText: "스파게티면" });
-await spaghettiRow.getByText(/^\d+g 더$/).waitFor();
-assert.match(await spaghettiRow.textContent(), /인스타 떡볶이, 알리오올리오/);
-const spaghettiMore = (await spaghettiRow.getByText(/^\d+g 더$/).textContent()).replace(" 더", "");
+await spaghettiRow.getByTestId("plan-buy").getByText(/^\d+g$/).waitFor();
+assert.match(await spaghettiRow.textContent(), /집에 \d+g · 인스타 떡볶이 외 1/);
+const spaghettiMore = (await spaghettiRow.getByTestId("plan-buy").textContent()).trim();
 assert.equal(await planRows.filter({ hasText: "페페론치노" }).count(), 0);
 await mom.screenshot({ path: `${shots}/29-plan-shopping.png` });
 const nPlan = await planRows.count();
 await mom.getByTestId("plan-shopping-sheet").getByRole("button", { name: /개 담기$/ }).click();
 await mom.getByTestId("toast").getByText(/장보기에 \d+개 담았어요/).waitFor();
-// 장보기에 이미 있으면 다시 열었을 때 기본으로 빠져 있다
-await mom.getByTestId("plan-shopping").click();
-assert.equal(await mom.getByLabel("스파게티면 담기").isChecked(), false);
-await mom.getByTestId("plan-shopping-sheet").getByText("이미 장보기에 있어요").first().waitFor();
-await mom.getByRole("button", { name: "닫기", exact: true }).click();
+// 다 담으면 하단이 버튼 대신 한 줄 안내로 바뀐다
+await mom.getByTestId("plan-shopping-done").getByText("부족한 재료는 장보기에 다 담았어요").waitFor();
+// 식단의 요리를 열었다 돌아오면 식단 화면이 그대로 있다
+await planDay(todayStr).getByTestId("plan-entry").filter({ hasText: "알리오올리오" }).getByRole("button", { name: /알리오올리오/ }).first().click();
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+await mom.getByLabel("뒤로").last().click();
+await mom.getByTestId("plan-range").waitFor();
+// 빼기 → 되돌리기
+await planDay(todayStr).getByRole("button", { name: /점심 인스타 떡볶이 빼기/ }).click();
+await mom.getByTestId("toast").getByText("되돌리기").click();
+await planDay(todayStr).getByTestId("plan-entry").filter({ hasText: "인스타 떡볶이" }).waitFor();
 await mom.getByLabel("뒤로").click();
+await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
 await mom.getByTestId("today-plan-row").filter({ hasText: "알리오올리오" }).waitFor();
 await mom.locator("nav").getByText("장보기", { exact: true }).click();
 await mom.getByTestId("shopping-row").filter({ hasText: "스파게티면" }).getByText(spaghettiMore).waitFor();
@@ -527,8 +534,7 @@ assert.ok(nPlan >= 1);
 // 레시피 상세 → 더보기 → 식단에 넣기
 await mom.locator("nav").getByText("레시피", { exact: true }).click();
 await mom.locator("li", { hasText: "유튜브 김치찌개" }).first().click();
-await mom.getByLabel("더보기").click();
-await mom.getByText("식단에 넣기").click();
+await mom.getByRole("button", { name: "식단에 넣기" }).click();
 await mom.getByTestId("add-to-plan").getByRole("button", { name: /^내일/ }).click();
 await mom.getByTestId("add-to-plan").getByRole("radio", { name: "아침" }).click();
 await mom.getByTestId("add-to-plan").getByRole("button", { name: "식단에 넣기" }).click();

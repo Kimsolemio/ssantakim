@@ -88,14 +88,18 @@ try {
   await page.getByText("저장", { exact: true }).click();
   await page.getByLabel(/^양파 2/).first().waitFor({ timeout: 10000 });
   await page.screenshot({ path: `${shots}/31-offline-fridge.png` });
-  // AI는 기다리지 않고 바로 알려 준다
+  // AI 단추는 끊긴 동안 누를 수 없다
   await page.locator("nav").getByText("레시피", { exact: true }).click();
   await page.getByRole("button", { name: "레시피 추가" }).click();
   await page.getByTestId("open-generate").click();
   await page.getByPlaceholder(/알리오올리오/).fill("김치볶음밥");
-  await page.getByRole("button", { name: "레시피 만들기", exact: true }).click();
-  await page.getByText(/인터넷이 끊겨 있어요/).waitFor({ timeout: 5000 });
+  assert.equal(await page.getByRole("button", { name: "레시피 만들기", exact: true }).isDisabled(), true);
   await page.getByRole("button", { name: "닫기", exact: true }).click();
+  // 레시피 상세(전체화면) 머리에도 오프라인 표시
+  await page.locator("li", { hasText: "오프라인 파스타" }).first().click();
+  await page.getByRole("banner").getByTestId("offline-pill").waitFor();
+  assert.equal(await page.getByRole("button", { name: "셰프에게 묻기" }).isDisabled(), true);
+  await page.getByLabel("뒤로").click();
 
   // ---------- 다시 연결 → 다른 기기에서도 양파가 보인다 ----------
   await ctx.setOffline(false);
