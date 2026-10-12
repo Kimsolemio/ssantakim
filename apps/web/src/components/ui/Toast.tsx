@@ -48,7 +48,7 @@ function ToastView({ t, onAction }: { t: ToastState; onAction: () => void }) {
   const [px, setPx] = useState<number | null>(() => anchorBottom());
   // 토스트가 떠 있는 동안 시트가 열리거나 닫히면 따라 움직인다
   useEffect(() => {
-    const id = setInterval(() => setPx(anchorBottom()), 250);
+    const id = setInterval(() => setPx(anchorBottom()), 100);
     return () => clearInterval(id);
   }, []);
   const bottom = px != null ? `${px}px`
