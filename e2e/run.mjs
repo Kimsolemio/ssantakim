@@ -60,7 +60,7 @@ const code = (await mom.getByTestId("invite-code").textContent()).trim();
 assert.match(code, /^[A-Z0-9]{6}$/);
 await mom.getByTestId("usage-left").getByText("36회").waitFor();
 // 취향은 바뀔 때마다 저장된다
-await mom.getByRole("switch", { name: "아이가 함께 먹어요" }).click();
+await mom.getByRole("switch", { name: "아이와 함께 먹어요" }).click();
 await mom.getByTestId("toast").getByText("저장했어요").waitFor();
 await mom.getByRole("button", { name: /^싫어하는 재료/ }).click();
 await mom.getByPlaceholder("쉼표로: 고수, 오이").fill("고수");
@@ -516,6 +516,8 @@ await mom.getByRole("button", { name: "닫기", exact: true }).click();
 // 쿡 모드에서도 묻기 (요리 모드 위에 뜬다)
 await mom.getByRole("button", { name: "요리 시작", exact: true }).click();
 await mom.getByLabel("AI 셰프에게 묻기").click();
+// 쿡 모드 위의 시트는 쿡 모드처럼 어둡다 (body로 띄워도 테마를 이어받음)
+assert.match(await mom.getByTestId("ask-sheet").locator("xpath=..").getAttribute("class"), /theme-dark/);
 await mom.getByLabel("질문").fill("소금은 얼마나?");
 await mom.getByRole("button", { name: "보내기" }).click();
 await mom.getByTestId("ask-answer").getByText(/\(1단계\) 중불에서/).waitFor({ timeout: 10000 });

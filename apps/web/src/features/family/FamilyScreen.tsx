@@ -71,6 +71,8 @@ export function FamilyScreen({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState<ListKey | null>(null);
   const [left, setLeft] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // 아직 보내지 않은 변경 (인분 +를 누르고 곧바로 닫아도 저장되게)
+  const pending = useRef<FamilyProfile | null>(null);
 
   useEffect(() => {
     if (!workerConfigured) return;
@@ -80,13 +82,18 @@ export function FamilyScreen({ onClose }: { onClose: () => void }) {
       .catch(() => {});
     return () => { alive = false; };
   }, []);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    if (pending.current) void settle(updateProfile(pending.current)).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!family || !p) return null;
 
   const save = (next: FamilyProfile, wait = 0) => {
     setP(next);
     clearTimeout(timer.current);
+    pending.current = next;
     timer.current = setTimeout(() => {
+      pending.current = null;
       settle(updateProfile(next))
         .then(() => toast.show("저장했어요", { kind: "done" }))
         .catch((e) => toast.show(`저장하지 못했어요: ${writeErrorMessage(e)}`, { kind: "error" }));
@@ -125,7 +132,7 @@ export function FamilyScreen({ onClose }: { onClose: () => void }) {
             <SegmentedControl label="맵기" className="w-[204px]" value={p.spicyLevel}
               options={(["순한맛", "보통", "매운맛"] as const).map((v) => ({ value: v, label: v }))}
               onChange={(v) => save({ ...p, spicyLevel: v })} />} />
-          <Row title="아이와 함께 먹어요" right={<Switch label="아이가 함께 먹어요" checked={p.kidsFriendly} onChange={(v) => save({ ...p, kidsFriendly: v })} />} />
+          <Row title="아이와 함께 먹어요" right={<Switch label="아이와 함께 먹어요" checked={p.kidsFriendly} onChange={(v) => save({ ...p, kidsFriendly: v })} />} />
           <Row title="싫어하는 재료" onClick={() => setEditing("dislikes")}
             right={<><span className="max-w-[45%] truncate text-callout text-ink-2">{summary(p.dislikes)}</span><ChevronRight size={20} aria-hidden className="shrink-0 text-ink-3" /></>} />
           <Row title="늘 있는 양념" onClick={() => setEditing("staples")}
@@ -166,7 +173,7 @@ function ListSheet({ k, initial, onClose, onSave }: { k: ListKey; initial: strin
   return (
     <Sheet title={info.title} onClose={onClose} footer={<Button block onClick={() => onSave(split(text))}>저장</Button>}>
       <TextField aria-label={info.title} placeholder={info.placeholder} helper={info.helper} value={text} autoFocus
-        onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onSave(split(text)); }} />
+        onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) onSave(split(text)); }} />
     </Sheet>
   );
 }

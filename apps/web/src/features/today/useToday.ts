@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { DEFAULT_STAPLES, daysUntil, provisionalKey, rankRecipesByFridge, type MenuSuggestion } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
 import { useNav } from "../../lib/nav";
-import { getWorker, workerConfigured } from "../../lib/api";
 import { normalizeKeysInBackground } from "../../lib/normalize";
 import { writeErrorMessage } from "../../lib/write";
 import { useFridge } from "../fridge/useFridge";
@@ -34,14 +33,6 @@ export function useToday() {
   const run = useSuggestRun();
   const saved = useMemo(() => (familyId ? loadSaved(familyId) : null), [familyId, run.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [left, setLeft] = useState<number | null>(null);
-  const refreshUsage = () => {
-    if (!workerConfigured) return;
-    getWorker<{ today: { remaining: number } | null }>("/usage")
-      .then((r) => setLeft(r.today ? Math.floor(r.today.remaining) : null))
-      .catch(() => setLeft(null));
-  };
-  useEffect(refreshUsage, [run.busy]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 추정 기한이 조금 지난 것(사흘 이내)은 실제로는 멀쩡할 수 있어 "오늘까지·확인 필요"로 남긴다
   const withDays = useMemo(() => fridge.map((f) => {
@@ -115,7 +106,7 @@ export function useToday() {
     ready: !!familyId && !!user, profile, fridgeLoading, recipesCount: recipes.length,
     fresh, expired, expiring, unknownDate, daysOf, fits,
     inputs, update, servings, toggleMustUse, toggleMood, commitExclude,
-    run, saved, left, suggest, cancel: cancelSuggest, make, addMissing,
+    run, saved, suggest, cancel: cancelSuggest, make, addMissing,
     openRecipe, goFridge: () => setTab("fridge"), fillFridge: openReceipt,
   };
 }

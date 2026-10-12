@@ -165,9 +165,9 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
 
           {mode === "link" ? (
             <>
-              <Field label="주소" error={urlErr} htmlFor={urlId} className="mx-5 mt-5">
+              <Field label="링크" error={urlErr} htmlFor={urlId} className="mx-5 mt-5">
                 <div className="relative">
-                  <input id={urlId} type="url" inputMode="url" aria-label="링크" placeholder="레시피가 있는 주소" value={url} aria-invalid={urlErr ? true : undefined}
+                  <input id={urlId} type="url" inputMode="url" placeholder="레시피가 있는 주소" value={url} aria-invalid={urlErr ? true : undefined}
                     onChange={(e) => { setUrl(e.target.value); setUrlErr(null); setMiss(null); }}
                     className={`${inputBase} h-12 bg-surface-2 ${canPaste ? "pr-[112px]" : ""} ${urlErr ? "border-danger" : ""}`} />
                   {canPaste && (

@@ -283,7 +283,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
                 const on = (recipe.folderId ?? null) === f.id;
                 return (
                   <li key={f.id ?? "none"} className={`${rowLine} before:left-5`}>
-                    <button type="button" disabled={busy} aria-pressed={on}
+                    <button type="button" disabled={busy} aria-current={on ? "true" : undefined}
                       onClick={() => { setMenu(false); if (!on) void run(() => onMoveFolder(f.id)); }}
                       className="flex min-h-14 w-full items-center gap-3 px-5 py-3 text-left text-body text-ink transition-colors active:bg-surface-2 disabled:opacity-50">
                       <span className="min-w-0 flex-1 truncate">{f.name}</span>

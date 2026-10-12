@@ -26,7 +26,7 @@ function goBack() {
   inflight++;
   clearTimeout(safety);
   // popstate 가 끝내 오지 않는 브라우저가 있어도 앱이 멈추지 않게
-  safety = setTimeout(() => { inflight = 0; flush(); }, 800);
+  safety = setTimeout(() => { inflight = 0; flush(); }, 1500);
   history.back();
 }
 function whenSettled(fn: () => void) {

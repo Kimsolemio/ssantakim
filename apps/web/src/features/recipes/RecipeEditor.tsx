@@ -160,8 +160,8 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
     return (
       <li key={i}>
         <div className="flex items-center gap-1.5 px-5 py-1.5">
-          <input data-focus={`ing-${i}`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="재료" value={ing.name} onChange={(e) => setIng(i, { name: e.target.value })} />
-          <input className={`${cell} w-[60px] shrink-0 px-2 text-center tabular-nums ${noSpin}`} type="number" inputMode="decimal" step="any" min={0} placeholder="수량" value={ing.qty ?? ""}
+          <input data-focus={`ing-${i}`} aria-label={`재료 ${i + 1} 이름`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="재료" value={ing.name} onChange={(e) => setIng(i, { name: e.target.value })} />
+          <input className={`${cell} w-[60px] shrink-0 px-2 text-center tabular-nums ${noSpin}`} type="number" inputMode="decimal" step="any" min={0} aria-label={`${ing.name || `재료 ${i + 1}`} 수량`} placeholder="수량" value={ing.qty ?? ""}
             onChange={(e) => setIng(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
           <span className="relative w-[80px] shrink-0">
             <select aria-label="단위" className={`${cell} w-full appearance-none pl-2 pr-6 text-callout`} value={ing.unit}
@@ -170,7 +170,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
             </select>
             <ChevronDown size={14} aria-hidden className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-ink-3" />
           </span>
-          <IconButton aria-label="재료 옵션" className="-mr-1.5" onClick={() => setIngOpt(i)}><Ellipsis size={20} /></IconButton>
+          <IconButton aria-label={`${ing.name || `재료 ${i + 1}`} 옵션`} className="-mr-1.5" onClick={() => setIngOpt(i)}><Ellipsis size={20} /></IconButton>
         </div>
         {extra && (
           <button type="button" onClick={() => setIngOpt(i)} className="-mt-0.5 block w-full truncate pb-2 pl-7 pr-4 text-left text-caption text-ink-3">{extra}</button>
@@ -256,7 +256,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
           <ul>
             {d.tips.map((t, i) => (
               <li key={i} className="flex items-center gap-1.5 px-5 py-1.5">
-                <input data-focus={`tip-${i}`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="팁" value={t}
+                <input data-focus={`tip-${i}`} aria-label={`팁 ${i + 1}`} className={`${cell} min-w-0 flex-1 px-3`} placeholder="팁" value={t}
                   onChange={(e) => setD({ ...d, tips: d.tips.map((x, idx) => (idx === i ? e.target.value : x)) })} />
                 <IconButton aria-label="팁 삭제" className="-mr-1.5" onClick={() => setD({ ...d, tips: d.tips.filter((_, idx) => idx !== i) })}><X size={20} /></IconButton>
               </li>

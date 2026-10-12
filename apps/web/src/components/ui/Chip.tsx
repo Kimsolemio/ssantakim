@@ -5,7 +5,7 @@ const chip = "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-4 t
 
 /** 한 개만 고르는 필터 칩 (폴더, 위치) */
 export function FilterChip({ on, className = "", ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { on: boolean }) {
-  return <button type="button" aria-pressed={on} className={`${chip} ${on ? "border border-ink bg-ink font-semibold text-surface" : "border border-line bg-surface text-ink-2"} ${className}`} {...rest} />;
+  return <button type="button" aria-current={on ? "true" : undefined} className={`${chip} ${on ? "border border-ink bg-ink font-semibold text-surface" : "border border-line bg-surface text-ink-2"} ${className}`} {...rest} />;
 }
 
 /** 여러 개 고르는 칩 (무드, 바꾸기 요청) */

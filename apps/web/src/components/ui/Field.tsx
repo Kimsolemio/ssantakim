@@ -11,12 +11,14 @@ type Common = { label?: ReactNode; helper?: ReactNode; error?: string | null; on
 
 /** 라벨 + 입력 + 도움말/오류 1줄 */
 export function Field({ label, helper, error, htmlFor, children, className = "" }: { label?: ReactNode; helper?: ReactNode; error?: string | null; htmlFor?: string; children: ReactNode; className?: string }) {
+  // 도움말·오류 문구는 입력칸 id + "-desc" 로 연결한다 (aria-describedby)
+  const descId = htmlFor ? `${htmlFor}-desc` : undefined;
   return (
     <div className={className}>
       {label && <label htmlFor={htmlFor} className="mb-2 block text-caption font-semibold text-ink-2">{label}</label>}
       {children}
-      {error ? <p className="mt-1.5 flex items-center gap-1 text-caption text-danger"><CircleAlert size={14} aria-hidden />{error}</p>
-        : helper ? <p className="mt-1.5 text-caption text-ink-3">{helper}</p> : null}
+      {error ? <p id={descId} className="mt-1.5 flex items-center gap-1 text-caption text-danger"><CircleAlert size={14} aria-hidden />{error}</p>
+        : helper ? <p id={descId} className="mt-1.5 text-caption text-ink-3">{helper}</p> : null}
     </div>
   );
 }
@@ -28,7 +30,7 @@ export const TextField = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
     return (
       <Field label={label} helper={helper} error={error} htmlFor={fid} className={wrapClass}>
         <div className="relative">
-          <input ref={ref} id={fid} aria-invalid={error ? true : undefined}
+          <input ref={ref} id={fid} aria-invalid={error ? true : undefined} aria-describedby={error || helper ? `${fid}-desc` : undefined}
             className={`${inputBase} ${fill(onCanvas)} ${big ? "h-14 text-title2" : "h-12"} ${error ? "border-danger" : ""} ${suffix ? "pr-12" : ""} ${className}`} {...rest} />
           {suffix && <span aria-hidden className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-body text-ink-3">{suffix}</span>}
         </div>
@@ -50,7 +52,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
     }, [value]);
     return (
       <Field label={label} helper={helper} error={error} htmlFor={fid} className={wrapClass}>
-        <textarea id={fid} value={value} aria-invalid={error ? true : undefined}
+        <textarea id={fid} value={value} aria-invalid={error ? true : undefined} aria-describedby={error || helper ? `${fid}-desc` : undefined}
           ref={(el) => { inner.current = el; if (typeof ref === "function") ref(el); else if (ref) ref.current = el; }}
           style={{ minHeight: minRows * 26 + 24 }}
           className={`${inputBase} ${fill(onCanvas)} resize-none py-3 leading-[26px] ${error ? "border-danger" : ""} ${className}`} {...rest} />

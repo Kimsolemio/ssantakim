@@ -1,4 +1,4 @@
-// 의존성 없는 PNG 아이콘 생성기: 주황 배경 + 크림색 원(접시) + 노란 원(계란 노른자)
+// 의존성 없는 PNG 아이콘 생성기: icon.svg 와 같은 그림 (솔잎색 배경 + 밝은 접시 + 연초록 안쪽 + 손잡이)
 import { deflateSync } from "node:zlib";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,13 +26,18 @@ function png(size, maskable) {
   for (let y = 0; y < size; y++) {
     raw[y * (size * 4 + 1)] = 0;
     for (let x = 0; x < size; x++) {
-      let [R, G, B, A] = [249, 115, 22, 255];
+      let [R, G, B, A] = [31, 107, 79, 255];
       // rounded corners
       const dx = Math.max(Math.abs(x - r) - (r - radius), 0), dy = Math.max(Math.abs(y - r) - (r - radius), 0);
       if (dx * dx + dy * dy > radius * radius) A = 0;
       const d = Math.hypot(x - cx, y - cy);
-      if (d < size * 0.26) [R, G, B] = [255, 248, 240];
-      if (d < size * 0.18) [R, G, B] = [253, 186, 116];
+      if (d < size * 0.258) [R, G, B] = [243, 242, 238];
+      if (d < size * 0.18) [R, G, B] = [214, 231, 221];
+      // 손잡이 (둥근 막대: x 236~276, y 88~168, 모서리 20 / 512)
+      const hx = Math.abs(x - size * 0.5), hw = size * 0.039, hr = size * 0.039;
+      const hy0 = size * 0.172 + hr, hy1 = size * 0.328 - hr;
+      const hyd = y < hy0 ? hy0 - y : y > hy1 ? y - hy1 : 0;
+      if (hx <= hw && (hyd === 0 || Math.hypot(hx, hyd) <= hr)) [R, G, B] = [243, 242, 238];
       const i = y * (size * 4 + 1) + 1 + x * 4;
       raw[i] = R; raw[i + 1] = G; raw[i + 2] = B; raw[i + 3] = A;
     }

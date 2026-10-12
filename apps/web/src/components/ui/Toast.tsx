@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleAlert, CircleCheckBig } from "lucide-react";
 
 type Action = { label: string; onClick: () => void };
@@ -24,7 +24,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={api}>
       {children}
-      {t && <ToastView key={t.id} t={t} onAction={() => { t.action?.onClick(); hide(); }} />}
+      {t && <ToastView key={t.id} t={t} onAction={() => { const a = t.action; hide(); a?.onClick(); }} />}
     </Ctx.Provider>
   );
 }
@@ -38,15 +38,16 @@ function anchorBottom(): number | null {
     // 다른 레이어(전체화면·시트)에 가려진 것은 빼고 센다
     const hit = document.elementsFromPoint(r.left + r.width / 2, r.top + Math.min(r.height / 2, 24))
       .find((e) => !e.closest("[data-testid=toast]"));
-    if (hit && !el.contains(hit)) return;
+    if (!hit || !el.contains(hit)) return; // 화면 밖이거나 가려진 것
     top = Math.min(top, r.top);
   });
   return Number.isFinite(top) ? Math.max(12, window.innerHeight - top + 12) : null;
 }
 
 function ToastView({ t, onAction }: { t: ToastState; onAction: () => void }) {
-  const [px, setPx] = useState<number | null>(() => anchorBottom());
-  // 토스트가 떠 있는 동안 시트가 열리거나 닫히면 따라 움직인다
+  const [px, setPx] = useState<number | null>(null);
+  // 화면이 그려진 뒤에 자리를 잡고, 떠 있는 동안 시트가 열리거나 닫히면 따라 움직인다
+  useLayoutEffect(() => { setPx(anchorBottom()); }, []);
   useEffect(() => {
     const id = setInterval(() => setPx(anchorBottom()), 100);
     return () => clearInterval(id);
@@ -55,7 +56,7 @@ function ToastView({ t, onAction }: { t: ToastState; onAction: () => void }) {
     : t.raised === "aboveTabs" ? "calc(var(--safe-bottom) + 148px)"
       : t.raised ? "calc(var(--safe-bottom) + 92px)" : "calc(var(--safe-bottom) + 56px + 12px)";
   return (
-    <div role={t.kind === "error" ? "alert" : "status"} aria-live="polite" data-testid="toast"
+    <div role={t.kind === "error" ? "alert" : "status"} aria-live={t.kind === "error" ? "assertive" : "polite"} data-testid="toast"
       className="fixed inset-x-0 z-[80] mx-auto flex w-[calc(100%-40px)] max-w-[440px] items-center gap-3 rounded-card bg-toast py-3 pl-4 pr-2 text-callout text-white shadow-overlay animate-toast-in"
       style={{ bottom }}>
       {t.kind === "done" && <CircleCheckBig size={20} className="shrink-0 text-toast-action" aria-hidden />}

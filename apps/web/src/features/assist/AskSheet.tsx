@@ -80,6 +80,7 @@ export function AskSheet({ recipe, recipeKey, servings, step, fridge, onClose, t
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [q]);
 
+  const resetting = useRef(false);
   const ask = async (question: string, e?: FormEvent) => {
     e?.preventDefault();
     const text = question.trim();
@@ -96,10 +97,12 @@ export function AskSheet({ recipe, recipeKey, servings, step, fridge, onClose, t
     } catch (e2) {
       // 멈추기로 그만둔 것은 오류로 알리지 않는다
       if (!abort.current?.signal.aborted) setFailed({ q: text, msg: e2 instanceof ApiError ? e2.message : "답을 받지 못했어요" });
-      setQ(text);
+      // "새 대화"로 지운 것은 되살리지 않는다
+      if (!resetting.current) setQ(text);
+      resetting.current = false;
     } finally { setBusy(false); }
   };
-  const reset = () => { abort.current?.abort(); setTurns([]); setFollowups([]); setFailed(null); setQ(""); memory.delete(recipeKey); };
+  const reset = () => { if (busy) resetting.current = true; abort.current?.abort(); setTurns([]); setFollowups([]); setFailed(null); setQ(""); memory.delete(recipeKey); };
 
   const fresh = turns.length === 0;
   const chips = fresh ? (step ? STARTERS_COOK : STARTERS) : followups.slice(0, 3);

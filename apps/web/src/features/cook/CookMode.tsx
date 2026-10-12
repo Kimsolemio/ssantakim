@@ -6,6 +6,7 @@ import { useBackButton } from "../../lib/useBackButton";
 import { useTimers, formatRemaining } from "./useTimers";
 import { useWakeLock } from "./useWakeLock";
 import { useSpeak, useVoiceCommands, ttsSupported, voiceSupported } from "./useSpeech";
+import { DarkLayers } from "../../components/Sheet";
 import { AskSheet } from "../assist/AskSheet";
 import { IconButton } from "../../components/ui/IconButton";
 import { Button } from "../../components/ui/Button";
@@ -67,7 +68,9 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
   useEffect(() => { if (wake === "unsupported") toast.show("화면이 꺼지지 않게 자동 잠금 시간을 늘려 주세요", { raised: true }); }, [wake]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (voice.error) toast.show(voice.error, { kind: "error", raised: true }); }, [voice.error]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onTouchStart = (e: React.TouchEvent) => { touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+  // 시트(AI 셰프 등)는 body로 띄워도 React 이벤트는 여기까지 올라온다. 쿡 화면에서 민 것만 단계 이동으로 본다
+  const own = (e: React.TouchEvent) => e.currentTarget.contains(e.target as Node);
+  const onTouchStart = (e: React.TouchEvent) => { if (!own(e)) { touch.current = null; return; } touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
   const onTouchEnd = (e: React.TouchEvent) => {
     if (!touch.current) return;
     const dx = e.changedTouches[0].clientX - touch.current.x, dy = e.changedTouches[0].clientY - touch.current.y;
@@ -106,7 +109,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
           {otherTimers.map((t) => (
             <div key={t.id} className={`flex h-11 shrink-0 items-center gap-1 rounded-full pl-4 text-callout ${t.done ? "bg-danger text-white motion-safe:animate-pulse" : "bg-surface-2 text-ink"}`}>
               <span className="font-semibold tabular-nums">{t.label} {t.done ? "끝" : formatRemaining(t.endsAt - Date.now())}</span>
-              <IconButton tone="dark" onClick={() => remove(t.id)} aria-label="타이머 끄기"><X size={16} /></IconButton>
+              <IconButton tone="dark" onClick={() => remove(t.id)} aria-label={`${t.label} 타이머 끄기`}><X size={16} /></IconButton>
             </div>
           ))}
         </div>
@@ -172,7 +175,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
           )}
         </div>
       </footer>
-      {asking && <AskSheet recipe={recipe} recipeKey={recipeKey} servings={servings} step={step?.order ?? null} fridge={fridgeNames} onClose={() => setAsking(false)} top />}
+      {asking && <DarkLayers><AskSheet recipe={recipe} recipeKey={recipeKey} servings={servings} step={step?.order ?? null} fridge={fridgeNames} onClose={() => setAsking(false)} top /></DarkLayers>}
     </div>
   );
 }

@@ -42,7 +42,7 @@ export function AiProgress({ messages, typical, onCancel, size = "lg", icon, cla
     return (
       <div role="status" aria-live="polite" className={`flex items-center gap-3 rounded-card bg-surface py-3 pl-4 pr-2 ${className}`}>
         <LoaderCircle size={24} className="shrink-0 animate-spin text-accent" aria-hidden />
-        <span className="min-w-0 flex-1 text-callout text-ink">{msg} <span className="text-ink-3 tabular-nums">{sec}초</span></span>
+        <span className="min-w-0 flex-1 text-callout text-ink">{msg} <span aria-hidden className="text-ink-3 tabular-nums">{sec}초</span></span>
         {onCancel && <Button variant="ghost" size="md" onClick={onCancel}>취소</Button>}
       </div>
     );
@@ -51,7 +51,7 @@ export function AiProgress({ messages, typical, onCancel, size = "lg", icon, cla
     <div role="status" aria-live="polite" className={`flex flex-col items-center px-8 py-16 text-center ${className}`}>
       {icon ?? <LoaderCircle size={32} className="animate-spin text-accent" aria-hidden />}
       <p className="mt-5 text-headline text-ink">{msg}</p>
-      <p className="mt-1 text-caption text-ink-3 tabular-nums">{sec}초{typical ? ` · ${typical}` : ""}</p>
+      <p aria-hidden className="mt-1 text-caption text-ink-3 tabular-nums">{sec}초{typical ? ` · ${typical}` : ""}</p>
       {onCancel && <Button variant="ghost" size="md" className="mt-6" onClick={onCancel}>취소</Button>}
     </div>
   );
