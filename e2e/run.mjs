@@ -479,6 +479,59 @@ await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
 await mom.getByLabel("뒤로").click();
 await mom.locator("nav").getByText("장보기", { exact: true }).click();
 await mom.getByTestId("shopping-row").filter({ hasText: "애호박" }).getByText("두부 된장찌개").waitFor();
+
+// ---------- 7단계: 이번 주 식단 → 부족한 재료 한 번에 장보기 ----------
+const todayStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+const tomorrowStr = (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
+await mom.getByTestId("open-plan").click();
+await mom.getByText("이번 주 식단").first().waitFor();
+const planDay = (d) => mom.locator(`[data-testid="plan-day"][data-date="${d}"]`);
+await planDay(todayStr).getByRole("button", { name: /식단 추가$/ }).click();
+await mom.getByTestId("plan-pick").getByRole("button", { name: "알리오올리오", exact: true }).click();
+await mom.getByTestId("toast").getByText(/오늘 저녁에 알리오올리오 넣었어요/).waitFor();
+await planDay(todayStr).getByTestId("plan-entry").filter({ hasText: "알리오올리오" }).getByText("저녁 · 2인분").waitFor();
+// 같은 날 점심도: 떡볶이 3인분
+await planDay(todayStr).getByRole("button", { name: /식단 추가$/ }).click();
+await mom.getByTestId("plan-pick").getByRole("radio", { name: "점심" }).click();
+await mom.getByTestId("plan-pick").getByLabel("인분 늘리기").click(); // 2 → 3
+await mom.getByTestId("plan-pick").getByRole("button", { name: "인스타 떡볶이", exact: true }).click();
+await planDay(todayStr).getByTestId("plan-entry").filter({ hasText: "인스타 떡볶이" }).getByText("점심 · 3인분").waitFor();
+// 점심이 저녁보다 위
+assert.match(await planDay(todayStr).textContent(), /인스타 떡볶이.*알리오올리오/);
+await mom.screenshot({ path: `${shots}/28-week-plan.png` });
+// 스파게티면: 두 식단을 합치면 냉장고보다 많이 필요하다 (선택 재료 페페론치노는 빼고 센다)
+await mom.getByTestId("plan-shopping").click();
+const planRows = mom.getByTestId("plan-shopping-row");
+const spaghettiRow = planRows.filter({ hasText: "스파게티면" });
+await spaghettiRow.getByText(/^\d+g 더$/).waitFor();
+assert.match(await spaghettiRow.textContent(), /인스타 떡볶이, 알리오올리오/);
+const spaghettiMore = (await spaghettiRow.getByText(/^\d+g 더$/).textContent()).replace(" 더", "");
+assert.equal(await planRows.filter({ hasText: "페페론치노" }).count(), 0);
+await mom.screenshot({ path: `${shots}/29-plan-shopping.png` });
+const nPlan = await planRows.count();
+await mom.getByTestId("plan-shopping-sheet").getByRole("button", { name: /개 담기$/ }).click();
+await mom.getByTestId("toast").getByText(/장보기에 \d+개 담았어요/).waitFor();
+// 장보기에 이미 있으면 다시 열었을 때 기본으로 빠져 있다
+await mom.getByTestId("plan-shopping").click();
+assert.equal(await mom.getByLabel("스파게티면 담기").isChecked(), false);
+await mom.getByTestId("plan-shopping-sheet").getByText("이미 장보기에 있어요").first().waitFor();
+await mom.getByRole("button", { name: "닫기", exact: true }).click();
+await mom.getByLabel("뒤로").click();
+await mom.getByTestId("today-plan-row").filter({ hasText: "알리오올리오" }).waitFor();
+await mom.locator("nav").getByText("장보기", { exact: true }).click();
+await mom.getByTestId("shopping-row").filter({ hasText: "스파게티면" }).getByText(spaghettiMore).waitFor();
+assert.ok(nPlan >= 1);
+// 레시피 상세 → 더보기 → 식단에 넣기
+await mom.locator("nav").getByText("레시피", { exact: true }).click();
+await mom.locator("li", { hasText: "유튜브 김치찌개" }).first().click();
+await mom.getByLabel("더보기").click();
+await mom.getByText("식단에 넣기").click();
+await mom.getByTestId("add-to-plan").getByRole("button", { name: /^내일/ }).click();
+await mom.getByTestId("add-to-plan").getByRole("radio", { name: "아침" }).click();
+await mom.getByTestId("add-to-plan").getByRole("button", { name: "식단에 넣기" }).click();
+await mom.getByTestId("toast").getByText("내일 아침 식단에 넣었어요").waitFor();
+await mom.getByLabel("뒤로").click();
 await mom.locator("nav").getByText("레시피", { exact: true }).click();
 
 // ---------- Claude 활용: 인기 레시피 찾아보기, AI 셰프에게 묻기, 레시피 바꾸기, 대체 재료 ----------

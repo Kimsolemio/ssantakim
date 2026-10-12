@@ -172,10 +172,19 @@ export const Family = z.object({
 });
 export type Family = z.infer<typeof Family>;
 
+export const MealSlot = z.enum(["아침", "점심", "저녁"]);
+export type MealSlot = z.infer<typeof MealSlot>;
+
+/** 이번 주 식단의 한 칸 (families/{id}/meal_plans) */
 export const MealPlanEntry = z.object({
-  date: z.string(),
-  slot: z.enum(["아침", "점심", "저녁"]),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  slot: MealSlot,
   recipeId: z.string(),
+  /** 레시피를 지워도 무엇이었는지 보이게 이름을 함께 둔다 */
+  title: z.string().default(""),
+  servings: z.number().int().positive().max(20).default(2),
+  createdBy: z.string().optional(),
+  createdAt: z.string().optional(),
 });
 export type MealPlanEntry = z.infer<typeof MealPlanEntry>;
 

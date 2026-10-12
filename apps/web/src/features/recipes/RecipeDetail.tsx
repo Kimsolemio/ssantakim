@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUpRight, Check, ChevronRight, Ellipsis, Folder, Pencil, Star, Timer, Trash2 } from "lucide-react";
+import { ArrowUpRight, CalendarPlus, Check, ChevronRight, Ellipsis, Folder, Pencil, Star, Timer, Trash2 } from "lucide-react";
 import { findDislikes, isStandardKey, type Ingredient, type IngredientMatch, type Recipe } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { Sheet } from "../../components/Sheet";
@@ -13,6 +13,7 @@ import { useToast } from "../../components/ui/Toast";
 import { IngredientList } from "./IngredientList";
 import { CookMode } from "../cook/CookMode";
 import { UseUpSheet, type UseUpResult } from "../cook/UseUpSheet";
+import { AddToPlanSheet } from "../plan/PlanScreen";
 import { useFamily } from "../../lib/family";
 import { useAuth } from "../../lib/auth";
 import { useFridge, applyFridgeUpdates, setFridgeItemKey, type FridgeDoc } from "../fridge/useFridge";
@@ -81,6 +82,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
   const [linking, setLinking] = useState<number | null>(null);
   const [subFor, setSubFor] = useState<Pick<Ingredient, "name" | "qty" | "unit">[] | null>(null);
   const [asking, setAsking] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const [adapting, setAdapting] = useState<false | { text?: string }>(false);
   const { familyId, family } = useFamily();
   const { user } = useAuth();
@@ -257,6 +259,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
           fridge={fridge.map((f) => f.name)} staples={staples}
           onClose={() => setSubFor(null)} onShop={() => { setSubFor(null); setShopSheet(true); }} />
       )}
+      {planning && recipeId && <AddToPlanSheet recipe={recipe} recipeId={recipeId} servings={servings} onClose={() => setPlanning(false)} />}
       {asking && (
         <AskSheet recipe={recipe} recipeKey={recipeId ?? recipe.title} servings={servings} fridge={fridge.map((f) => f.name)} onClose={() => setAsking(false)} />
       )}
@@ -271,6 +274,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
           {menu === "main" ? (
             <ul>
               <ActionRow icon={<Pencil size={20} />} title="수정하기" disabled={busy} onClick={() => { setMenu(false); onEdit(); }} />
+              {recipeId && <ActionRow icon={<CalendarPlus size={20} />} title="식단에 넣기" disabled={busy} onClick={() => { setMenu(false); setPlanning(true); }} />}
               {(folders.length > 0 || recipe.folderId) && (
                 <ActionRow icon={<Folder size={20} />} title="폴더 옮기기" value={folderName} disabled={busy} onClick={() => setMenu("folder")} />
               )}

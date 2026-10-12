@@ -245,3 +245,60 @@ describe("dislikes", () => {
     expect(formatAmount({ qty: null, unit: "kg" })).toBe("");
   });
 });
+
+import { weekStart, weekDays, combinePlanIngredients, planShopping, MealPlanEntry } from "../src";
+
+describe("meal plan", () => {
+  it("finds the Monday of the week", () => {
+    expect(weekStart("2026-10-12")).toBe("2026-10-12"); // 월
+    expect(weekStart("2026-10-18")).toBe("2026-10-12"); // 일
+    expect(weekStart("2026-11-01")).toBe("2026-10-26"); // 달을 넘긴다
+    expect(weekDays("2026-12-28")).toEqual(["2026-12-28", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03"]);
+  });
+  it("fills defaults for old entries and checks the date", () => {
+    expect(MealPlanEntry.parse({ date: "2026-10-12", slot: "저녁", recipeId: "r1" })).toMatchObject({ title: "", servings: 2 });
+    expect(MealPlanEntry.safeParse({ date: "10/12", slot: "저녁", recipeId: "r1" }).success).toBe(false);
+  });
+  it("adds up the same ingredient across recipes, scaled by servings", () => {
+    const a = { title: "알리오올리오", servingsBase: 2, ingredients: [
+      ing({ name: "마늘", key: "garlic", qty: 10, unit: "쪽" }),
+      ing({ name: "스파게티면", key: "spaghetti", qty: 200, unit: "g" }),
+      ing({ name: "물", key: "water", qty: 2, unit: "L" }),
+      ing({ name: "파슬리", key: "parsley", qty: 1, unit: "줌", optional: true }),
+      ing({ name: "소금", key: "salt", qty: null, unit: "기타", scalable: false }),
+    ] };
+    const b = { title: "마늘볶음밥", servingsBase: 1, ingredients: [
+      ing({ name: "다진 마늘", key: "garlic", qty: 5, unit: "쪽" }),
+      ing({ name: "밥", key: "rice", qty: 1, unit: "공기" as any }),
+      ing({ name: "소금", key: "salt", qty: 1, unit: "꼬집" }),
+    ] };
+    const needs = combinePlanIngredients([{ recipe: a, servings: 4 }, { recipe: b, servings: 2 }]);
+    const garlic = needs.find((n) => n.ingredient.key === "garlic")!;
+    expect(garlic.ingredient.qty).toBe(30); // 10×2 + 5×2
+    expect(garlic.recipes).toEqual(["알리오올리오", "마늘볶음밥"]);
+    expect(needs.find((n) => n.ingredient.key === "spaghetti")!.ingredient.qty).toBe(400);
+    expect(needs.some((n) => n.ingredient.key === "water" || n.ingredient.key === "parsley")).toBe(false);
+    // "약간" + "1꼬집" → 양이 있는 쪽으로 하나
+    expect(needs.filter((n) => n.ingredient.key === "salt")).toHaveLength(1);
+  });
+  it("keeps units that cannot be converted apart and lists only what is missing or short", () => {
+    const r = { title: "A", servingsBase: 1, ingredients: [
+      ing({ name: "우유", key: "milk", qty: 300, unit: "ml" }),
+      ing({ name: "두부", key: "tofu", qty: 1, unit: "모" }),
+      ing({ name: "대파", key: "green_onion", qty: 1, unit: "대" }),
+    ] };
+    const r2 = { title: "B", servingsBase: 1, ingredients: [ing({ name: "두부", key: "tofu", qty: 150, unit: "g" })] };
+    const needs = combinePlanIngredients([{ recipe: r, servings: 1 }, { recipe: r2, servings: 1 }]);
+    expect(needs.filter((n) => n.ingredient.key === "tofu")).toHaveLength(2);
+    const fridge = [fr({ id: "1", name: "우유", key: "milk", qty: 200, unit: "ml" }), fr({ id: "2", name: "대파", key: "green_onion", qty: 2, unit: "대" })];
+    const rows = planShopping(needs, fridge);
+    expect(rows.map((x) => [x.need.ingredient.name, x.match.status, x.qty, x.unit])).toEqual([
+      ["우유", "short", 100, "ml"], ["두부", "missing", 1, "모"], ["두부", "missing", 150, "g"],
+    ]);
+  });
+  it("treats family staples as present", () => {
+    const needs = combinePlanIngredients([{ recipe: { title: "A", servingsBase: 1, ingredients: [ing({ name: "간장", key: "soy_sauce", qty: 1, unit: "큰술" })] }, servings: 1 }]);
+    expect(planShopping(needs, [], { staples: ["간장"] })).toHaveLength(0);
+    expect(planShopping(needs, [])).toHaveLength(1);
+  });
+});

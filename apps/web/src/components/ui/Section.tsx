@@ -25,8 +25,8 @@ export function Band() {
   return <div aria-hidden className="h-2 bg-canvas" />;
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-card bg-surface ${className}`}>{children}</div>;
+export function Card({ children, className = "", ...rest }: React.HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
+  return <div className={`rounded-card bg-surface ${className}`} {...rest}>{children}</div>;
 }
 
 /** 목록 행 구분선 (첫 행 제외). 썸네일이 있으면 inset 68 */

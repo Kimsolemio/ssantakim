@@ -6,6 +6,7 @@ import { AiNotice } from "../../components/AiNotice";
 import { Sheet } from "../../components/Sheet";
 import { AiProgress } from "../../components/ui/Ai";
 import { Badge } from "../../components/ui/Badge";
+import { PlanSection } from "../plan/PlanScreen";
 import { Banner } from "../../components/ui/Banner";
 import { Button } from "../../components/ui/Button";
 import { ChoiceChip, InputChip, LockedChip } from "../../components/ui/Chip";
@@ -230,6 +231,8 @@ export function TodayTab() {
           </Card>
         </section>
       )}
+
+      <PlanSection />
 
       {!busy && hasResults && (
         <div className="px-5 pt-6">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { BookOpen, ChevronRight, FolderPlus, Link as LinkIcon, Sparkles, Star } from "lucide-react";
-import { guessFood, type RecipeDraft } from "@cook/shared";
+import type { RecipeDraft } from "@cook/shared";
+import { recipeEmoji } from "./recipeLook";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
 import { useRecipes, useFolders, createRecipe, updateRecipe, deleteRecipe, createFolder, deleteFolder, addCookedLog, type RecipeDoc } from "./useRecipes";
@@ -49,17 +50,6 @@ function AddRow({ icon, title, sub, onClick, testId }: { icon: ReactNode; title:
       </button>
     </li>
   );
-}
-
-/** 목록 썸네일: 요리 이름이나 주재료로 짐작한 음식 그림 (모르면 첫 글자) */
-function recipeEmoji(r: RecipeDoc): string | null {
-  const t = guessFood(r.title);
-  if (t.category !== "기타") return t.emoji;
-  for (const i of r.ingredients.filter((x) => x.group === "주재료")) {
-    const g = guessFood(i.name);
-    if (g.category !== "기타") return g.emoji;
-  }
-  return null;
 }
 
 export function RecipesTab() {

@@ -45,6 +45,9 @@ test('valid invitation joins, repeat joins and shared inventory work', async () 
   await assertSucceeds(getDoc(doc(db('guest'),'families','a')));
   await assertSucceeds(updateDoc(doc(db('guest'),'families','a','fridge_items','milk'), {name:'shared'}));
   await assertSucceeds(updateDoc(doc(db('owner'),'families','a'), {profile:{adults:2}}));
+  // 이번 주 식단도 가족이 함께 쓴다
+  await assertSucceeds(setDoc(doc(db('guest'),'families','a','meal_plans','p1'), {date:'2026-10-12', slot:'저녁', recipeId:'r1'}));
+  await assertSucceeds(getDoc(doc(db('owner'),'families','a','meal_plans','p1')));
 });
 test('knowing a family path is insufficient to self-add', async () => {
   await assertFails(updateDoc(doc(db('guest'),'families','a'), {members:arrayUnion('guest')}));
@@ -80,6 +83,7 @@ test('outsiders, anonymous users and forged user pointers cannot access another 
     await assertFails(getDoc(doc(d,'families','a')));
     await assertFails(getDoc(doc(d,'families','a','fridge_items','milk')));
     await assertFails(setDoc(doc(d,'families','a','recipes','x'), {name:'attack'}));
+    await assertFails(setDoc(doc(d,'families','a','meal_plans','x'), {date:'2026-10-12', slot:'저녁', recipeId:'x'}));
   }
   await assertFails(getDoc(doc(db('owner'),'families','b','fridge_items','milk')));
 });
