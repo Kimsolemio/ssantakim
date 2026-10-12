@@ -14,11 +14,13 @@ function withTopic(word: string): string {
 type Kind = "default" | "link" | "fridge";
 
 /** AI로 무엇이 가는지 1줄로 알린다. "자세히"에 긴 설명. 주 버튼 바로 위 한 곳에만 둔다 */
-export function AiNotice({ what, kind = "default", webSearch, video, className = "" }: {
+export function AiNotice({ what, kind = "default", webSearch, video, extra, className = "" }: {
   /** 보내는 것 (자세히 안내에 씀) */
   what: string; kind?: Kind; webSearch?: boolean;
   /** 유튜브 영상 분석 경로가 있으면 (영상은 Gemini로만 볼 수 있다) */
-  video?: boolean; className?: string;
+  video?: boolean;
+  /** 짧은 문구 뒤에 붙일 한 마디 (예: "사진은 저장하지 않아요.") */
+  extra?: string; className?: string;
 }) {
   const { provider, gemini } = useAiInfo();
   const [more, setMore] = useState(false);
@@ -43,7 +45,7 @@ export function AiNotice({ what, kind = "default", webSearch, video, className =
     <>
       <p className={`flex items-start gap-1.5 text-caption text-ink-3 ${className}`} data-testid="ai-notice">
         <Lock size={14} aria-hidden className="mt-0.5 shrink-0" />
-        <span>{short} <button type="button" onClick={() => setMore(true)} className="font-semibold text-ink-2 active:opacity-60">자세히</button></span>
+        <span>{short}{extra ? ` ${extra}` : ""} <button type="button" onClick={() => setMore(true)} className="font-semibold text-ink-2 active:opacity-60">자세히</button></span>
       </p>
       {more && (
         <Sheet title="AI로 보내는 내용" onClose={() => setMore(false)} top>

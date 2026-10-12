@@ -1,12 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StorageLocation, Unit, addDays, daysUntil, localDate, provisionalKey, sameFood, type ReceiptScan, type ReceiptItem } from "@cook/shared";
+import { Camera, ChevronDown, ChevronRight, Images, LoaderCircle, ScanLine, X } from "lucide-react";
+import { StorageLocation, Unit, addDays, daysUntil, formatAmount, localDate, provisionalKey, sameFood, type ReceiptScan, type ReceiptItem } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
+import { Sheet } from "../../components/Sheet";
 import { AiNotice } from "../../components/AiNotice";
+import { Button } from "../../components/ui/Button";
+import { Banner } from "../../components/ui/Banner";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { AiProgress } from "../../components/ui/Ai";
+import { FoodThumb } from "../../components/ui/FoodThumb";
+import { Checkbox } from "../../components/ui/Toggle";
+import { EmptyState } from "../../components/ui/EmptyState";
+import { TextAction, rowLine } from "../../components/ui/Section";
+import { TextField } from "../../components/ui/Field";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { prepareImage, type PreparedImage } from "../../lib/image";
 import type { FridgeInput } from "./useFridge";
 import { useFamily } from "../../lib/family";
 import { loadPending, savePending, clearPending } from "../../lib/drafts";
+import { AmountFields, ExpiryField, ItemTitle, LocationField } from "./FridgeItemForm";
 
 type PendingReceipt = { scan: ReceiptScan; cands: Candidate[]; mode?: ScanMode };
 export type ScanMode = "receipt" | "photo";
@@ -64,25 +76,33 @@ export function toCandidates(scan: ReceiptScan, today: string, mode: ScanMode = 
   }));
 }
 
+/** "2026-10-21" → "10월 21일" */
+function monthDay(iso: string): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${Number(m[1])}월 ${Number(m[2])}일` : iso;
+}
+
 type Props = {
   onClose: () => void;
   /** 고른 품목을 냉장고에 넣는다. mode: 영수증이면 장보기 정리도 한다 */
   onConfirm: (items: (FridgeInput & { key: string })[], mode: ScanMode) => Promise<void>;
   /** 지금 냉장고 품목 (사진 모드에서 중복 표시용) */
   existing?: { name: string; key: string }[];
+  /** 처음 고를 탭 (채우기 시트에서 "식재료 사진"으로 들어오면 photo) */
+  initialMode?: ScanMode;
 };
 
-export function ReceiptImport({ onClose, onConfirm, existing = [] }: Props) {
+export function ReceiptImport({ onClose, onConfirm, existing = [], initialMode = "receipt" }: Props) {
   const [images, setImages] = useState<PreparedImage[]>([]);
   const [step, setStep] = useState<"pick" | "loading" | "review">("pick");
   const [err, setErr] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [scan, setScan] = useState<ReceiptScan | null>(null);
   const [cands, setCands] = useState<Candidate[]>([]);
-  const [tick, setTick] = useState(0);
   const [saving, setSaving] = useState(false);
   const [showNonFood, setShowNonFood] = useState(false);
-  const [mode, setMode] = useState<ScanMode>("receipt");
+  const [mode, setMode] = useState<ScanMode>(initialMode);
+  const [editId, setEditId] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -94,11 +114,6 @@ export function ReceiptImport({ onClose, onConfirm, existing = [] }: Props) {
   useEffect(() => { if (step === "review" && scan) savePending<PendingReceipt>(pendingName, { scan, cands, mode }); }, [step, scan, cands, mode, pendingName]);
 
   useEffect(() => () => { abort.current?.abort(); images.forEach((im) => URL.revokeObjectURL(im.previewUrl)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (step !== "loading") return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [step]);
 
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -119,7 +134,7 @@ export function ReceiptImport({ onClose, onConfirm, existing = [] }: Props) {
   };
 
   const analyze = async () => {
-    setErr(null); setStep("loading"); setTick(0);
+    setErr(null); setStep("loading");
     abort.current = new AbortController();
     try {
       const res = await callWorker<ScanResponse>("/pantry/receipt", {
@@ -140,8 +155,10 @@ export function ReceiptImport({ onClose, onConfirm, existing = [] }: Props) {
   };
 
   const set = (id: string, patch: Partial<Candidate>) => setCands((l) => l.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  const rename = (c: Candidate, name: string) => set(c.id, { name, ...(provisionalKey(name) !== provisionalKey(c.aiName) ? { key: provisionalKey(name) } : { key: c.aiKey }) });
   const food = cands.filter((c) => c.isFood), nonFood = cands.filter((c) => !c.isFood);
   const chosen = cands.filter((c) => c.checked && c.name.trim());
+  const editing = editId ? cands.find((c) => c.id === editId) ?? null : null;
 
   const confirm = async () => {
     setSaving(true); setErr(null);
@@ -160,120 +177,166 @@ export function ReceiptImport({ onClose, onConfirm, existing = [] }: Props) {
     }
   };
 
-  const small = "rounded-lg border border-orange-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-orange-400";
-
-  const row = (c: Candidate) => (
-    <li key={c.id} data-testid="receipt-row" className={`rounded-2xl bg-white p-3 ${c.checked ? "" : "opacity-50"}`}>
-      <div className="flex items-center gap-2">
-        <input type="checkbox" aria-label={`${c.name} 넣기`} checked={c.checked} onChange={(e) => set(c.id, { checked: e.target.checked })} className="h-5 w-5 accent-orange-500" />
-        <span className="text-2xl" aria-hidden>{c.emoji}</span>
-        <input className={small + " min-w-0 flex-1 font-medium"} value={c.name} aria-label="이름"
-          onChange={(e) => set(c.id, { name: e.target.value, ...(provisionalKey(e.target.value) !== provisionalKey(c.aiName) ? { key: provisionalKey(e.target.value) } : { key: c.aiKey }) })} />
-        <input className={small + " w-16"} type="number" inputMode="decimal" min={0} step="any" value={c.qty ?? ""} aria-label="수량"
-          onChange={(e) => set(c.id, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
-        <select className={small + " w-16"} value={c.unit} onChange={(e) => set(c.id, { unit: e.target.value as Unit })} aria-label="단위">
-          {Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}
-        </select>
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs">
-        <div className="flex overflow-hidden rounded-lg border border-orange-200">
-          {StorageLocation.options.map((loc) => (
-            <button key={loc} type="button" onClick={() => set(c.id, { location: loc })}
-              className={`px-2.5 py-1 ${c.location === loc ? "bg-orange-500 text-white" : "bg-white text-gray-600"}`}>{loc}</button>
-          ))}
+  /** 1줄 행: [넣기 체크] [접시] [이름 / 양 · 기한] [›]. 누르면 품목 시트 */
+  const row = (c: Candidate) => {
+    const amount = formatAmount({ qty: c.qty, unit: c.unit });
+    const sub = [
+      c.already ? "이미 냉장고에 있음" : null,
+      amount || null,
+      c.expiresAt ? `${c.estimated ? "~" : ""}${monthDay(c.expiresAt)}` : null,
+    ].filter(Boolean).join(" · ");
+    return (
+      <li key={c.id} data-testid="receipt-row" className={`${rowLine} before:left-[108px]`}>
+        <div className={`flex min-h-14 items-center transition-opacity ${c.checked ? "" : "opacity-50"}`}>
+          <label className="flex h-14 shrink-0 cursor-pointer items-center pl-5 pr-3">
+            <Checkbox aria-label={`${c.name} 넣기`} checked={c.checked} onChange={(e) => set(c.id, { checked: e.target.checked })} />
+          </label>
+          <button type="button" onClick={() => setEditId(c.id)} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pr-4 text-left transition-colors active:bg-surface-2">
+            <FoodThumb emoji={c.emoji} />
+            <span className="min-w-0 flex-1">
+              <span className={`block truncate text-body ${c.name.trim() ? "text-ink" : "text-ink-3"}`}>{c.name.trim() || "이름 없음"}</span>
+              {sub && <span className="mt-0.5 block truncate text-caption text-ink-3 tabular-nums">{sub}</span>}
+            </span>
+            <ChevronRight size={20} aria-hidden className="shrink-0 text-ink-3" />
+          </button>
         </div>
-        <label className="flex items-center gap-1 text-gray-500">기한
-          <input className={small + " py-1"} type="date" value={c.expiresAt ?? ""} onChange={(e) => set(c.id, { expiresAt: e.target.value || null, estimated: false })} />
-          {c.estimated && c.expiresAt && <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">추정</span>}
-        </label>
-      </div>
-      <p className="mt-1 truncate pl-7 text-[11px] text-gray-400">{c.already && <span className="mr-1 rounded bg-gray-100 px-1 text-gray-600">이미 냉장고에 있음</span>}{mode === "photo" ? "사진" : "영수증"}: {c.rawText}{c.memo ? ` · ${c.memo}` : ""}</p>
-    </li>
-  );
+      </li>
+    );
+  };
+
+  const groups = StorageLocation.options.map((loc) => ({ loc, list: food.filter((c) => c.location === loc) })).filter((g) => g.list.length > 0);
+  const anyEstimated = food.some((c) => c.estimated && c.expiresAt);
+  const meta = mode === "photo"
+    ? ["개수는 눈대중이에요", anyEstimated ? "기한은 어림값이에요" : null]
+    : [scan?.store ?? null, scan?.purchasedAt ? monthDay(scan.purchasedAt) : null, anyEstimated ? "기한은 어림값이에요" : null];
+
+  const footer = step === "pick" ? (
+    <>
+      <AiNotice what={mode === "photo" ? "식재료 사진" : "영수증 사진"} extra="사진은 저장하지 않아요." className="mb-3" />
+      <Button ai block disabled={images.length === 0 || preparing || !workerConfigured} onClick={analyze}>
+        {mode === "photo" ? "식재료 찾기" : "분석하기"}{images.length > 0 ? ` (${images.length}장)` : ""}
+      </Button>
+    </>
+  ) : step === "review" ? (
+    <div className="flex gap-2">
+      <Button variant="secondary" className="shrink-0" disabled={saving} onClick={() => { setStep("pick"); setErr(null); }}>다시 찍기</Button>
+      <Button className="min-w-0 flex-1" disabled={saving || chosen.length === 0} loading={saving} onClick={confirm}>
+        {saving ? "넣는 중…" : `냉장고에 넣기 (${chosen.length}개)`}
+      </Button>
+    </div>
+  ) : undefined;
 
   return (
     <FullScreen title={mode === "photo" ? "사진으로 채우기" : "영수증으로 채우기"} onClose={() => { abort.current?.abort(); onClose(); }}
-      confirmClose={step === "loading" ? (mode === "photo" ? "사진을 보는 중이에요. 그만둘까요?" : "영수증을 읽는 중이에요. 그만둘까요?") : null}>
+      confirmClose={step === "loading" ? (mode === "photo" ? "사진을 보는 중이에요. 그만둘까요?" : "영수증을 읽는 중이에요. 그만둘까요?") : null}
+      footer={footer}>
       {step === "pick" && (
-        <div className="flex flex-col gap-4 p-4">
+        <div className="pb-4">
           {stored && (
-            <div className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="pending-receipt">
-              <span className="min-w-0 flex-1">{stored.mode === "photo" ? "📸 넣지 않은 사진 결과" : "🧾 넣지 않은 영수증 결과"} {stored.cands.filter((c) => c.isFood).length}개가 남아 있어요{stored.scan.store ? ` (${stored.scan.store})` : ""}</span>
-              <button type="button" className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white"
-                onClick={() => { setScan(stored.scan); setCands(stored.cands); setMode(stored.mode ?? "receipt"); setStored(null); setStep("review"); }}>이어서</button>
-              <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { if (window.confirm("이 영수증 결과를 버릴까요?")) { clearPending(pendingName); setStored(null); } }}>버리기</button>
-            </div>
+            <Banner testId="pending-receipt" className="mx-5 mt-2"
+              title={`넣지 않은 ${stored.mode === "photo" ? "사진" : "영수증"} 결과 ${stored.cands.filter((c) => c.isFood).length}개가 있어요${stored.scan.store ? ` (${stored.scan.store})` : ""}`}
+              action={{ label: "이어서", onClick: () => { setScan(stored.scan); setCands(stored.cands); setMode(stored.mode ?? "receipt"); setStored(null); setStep("review"); } }}>
+              <button type="button" className="-my-2.5 inline-flex h-11 items-center font-semibold active:opacity-60"
+                onClick={() => { if (window.confirm("이 영수증 결과를 버릴까요?")) { clearPending(pendingName); setStored(null); } }}>버리기</button>
+            </Banner>
           )}
-          <div className="flex overflow-hidden rounded-xl border border-orange-200" role="tablist" aria-label="무엇을 찍었나요">
-            {([["receipt", "🧾 영수증·주문내역"], ["photo", "📸 식재료 사진"]] as const).map(([m, label]) => (
-              <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-                className={`flex-1 py-2 text-sm font-semibold ${mode === m ? "bg-orange-500 text-white" : "bg-white text-gray-600"}`}>{label}</button>
+          <SegmentedControl role="tab" label="무엇을 찍었나요" className="mx-5 mt-2" value={mode} onChange={setMode}
+            options={[{ value: "receipt", label: "영수증·주문내역" }, { value: "photo", label: "식재료 사진" }]} />
+          <p className="mt-4 px-5 text-callout text-ink-2">
+            {mode === "receipt" ? `영수증이나 주문내역 캡처를 올려 주세요. ${MAX_IMAGES}장까지 돼요.` : "장본 것이나 냉장고 안을 찍어 주세요."}
+          </p>
+          {!workerConfigured && (
+            <Banner kind="warning" className="mx-5 mt-4" title="AI 서버가 연결되지 않았어요">앱을 설치한 사람에게 알려 주세요</Banner>
+          )}
+          <div className="mx-5 mt-4 grid grid-cols-2 gap-3">
+            {([[cameraRef, Camera, "찍기"], [galleryRef, Images, "앨범에서 고르기"]] as const).map(([ref, Icon, label]) => (
+              <button key={label} type="button" disabled={preparing || images.length >= MAX_IMAGES} onClick={() => ref.current?.click()}
+                className="flex h-[120px] flex-col items-center justify-center gap-2 rounded-card bg-surface-2 text-headline text-ink transition-colors active:bg-fill-pressed disabled:text-ink-disabled">
+                <Icon size={28} aria-hidden />{label}
+              </button>
             ))}
-          </div>
-          {mode === "receipt" ? (
-            <p className="text-sm text-gray-600">장본 영수증 사진이나 쿠팡·마켓컬리 같은 주문내역 캡처를 올리면 AI가 품목을 읽어 냉장고에 넣어 드려요. 긴 영수증은 나눠 찍어 최대 {MAX_IMAGES}장까지 올릴 수 있어요.</p>
-          ) : (
-            <p className="text-sm text-gray-600">장본 것을 식탁에 늘어놓고 찍거나 냉장고 안을 찍으면 보이는 식재료를 찾아 드려요. 포장 글자(유통기한)가 보이게 찍으면 더 정확해요. 개수는 눈대중이라 확인해 주세요.</p>
-          )}
-          {!workerConfigured && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">AI 서버가 아직 연결되지 않았어요. 앱을 설치한 사람에게 알려 주세요 (README "Worker 배포").</p>}
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" disabled={preparing || images.length >= MAX_IMAGES} onClick={() => cameraRef.current?.click()} className="rounded-2xl bg-white py-5 text-center font-semibold disabled:opacity-40">📷<br />{mode === "photo" ? "식재료 찍기" : "영수증 찍기"}</button>
-            <button type="button" disabled={preparing || images.length >= MAX_IMAGES} onClick={() => galleryRef.current?.click()} className="rounded-2xl bg-white py-5 text-center font-semibold disabled:opacity-40">🖼️<br />사진·캡처 고르기</button>
           </div>
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="receipt-camera" />
           <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="receipt-files" />
-          {preparing && <p className="text-sm text-gray-500">사진 준비 중…</p>}
+          {preparing && (
+            <p role="status" className="mx-5 mt-3 flex items-center gap-2 text-caption text-ink-3"><LoaderCircle size={16} aria-hidden className="animate-spin" />사진 준비 중…</p>
+          )}
           {images.length > 0 && (
-            <ul className="grid grid-cols-4 gap-2" data-testid="receipt-thumbs">
+            <ul className="mx-5 mt-4 grid grid-cols-4 gap-2" data-testid="receipt-thumbs">
               {images.map((im, i) => (
-                <li key={im.previewUrl} className="relative aspect-[3/4] overflow-hidden rounded-xl bg-white">
+                <li key={im.previewUrl} className="relative aspect-[3/4] overflow-hidden rounded-control bg-surface-2">
                   <img src={im.previewUrl} alt={`사진 ${i + 1}`} className="h-full w-full object-cover" />
                   <button type="button" aria-label={`사진 ${i + 1} 빼기`} onClick={() => { URL.revokeObjectURL(im.previewUrl); setImages((l) => l.filter((x) => x !== im)); }}
-                    className="absolute right-1 top-1 h-6 w-6 rounded-full bg-black/60 text-xs text-white">✕</button>
+                    className="absolute right-0 top-0 grid size-11 place-items-center">
+                    <span aria-hidden className="grid size-6 place-items-center rounded-full bg-ink/70 text-surface"><X size={14} strokeWidth={2.5} /></span>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
-          {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
-          <button disabled={images.length === 0 || preparing || !workerConfigured} onClick={analyze}
-            className="rounded-xl bg-orange-500 py-3.5 text-lg font-semibold text-white disabled:opacity-40">{mode === "photo" ? "📸 식재료 찾기" : "🧾 분석하기"}</button>
-          <AiNotice what={mode === "photo" ? "식재료 사진" : "영수증 사진"} />
-          <p className="text-center text-xs text-gray-400">사진은 앱에 저장하지 않아요. 카드번호·적립번호 부분은 가리고 찍으면 더 안전해요.</p>
+          {err && <Banner kind="danger" className="mx-5 mt-4">{err}</Banner>}
         </div>
       )}
 
       {step === "loading" && (
-        <div className="flex flex-col items-center justify-center gap-4 p-10 text-center">
-          <div className="text-6xl motion-safe:animate-bounce">🧾</div>
-          <p className="text-lg font-semibold">{WAITING[mode][Math.min(Math.floor(tick / 6), WAITING[mode].length - 1)]}</p>
-          <p className="text-sm text-gray-500">{tick}초 · 보통 15~40초 걸려요</p>
-          <button onClick={() => abort.current?.abort()} className="text-sm text-gray-500 underline">취소</button>
-        </div>
+        <AiProgress className="py-24!" messages={WAITING[mode]} typical="보통 15~40초" onCancel={() => abort.current?.abort()}
+          icon={<span aria-hidden className="mb-1 grid size-24 place-items-center rounded-full bg-accent-soft text-accent"><ScanLine size={44} className="motion-safe:animate-pulse" /></span>} />
       )}
 
       {step === "review" && (
-        <div className="flex flex-col gap-3 p-4 pb-28">
-          <div className="rounded-2xl bg-orange-50 p-3 text-sm text-orange-900">
-            {mode === "photo" ? `사진에서 식재료 ${food.length}개 찾음` : <>{scan?.store ?? "가게 정보 없음"}{scan?.purchasedAt ? ` · ${scan.purchasedAt}` : ""} · 식품 {food.length}개 찾음</>}
-            <p className="mt-1 text-xs text-orange-800/80">{mode === "photo"
-              ? "개수는 눈대중이고, 기한은 포장에서 읽었거나(메모에 표시) 보통 보관 기간으로 어림했어요. 냉장고 속 사진이라 언제 샀는지 모르면 비워 뒀어요."
-              : "유통기한은 AI가 보통 보관 기간으로 추정한 값이에요. 포장에 적힌 날짜가 있으면 고쳐 주세요."}</p>
-          </div>
-          {cands.length === 0 && <p className="rounded-2xl bg-white p-6 text-center text-gray-500">사진에서 장본 품목을 찾지 못했어요. 더 밝고 가깝게 찍어 다시 시도해 보세요.</p>}
-          <ul className="flex flex-col gap-2">{food.map(row)}</ul>
-          {nonFood.length > 0 && (
-            <div>
-              <button type="button" onClick={() => setShowNonFood((v) => !v)} className="text-sm text-gray-500">{showNonFood ? "▾" : "▸"} 식품이 아닌 항목 {nonFood.length}개</button>
-              {showNonFood && <ul className="mt-2 flex flex-col gap-2">{nonFood.map(row)}</ul>}
+        <div className="pb-4">
+          {cands.length === 0 ? (
+            <EmptyState icon={<ScanLine size={28} />} title="찾은 품목이 없어요" body="더 밝고 가깝게 찍어 보세요" />
+          ) : (
+            <div className="px-5 pb-2 pt-4">
+              <h2 className="text-title2 text-ink tabular-nums">{food.length}개를 찾았어요</h2>
+              {meta.some(Boolean) && <p className="mt-0.5 text-caption text-ink-3 tabular-nums">{meta.filter(Boolean).join(" · ")}</p>}
             </div>
           )}
-          {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
-          <div className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-lg gap-2 bg-[#FFF8F0]/95 px-4 pt-2 backdrop-blur" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
-            <button type="button" onClick={() => { setStep("pick"); setErr(null); }} className="rounded-xl bg-white px-4 py-3.5 font-semibold text-gray-600">다시 찍기</button>
-            <button type="button" disabled={saving || chosen.length === 0} onClick={confirm}
-              className="flex-1 rounded-xl bg-orange-500 py-3.5 text-lg font-semibold text-white disabled:opacity-40">{saving ? "넣는 중…" : `🧊 냉장고에 넣기 (${chosen.length}개)`}</button>
-          </div>
+          {groups.map(({ loc, list }) => {
+            const all = list.every((c) => c.checked);
+            return (
+              <section key={loc}>
+                <div className="flex items-end justify-between gap-3 px-5 pb-1 pt-5">
+                  <h3 className="text-headline text-ink">{loc}<span className="ml-1.5 text-callout font-medium text-ink-3 tabular-nums">{list.length}</span></h3>
+                  <TextAction onClick={() => setCands((l) => l.map((c) => (c.isFood && c.location === loc ? { ...c, checked: !all } : c)))}>
+                    {all ? "모두 해제" : "모두 선택"}
+                  </TextAction>
+                </div>
+                <ul>{list.map(row)}</ul>
+              </section>
+            );
+          })}
+          {nonFood.length > 0 && (
+            <div className="mt-3">
+              <button type="button" aria-expanded={showNonFood} onClick={() => setShowNonFood((v) => !v)}
+                className="flex h-14 w-full items-center gap-2 px-5 text-left text-callout text-ink-2 transition-colors active:bg-surface-2">
+                {showNonFood ? <ChevronDown size={20} aria-hidden className="text-ink-3" /> : <ChevronRight size={20} aria-hidden className="text-ink-3" />}
+                식품이 아닌 항목 {nonFood.length}개
+              </button>
+              {showNonFood && <ul>{nonFood.map(row)}</ul>}
+            </div>
+          )}
+          {err && <Banner kind="danger" className="mx-5 mt-4">{err}</Banner>}
         </div>
+      )}
+
+      {/* 품목 시트: 고치면 바로 그 행에 반영된다 (위치를 바꾸면 그 그룹으로 옮겨진다) */}
+      {editing && (
+        <Sheet top title={<ItemTitle name={editing.name.trim() || "품목"} emoji={editing.emoji} />} onClose={() => setEditId(null)}
+          footer={<Button block onClick={() => setEditId(null)}>완료</Button>}>
+          <div className="flex flex-col gap-5 pb-2 pt-2">
+            <TextField label="이름" placeholder="재료 이름" value={editing.name} onChange={(e) => rename(editing, e.target.value)} />
+            <AmountFields qty={editing.qty != null ? String(editing.qty) : ""} unit={editing.unit}
+              onQty={(v) => set(editing.id, { qty: v.trim() === "" ? null : Number(v) })} onUnit={(u) => set(editing.id, { unit: u })} />
+            <LocationField value={editing.location} onChange={(loc) => set(editing.id, { location: loc })} />
+            <ExpiryField value={editing.expiresAt ?? ""} estimated={editing.estimated}
+              onChange={(v) => set(editing.id, { expiresAt: v || null, estimated: false })} />
+            <p className="text-caption text-ink-3">
+              {mode === "photo" ? "사진에서 본 것" : "영수증 글자"}: {editing.rawText}{editing.memo ? ` · ${editing.memo}` : ""}
+            </p>
+          </div>
+        </Sheet>
       )}
     </FullScreen>
   );

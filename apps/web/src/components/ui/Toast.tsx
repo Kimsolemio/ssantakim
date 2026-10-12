@@ -30,8 +30,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastView({ t, onAction }: { t: ToastState; onAction: () => void }) {
+  // 탭 화면에 추가 버튼(ExtendedFab)이 떠 있으면 그 위로 (버튼을 가리지 않게)
+  const fab = typeof document !== "undefined" && document.querySelector("[data-fab]") != null;
   const bottom = t.raised === "aboveTabs" ? "calc(var(--safe-bottom) + 148px)"
-    : t.raised ? "calc(var(--safe-bottom) + 92px)" : "calc(var(--safe-bottom) + 56px + 12px)";
+    : t.raised ? "calc(var(--safe-bottom) + 92px)"
+      : fab ? "calc(var(--safe-bottom) + 140px)" : "calc(var(--safe-bottom) + 56px + 12px)";
   return (
     <div role={t.kind === "error" ? "alert" : "status"} aria-live="polite" data-testid="toast"
       className="fixed inset-x-0 z-[80] mx-auto flex w-[calc(100%-40px)] max-w-[440px] items-center gap-3 rounded-card bg-toast py-3 pl-4 pr-2 text-callout text-white shadow-overlay animate-toast-in"

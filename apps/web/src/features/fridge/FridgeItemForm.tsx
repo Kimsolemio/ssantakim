@@ -1,14 +1,21 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
+import { ChevronDown, CircleAlert } from "lucide-react";
 import { Unit, StorageLocation, FoodCategory, CATEGORY_EMOJI, guessFood, addDays as addDaysTo, localDate } from "@cook/shared";
 import type { FridgeInput } from "./useFridge";
 import { Sheet } from "../../components/Sheet";
+import { Button } from "../../components/ui/Button";
+import { FoodThumb } from "../../components/ui/FoodThumb";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { DateField, Select, TextField } from "../../components/ui/Field";
 
 type Props = {
   initial?: Partial<FridgeInput>;
   title: string;
+  /** 수정일 때 제목 왼쪽 접시 */
+  emoji?: string;
   onSubmit: (v: FridgeInput) => Promise<void>;
   onDelete?: () => Promise<void>;
-  /** 다 먹었어요: 냉장고에서 빼고, 원하면 장보기에 담는다 */
+  /** 다 먹었어요: 냉장고에서 뺀다 (장보기에 담기는 토스트 행동으로) */
   onUsedUp?: (toShopping: boolean) => Promise<void>;
   onClose: () => void;
 };
@@ -18,7 +25,58 @@ function addDays(n: number): string {
   return addDaysTo(localDate(), n);
 }
 
-export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, onClose }: Props) {
+/* ---------- 품목 시트 칸 (냉장고 품목 시트와 영수증 확인의 품목 시트가 함께 쓴다) ---------- */
+
+/** 수량 + 단위 한 줄 */
+export function AmountFields({ qty, unit, onQty, onUnit }: { qty: string; unit: Unit; onQty: (v: string) => void; onUnit: (u: Unit) => void }) {
+  return (
+    <div className="grid grid-cols-[1fr_112px] gap-2">
+      <TextField label="수량" type="number" inputMode="decimal" min="0" step="any" placeholder="수량" value={qty}
+        onChange={(e) => onQty(e.target.value)} className="tabular-nums" />
+      <Select label="단위" value={unit} onChange={(e) => onUnit(e.target.value as Unit)}>
+        {Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}
+      </Select>
+    </div>
+  );
+}
+
+/** 보관 위치 (냉장/냉동/실온) */
+export function LocationField({ value, onChange }: { value: StorageLocation; onChange: (v: StorageLocation) => void }) {
+  return (
+    <div>
+      <p aria-hidden className="mb-2 text-caption font-semibold text-ink-2">보관</p>
+      <SegmentedControl label="보관" value={value} onChange={onChange} options={StorageLocation.options.map((l) => ({ value: l, label: l }))} />
+    </div>
+  );
+}
+
+const quick = "inline-flex h-11 shrink-0 items-center rounded-full border border-line bg-surface px-3.5 text-callout font-medium text-ink-2 tabular-nums transition-colors active:bg-surface-2";
+
+/** 유통기한: 날짜 + 빠른 칩. value 가 "" 이면 기한 없음 */
+export function ExpiryField({ value, onChange, estimated }: { value: string; onChange: (v: string) => void; estimated?: boolean }) {
+  const today = localDate();
+  return (
+    <div>
+      <DateField label="유통기한" aria-label="유통기한" value={value} onChange={onChange} today={today} estimated={estimated}
+        helper={estimated && value ? "보통 보관 기간으로 어림했어요" : undefined} />
+      <div className="mt-2 flex flex-wrap gap-2">
+        {[3, 7, 14, 30].map((n) => (
+          <button type="button" key={n} onClick={() => onChange(addDays(n))} className={quick}>+{n}일</button>
+        ))}
+        <button type="button" onClick={() => onChange("")} className={quick}>없음</button>
+      </div>
+    </div>
+  );
+}
+
+/** 시트 제목: 수정이면 접시 + 이름 */
+export function ItemTitle({ name, emoji }: { name: string; emoji?: string }) {
+  if (!emoji) return <>{name}</>;
+  return <span className="flex min-w-0 items-center gap-2.5"><FoodThumb emoji={emoji} size="sm" /><span className="truncate">{name}</span></span>;
+}
+
+export function FridgeItemForm({ initial, title, emoji, onSubmit, onDelete, onUsedUp, onClose }: Props) {
+  const formId = useId();
   const [name, setName] = useState(initial?.name ?? "");
   const [qty, setQty] = useState(initial?.qty != null ? String(initial.qty) : "");
   const [unit, setUnit] = useState<Unit>(initial?.unit ?? "개");
@@ -26,14 +84,16 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, o
   const [expiresAt, setExpiresAt] = useState(initial?.expiresAt ?? "");
   const [memo, setMemo] = useState(initial?.memo ?? "");
   const [category, setCategory] = useState<FoodCategory | "auto">(initial?.category ?? "auto");
-  const [busy, setBusy] = useState(false);
-  const [rebuy, setRebuy] = useState(false);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState<null | "save" | "usedUp" | "delete">(null);
+  const [nameErr, setNameErr] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) { setErr("재료 이름을 입력하세요"); return; }
-    setBusy(true); setErr(null);
+    if (busy) return;
+    if (!name.trim()) { setNameErr("재료 이름을 입력하세요"); return; }
+    setBusy("save"); setErr(null); setNameErr(null);
     try {
       const n = name.trim();
       const guess = guessFood(n);
@@ -57,64 +117,76 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, o
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "저장에 실패했습니다");
-    } finally { setBusy(false); }
+      setBusy(null);
+    }
   };
 
-  const usedUp = async (toShopping: boolean) => {
+  // 다 먹었어요: 바로 빼고 닫는다. 장보기에 담을지는 토스트에서 고른다
+  const usedUp = async () => {
     if (!onUsedUp) return;
-    setBusy(true); setErr(null);
-    try { await onUsedUp(toShopping); onClose(); }
-    catch (e) { setErr(e instanceof Error ? e.message : "저장에 실패했습니다"); setBusy(false); }
+    setBusy("usedUp"); setErr(null);
+    try { await onUsedUp(false); onClose(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "저장에 실패했습니다"); setBusy(null); }
   };
 
-  const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-3 text-base outline-none focus:border-orange-400";
+  const remove = async () => {
+    if (!onDelete || !confirm("잘못 넣은 품목인가요? 삭제할까요?")) return;
+    setBusy("delete"); setErr(null);
+    try { await onDelete(); onClose(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "삭제하지 못했습니다"); setBusy(null); }
+  };
+
+  const estimated = !!initial?.expiresEstimated && !!expiresAt && expiresAt === (initial.expiresAt ?? "");
+  const autoCategory = guessFood(name.trim() || " ").category;
+  const summary = `${category === "auto" ? autoCategory : category} · ${memo.trim() || "메모 없음"}`;
+
+  const save = (
+    <Button type="submit" form={formId} block={!onUsedUp} className={onUsedUp ? "min-w-0 flex-1" : ""} disabled={!!busy} loading={busy === "save"}>
+      {busy === "save" ? "저장 중…" : "저장"}
+    </Button>
+  );
+  const footer = onUsedUp ? (
+    <div className="flex gap-2">
+      <Button variant="secondary" className="shrink-0" disabled={!!busy} loading={busy === "usedUp"} onClick={usedUp}>다 먹었어요</Button>
+      {save}
+    </div>
+  ) : save;
 
   return (
-    <Sheet title={title} onClose={onClose}>
-      <form onSubmit={submit} className="flex flex-col gap-3">
-        <input className={field} placeholder="재료 이름 (예: 대파)" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        <div className="flex gap-2">
-          <input className={field} type="number" inputMode="decimal" min="0" step="any" placeholder="수량" value={qty} onChange={(e) => setQty(e.target.value)} />
-          <select className={field} value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>
-            {Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
+    <Sheet title={<ItemTitle name={title} emoji={emoji} />} onClose={onClose} footer={footer}>
+      <form id={formId} onSubmit={submit} className="flex flex-col gap-5 pb-2 pt-2">
+        <TextField label="이름" placeholder="재료 이름 (예: 대파)" value={name} error={nameErr}
+          onChange={(e) => { setName(e.target.value); if (nameErr) setNameErr(null); }} autoFocus={!initial} />
+        <AmountFields qty={qty} unit={unit} onQty={setQty} onUnit={setUnit} />
+        <LocationField value={location} onChange={setLocation} />
+        <ExpiryField value={expiresAt} onChange={setExpiresAt} estimated={estimated} />
+
+        {/* 자주 안 쓰는 칸은 접어 둔다 */}
+        <div className="-mt-1">
+          <button type="button" aria-expanded={more} onClick={() => setMore((v) => !v)}
+            className="-mx-2 flex min-h-12 w-[calc(100%+16px)] items-center gap-3 rounded-control px-2 text-left transition-colors active:bg-surface-2">
+            <span className="shrink-0 text-callout font-semibold text-ink-2">분류·메모</span>
+            <span className="min-w-0 flex-1 truncate text-right text-callout text-ink-3">{more ? "" : summary}</span>
+            <ChevronDown size={20} aria-hidden className={`shrink-0 text-ink-3 transition-transform ${more ? "rotate-180" : ""}`} />
+          </button>
+          {more && (
+            <div className="mt-3 flex flex-col gap-5">
+              <Select label="분류" value={category} onChange={(e) => setCategory(e.target.value as FoodCategory | "auto")}>
+                <option value="auto">자동: {autoCategory}</option>
+                {FoodCategory.options.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+              <TextField label="메모" placeholder="예: 반만 남음" value={memo} onChange={(e) => setMemo(e.target.value)} />
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {StorageLocation.options.map((loc) => (
-            <button type="button" key={loc} onClick={() => setLocation(loc)}
-              className={`rounded-xl py-3 font-medium ${location === loc ? "bg-orange-500 text-white" : "bg-white border border-orange-200"}`}>
-              {loc}
-            </button>
-          ))}
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-gray-500">유통기한{initial?.expiresEstimated && expiresAt === (initial.expiresAt ?? "") ? " (보통 보관 기간으로 추정한 날짜예요. 포장에 적힌 날짜로 고쳐 주세요)" : ""}</label>
-          <input className={field} type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} aria-label="유통기한" />
-          <div className="mt-2 flex gap-2 text-sm">
-            {[3, 7, 14, 30].map((n) => (
-              <button type="button" key={n} onClick={() => setExpiresAt(addDays(n))} className="rounded-full bg-orange-100 px-3 py-1">+{n}일</button>
-            ))}
-            <button type="button" onClick={() => setExpiresAt("")} className="rounded-full bg-gray-100 px-3 py-1">없음</button>
-          </div>
-        </div>
-        <select className={field} value={category} onChange={(e) => setCategory(e.target.value as FoodCategory | "auto")} aria-label="분류">
-          <option value="auto">분류: 이름으로 자동 ({guessFood(name || " ").category})</option>
-          {FoodCategory.options.map((c) => <option key={c} value={c}>{CATEGORY_EMOJI[c]} {c}</option>)}
-        </select>
-        <input className={field} placeholder="메모 (선택)" value={memo} onChange={(e) => setMemo(e.target.value)} />
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        <button disabled={busy} className="rounded-xl bg-orange-500 py-3 font-semibold text-white disabled:opacity-50">
-          {busy ? "저장 중…" : "저장"}
-        </button>
-        {onUsedUp && (
-          <div className="flex items-center gap-2 rounded-xl bg-white p-2 ring-1 ring-orange-200">
-            <button type="button" disabled={busy} onClick={() => usedUp(rebuy)} className="flex-1 rounded-lg bg-orange-100 py-2.5 font-semibold text-orange-900">🍽️ 다 먹었어요</button>
-            <label className="flex shrink-0 items-center gap-1.5 pr-1 text-sm text-gray-700"><input type="checkbox" className="h-5 w-5 accent-orange-500" checked={rebuy} onChange={(e) => setRebuy(e.target.checked)} />장보기에 다시 담기</label>
-          </div>
-        )}
+
+        {err && <p role="alert" className="flex items-center gap-1 text-caption text-danger"><CircleAlert size={14} aria-hidden />{err}</p>}
+
         {onDelete && (
-          <button type="button" disabled={busy} onClick={async () => { if (confirm("잘못 넣은 품목인가요? 삭제할까요?")) { setBusy(true); await onDelete(); onClose(); } }}
-            className="py-2 text-sm text-gray-500 underline">잘못 넣었어요 · 삭제</button>
+          <button type="button" disabled={!!busy} onClick={remove}
+            className="mx-auto h-12 rounded-control px-4 text-callout font-semibold text-ink-3 transition-colors active:bg-surface-2 disabled:text-ink-disabled">
+            잘못 넣었어요 · 삭제
+          </button>
         )}
       </form>
     </Sheet>

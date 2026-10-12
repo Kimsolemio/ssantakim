@@ -70,13 +70,13 @@ export function Select({ label, helper, error, onCanvas, wrapClass = "", classNa
   );
 }
 
-export function SearchField({ value, onChange, placeholder = "검색", label = "검색", onCanvas, className = "" }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; label?: string; onCanvas?: boolean; className?: string;
-}) {
+export const SearchField = forwardRef<HTMLInputElement, {
+  value: string; onChange: (v: string) => void; placeholder?: string; label?: string; onCanvas?: boolean; className?: string; autoFocus?: boolean;
+}>(function SearchField({ value, onChange, placeholder = "검색", label = "검색", onCanvas, className = "", autoFocus }, ref) {
   return (
     <div className={`relative ${className}`}>
       <Search size={20} aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-3" />
-      <input type="search" aria-label={label} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
+      <input ref={ref} type="search" aria-label={label} value={value} placeholder={placeholder} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)}
         className={`${inputBase} ${fill(onCanvas)} h-12 pl-11 ${value ? "pr-12" : ""} [&::-webkit-search-cancel-button]:hidden`} />
       {value && (
         <button type="button" aria-label="검색어 지우기" onClick={() => onChange("")}
@@ -84,7 +84,7 @@ export function SearchField({ value, onChange, placeholder = "검색", label = "
       )}
     </div>
   );
-}
+});
 
 const WEEK = ["일", "월", "화", "수", "목", "금", "토"];
 /** "2026-10-21" → "10월 21일 (수)" */

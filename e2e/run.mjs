@@ -169,16 +169,16 @@ const fakeReceipt = await mom.screenshot({ type: "png" }); // 디코딩 가능�
 await mom.getByTestId("receipt-files").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: fakeReceipt });
 await mom.getByTestId("receipt-thumbs").locator("li").first().waitFor();
 await mom.screenshot({ path: `${shots}/12-receipt-picked.png` });
-await mom.getByText("🧾 분석하기").click();
+await mom.getByRole("button", { name: /^분석하기/ }).click();
 await mom.getByText(/영수증을 읽는 중/).waitFor();
-await mom.getByText(/식품 14개 찾음/).waitFor({ timeout: 15000 });
+await mom.getByText(/14개를 찾았어요/).waitFor({ timeout: 15000 });
 assert.equal(await mom.getByTestId("receipt-row").count(), 14, "non-food hidden by default");
 await mom.screenshot({ path: `${shots}/13-receipt-review.png` });
-await mom.getByText("▸ 식품이 아닌 항목 1개").click();
+await mom.getByText("식품이 아닌 항목 1개").click();
 assert.equal(await mom.getByLabel("종량제봉투 넣기").isChecked(), false);
 await mom.getByLabel("콜라 넣기").uncheck();
-await mom.getByText("🧊 냉장고에 넣기 (13개)").click();
-await mom.getByText("🎉 13개를 냉장고에 넣었어요 · 장보기 1개 완료").waitFor();
+await mom.getByRole("button", { name: "냉장고에 넣기 (13개)" }).click();
+await mom.getByTestId("toast").getByText("냉장고에 13개 넣었어요 · 장보기 1개 완료").waitFor();
 await mom.waitForTimeout(400);
 await mom.screenshot({ path: `${shots}/14-fridge-dropping.png` });
 await mom.waitForTimeout(3200);
@@ -193,7 +193,7 @@ assert.deepEqual(await zoneNames("door"), ["간장"]);
 assert.deepEqual(await zoneNames("pantry"), ["라면", "양파"]);
 assert.equal(await mom.locator('[data-testid="fridge-item"][data-new="true"]').count(), 13);
 // 유통기한: 영수증 날짜(어제) + 보관 기간. 우유 10일 → D-9, 고등어 2일 → D-1
-await mom.getByTestId("zone-top").getByLabel(/^우유/).getByText("NEW").waitFor();
+assert.equal(await mom.getByTestId("zone-top").getByLabel(/^우유/).getAttribute("data-new"), "true");
 assert.match(await mom.getByTestId("zone-bottom").getByLabel(/^고등어/).getAttribute("aria-label"), /D-1 추정/);
 await mom.getByTestId("zone-top").getByLabel(/^우유/).click();
 const today = new Date(); const exp = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 9);
@@ -206,17 +206,18 @@ assert.equal(await mom.locator('[data-testid="fridge-item"][data-new="true"]').c
 // 문 닫으면 임박 메모(고등어)가 붙어 있다
 await mom.getByTestId("fridge-toggle").click();
 await mom.waitForTimeout(900);
-await mom.getByText(/📌 고등어 ~D-1/).waitFor(); // 영수증 기한은 추정값
+await mom.getByText(/고등어 ~D-1/).waitFor(); // 영수증 기한은 추정값
 await mom.screenshot({ path: `${shots}/16-fridge-closed-magnets.png` });
 await mom.getByTestId("fridge-toggle").click();
 // 목록 보기에서도 보인다
-await mom.getByRole("tab", { name: "☰ 목록" }).click();
+await mom.getByRole("tab", { name: "목록" }).click();
 await mom.locator("li", { hasText: "삼겹살" }).first().waitFor();
-await mom.getByRole("tab", { name: "🧊 냉장고" }).click();
+await mom.getByRole("tab", { name: "냉장고" }).click();
 
 // 냉장고에 재료 하나
 await mom.locator("nav").getByText("냉장고", { exact: true }).click();
-await mom.getByLabel("재료 추가").click();
+await mom.getByRole("button", { name: "채우기", exact: true }).click();
+await mom.getByText("직접 추가").click();
 await mom.getByPlaceholder("재료 이름 (예: 대파)").fill("대파");
 await mom.getByPlaceholder("수량").fill("2");
 await mom.getByText("+3일").click();
@@ -229,7 +230,8 @@ await mom.getByText("살 것이 없어요").waitFor(); // 영수증으로 산 �
 assert.equal(await mom.getByTestId("shopping-row").count(), 0);
 await mom.locator("nav").getByText("냉장고", { exact: true }).click();
 for (const [name, qty, unit] of [["스파게티면", "500", "g"], ["깐마늘", "200", "g"], ["올리브유", "500", "ml"]]) {
-  await mom.getByLabel("재료 추가").click();
+  await mom.getByRole("button", { name: "채우기", exact: true }).click();
+  await mom.getByText("직접 추가").click();
   await mom.getByPlaceholder("재료 이름 (예: 대파)").fill(name);
   await mom.getByPlaceholder("수량").fill(qty);
   await mom.locator("form select").first().selectOption(unit);
@@ -391,32 +393,34 @@ await mom.getByTestId("pending-draft").waitFor({ state: "detached" });
 
 await mom.locator("nav").getByText("냉장고", { exact: true }).click();
 await mom.getByTestId("zone-crisper").getByLabel(/^사과/).click();
-await mom.getByLabel("장보기에 다시 담기").check();
-await mom.getByText("🍽️ 다 먹었어요").click();
-await mom.getByText(/사과을\(를\) 다 써서 장보기에 담았어요/).waitFor();
+await mom.getByRole("button", { name: "다 먹었어요", exact: true }).click();
+await mom.getByTestId("toast").getByText("장보기에 담기").click();
+await mom.getByTestId("toast").getByText(/사과를 장보기에 담았어요/).waitFor();
 assert.equal(await mom.getByTestId("zone-crisper").getByLabel(/^사과/).count(), 0);
+await mom.getByRole("button", { name: "채우기", exact: true }).click();
 await mom.getByTestId("open-receipt").click();
 await mom.getByTestId("receipt-files").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: fakeReceipt });
-await mom.getByText("🧾 분석하기").click();
-await mom.getByText(/식품 14개 찾음/).waitFor({ timeout: 15000 });
+await mom.getByRole("button", { name: /^분석하기/ }).click();
+await mom.getByText(/14개를 찾았어요/).waitFor({ timeout: 15000 });
 await mom.getByLabel("뒤로").click(); // 넣지 않고 닫기 → 확인
+await mom.getByRole("button", { name: "채우기", exact: true }).click();
 await mom.getByTestId("open-receipt").click();
 await mom.getByTestId("pending-receipt").getByText(/넣지 않은 영수증 결과 14개/).waitFor();
 await mom.getByTestId("pending-receipt").getByText("이어서").click();
 assert.equal(await mom.getByTestId("receipt-row").count(), 14);
 await mom.getByText("다시 찍기").click();
 // 식재료 사진 모드 (냉장고 안·장본 것을 찍은 사진)
-await mom.getByRole("tab", { name: "📸 식재료 사진" }).click();
+await mom.getByRole("tab", { name: "식재료 사진" }).click();
 await mom.getByTestId("receipt-files").setInputFiles({ name: "food.png", mimeType: "image/png", buffer: fakeReceipt });
-await mom.getByText("📸 식재료 찾기").click();
-await mom.getByText(/사진에서 식재료 3개 찾음/).waitFor({ timeout: 15000 });
+await mom.getByRole("button", { name: /^식재료 찾기/ }).click();
+await mom.getByText(/3개를 찾았어요/).waitFor({ timeout: 15000 });
 await mom.screenshot({ path: `${shots}/25-food-photo-review.png` });
 // 냉장고에 이미 있는 달걀은 중복을 막으려고 기본으로 빠져 있다 → 이번엔 일부러 넣는다
 await mom.getByTestId("receipt-row").filter({ hasText: "달걀" }).getByText("이미 냉장고에 있음").waitFor();
 assert.equal(await mom.getByLabel("달걀 넣기").isChecked(), false);
 await mom.getByLabel("달걀 넣기").check();
-await mom.getByText("🧊 냉장고에 넣기 (3개)").click();
-await mom.getByText(/🎉 3개를 냉장고에 넣었어요/).waitFor();
+await mom.getByRole("button", { name: "냉장고에 넣기 (3개)" }).click();
+await mom.getByTestId("toast").getByText(/냉장고에 3개 넣었어요/).waitFor();
 await mom.getByTestId("zone-crisper").getByLabel(/^양배추 0\.5포기/).waitFor();
 assert.doesNotMatch(await mom.getByLabel(/^달걀 10개/).first().getAttribute("aria-label"), /추정/, "포장에서 읽은 기한은 추정이 아니다");
 await mom.locator("nav").getByText("장보기", { exact: true }).click();

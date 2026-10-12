@@ -1,69 +1,100 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StorageLocation, daysUntil } from "@cook/shared";
+import { Camera, ChevronRight, Receipt, Refrigerator, Search, SquarePen } from "lucide-react";
+import { StorageLocation, daysUntil, formatAmount } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
 import { useFridge, addFridgeItem, addFridgeItems, updateFridgeItem, deleteFridgeItem, type FridgeDoc } from "./useFridge";
-import { FridgeVisual, itemLook } from "./FridgeVisual";
-import { ReceiptImport } from "./ReceiptImport";
+import { FridgeVisual, expiryInfo, itemLook } from "./FridgeVisual";
+import { ReceiptImport, type ScanMode } from "./ReceiptImport";
 import { useNav } from "../../lib/nav";
 import { normalizeKeysInBackground } from "../../lib/normalize";
 import { useShopping, addShoppingItems } from "../shopping/useShopping";
 import { writeErrorMessage } from "../../lib/write";
 import { sameFood } from "@cook/shared";
 import { FridgeItemForm } from "./FridgeItemForm";
+import { TabHeader } from "../family/FamilyScreen";
+import { Sheet } from "../../components/Sheet";
+import { useToast } from "../../components/ui/Toast";
+import { ExtendedFab } from "../../components/ui/Bars";
+import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { IconButton } from "../../components/ui/IconButton";
+import { SearchField } from "../../components/ui/Field";
+import { Banner } from "../../components/ui/Banner";
+import { Button } from "../../components/ui/Button";
+import { Badge } from "../../components/ui/Badge";
+import { FoodThumb, IconThumb } from "../../components/ui/FoodThumb";
+import { EmptyState, Skeleton } from "../../components/ui/EmptyState";
+import { Card, GroupLabel, rowLine, rowLineInset } from "../../components/ui/Section";
 
-function ExpiryBadge({ expiresAt, estimated }: { expiresAt: string | null; estimated?: boolean }) {
-  const d = daysUntil(expiresAt);
-  if (d === null) return null;
-  let cls = "bg-gray-100 text-gray-600";
-  let label = `D-${d}`;
-  if (d < 0) { cls = "bg-gray-200 text-gray-500 line-through"; label = `${-d}일 지남`; }
-  else if (d === 0) { cls = "bg-red-500 text-white"; label = "오늘까지"; }
-  else if (d <= 3) { cls = "bg-red-100 text-red-700"; }
-  else if (d <= 7) { cls = "bg-amber-100 text-amber-700"; }
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`} title={estimated ? "보통 보관 기간으로 추정한 날짜" : undefined}>{label}{estimated ? " · 추정" : ""}</span>;
+/** "사과" → "사과를", "삼겹살" → "삼겹살을" (받침을 모르면 "을(를)") */
+function withObject(word: string): string {
+  const code = word.charCodeAt(word.length - 1) - 0xac00;
+  if (code < 0 || code >= 11172) return `${word}을(를)`;
+  return `${word}${code % 28 ? "을" : "를"}`;
+}
+
+type View = "visual" | "list";
+
+/** 냉장고 채우기 시트의 한 줄 */
+function FillRow({ icon, title, sub, onClick, testId }: { icon: React.ReactNode; title: string; sub: string; onClick: () => void; testId?: string }) {
+  return (
+    <li className={`${rowLine} before:left-[72px]`}>
+      <button type="button" onClick={onClick} data-testid={testId}
+        className="flex min-h-[72px] w-full items-center gap-3 px-5 py-3 text-left transition-colors active:bg-surface-2">
+        <IconThumb>{icon}</IconThumb>
+        <span className="min-w-0 flex-1">
+          <span className="block text-body text-ink">{title}</span>
+          <span className="mt-0.5 block text-caption text-ink-3">{sub}</span>
+        </span>
+        <ChevronRight size={20} aria-hidden className="shrink-0 text-ink-3" />
+      </button>
+    </li>
+  );
 }
 
 export function FridgeTab() {
   const { user } = useAuth();
-  const { familyId, family } = useFamily();
+  const { familyId } = useFamily();
   const { items, loading, error } = useFridge(familyId);
+  const toast = useToast();
   const [search, setSearch] = useState("");
+  const [searching, setSearching] = useState(false);
   const [editing, setEditing] = useState<FridgeDoc | null>(null);
   const [adding, setAdding] = useState(false);
-  const [view, setView] = useState<"visual" | "list">(() => (localStorageGet("fridge-view") === "list" ? "list" : "visual"));
-  const [importing, setImporting] = useState(false);
+  const [filling, setFilling] = useState(false);
+  const [view, setView] = useState<View>(() => (localStorageGet("fridge-view") === "list" ? "list" : "visual"));
+  const [importing, setImporting] = useState<ScanMode | null>(null);
   const [recent, setRecent] = useState<Set<string>>(new Set());
   const [openSignal, setOpenSignal] = useState(0);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | null>(null);
+  const searchWrap = useRef<HTMLDivElement>(null);
 
   const { fridgeDrop, consumeFridgeDrop, pendingReceipt, consumeReceipt } = useNav();
   const { items: shopping } = useShopping(familyId);
+  // 토스트의 "장보기에 담기"는 시트가 닫힌 뒤에 눌리므로 그때의 장보기 목록을 쓴다
+  const shoppingRef = useRef(shopping);
+  shoppingRef.current = shopping;
+
+  const closeSearch = () => { setSearch(""); setSearching(false); };
 
   useEffect(() => { localStorageSet("fridge-view", view); }, [view]);
+  useEffect(() => { if (searching) searchWrap.current?.querySelector("input")?.focus(); }, [searching]);
   // 다른 탭(장보기)에서 넣은 품목도 떨어지는 애니메이션으로 보여 준다
   useEffect(() => {
     if (!fridgeDrop) return;
     consumeFridgeDrop();
-    setSearch(""); setView("visual"); setRecent(new Set(fridgeDrop.ids)); setOpenSignal((n) => n + 1);
-    if (fridgeDrop.message) showToast(fridgeDrop.message);
+    closeSearch(); setView("visual"); setRecent(new Set(fridgeDrop.ids)); setOpenSignal((n) => n + 1);
+    if (fridgeDrop.message) toast.show(fridgeDrop.message, { kind: "done" });
   }, [fridgeDrop]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!pendingReceipt) return;
     consumeReceipt();
-    setImporting(true);
+    setImporting("receipt");
   }, [pendingReceipt]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (recent.size === 0) return;
     const t = setTimeout(() => setRecent(new Set()), 7000);
     return () => clearTimeout(t);
   }, [recent]);
-  const showToast = (msg: string) => {
-    setToast(msg);
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 3500);
-  };
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -82,7 +113,6 @@ export function FridgeTab() {
     return g;
   }, [filtered]);
 
-  const expiringSoon = items.filter((i) => { const d = daysUntil(i.expiresAt); return d !== null && d <= 3; }).length;
   const dimmed = useMemo(() => {
     if (!search.trim()) return undefined;
     const keep = new Set(filtered.map((i) => i.id));
@@ -91,92 +121,119 @@ export function FridgeTab() {
 
   if (!familyId || !user) return null;
 
-  return (
-    <div className="flex flex-col gap-3 p-4 pb-28">
-      <header className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">냉장고</h1>
-          <p className="text-sm text-gray-500">{family?.name ?? ""} · {items.length}개{expiringSoon > 0 && <span className="ml-1 text-red-600">· 임박 {expiringSoon}</span>}</p>
-        </div>
-      </header>
-      <div className="flex gap-2">
-        <button onClick={() => setImporting(true)} data-testid="open-receipt"
-          className="flex-1 rounded-xl bg-orange-500 py-3 font-semibold text-white shadow active:scale-[0.99]">🧾 영수증·사진으로 채우기</button>
-        <div className="flex overflow-hidden rounded-xl border border-orange-200 bg-white text-sm" role="tablist" aria-label="보기 방식">
-          <button role="tab" aria-selected={view === "visual"} onClick={() => setView("visual")} className={`px-3 ${view === "visual" ? "bg-orange-100 font-semibold text-orange-800" : "text-gray-500"}`}>🧊 냉장고</button>
-          <button role="tab" aria-selected={view === "list"} onClick={() => setView("list")} className={`px-3 ${view === "list" ? "bg-orange-100 font-semibold text-orange-800" : "text-gray-500"}`}>☰ 목록</button>
-        </div>
-      </div>
-      <input className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 outline-none focus:border-orange-400"
-        placeholder="재료 검색" value={search} onChange={(e) => setSearch(e.target.value)} />
+  const empty = !loading && items.length === 0;
+  const openFill = (what: ScanMode | "manual") => {
+    setFilling(false);
+    if (what === "manual") setAdding(true); else setImporting(what);
+  };
+  // 빈 냉장고: 가운데 안내 + 바로 채우기 (FAB는 숨긴다)
+  const emptyState = (
+    <EmptyState icon={<Refrigerator size={28} />} title="냉장고가 비어 있어요" className="px-6! py-8!">
+      <Button size="md" onClick={() => setImporting("receipt")} data-testid="open-receipt">영수증으로 채우기</Button>
+      <Button size="md" variant="secondary" onClick={() => setAdding(true)}>직접 추가</Button>
+    </EmptyState>
+  );
 
-      {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {loading && <p className="text-sm text-gray-500">불러오는 중…</p>}
-      {!loading && items.length === 0 && view === "list" && (
-        <div className="rounded-2xl bg-white p-6 text-center text-gray-500">
-          아직 재료가 없어요.<br />영수증을 올리거나 오른쪽 아래 + 버튼으로 추가해 보세요.
-        </div>
-      )}
+  return (
+    <div className="pb-[calc(var(--safe-bottom)+56px+96px)]">
+      <TabHeader title="냉장고" />
+
+      {/* 도구 줄: 보기 전환 + 검색 (검색을 누르면 같은 줄이 검색칸으로 바뀐다) */}
+      <div ref={searchWrap} className="flex min-h-11 items-center gap-2 px-5 pb-3">
+        {searching ? (
+          <>
+            <SearchField value={search} onChange={setSearch} placeholder="재료 검색" label="재료 검색" onCanvas className="min-w-0 flex-1" />
+            <button type="button" onClick={closeSearch} className="-mr-2 h-11 shrink-0 px-2 text-callout font-semibold text-accent active:opacity-60">취소</button>
+          </>
+        ) : (
+          <>
+            <SegmentedControl role="tab" label="보기 방식" className="w-[168px]" value={view} onChange={setView}
+              options={[{ value: "visual", label: "냉장고" }, { value: "list", label: "목록" }]} />
+            <span className="flex-1" />
+            <IconButton aria-label="재료 검색" className="bg-surface" onClick={() => setSearching(true)}><Search size={20} /></IconButton>
+          </>
+        )}
+      </div>
+
+      {error && <Banner kind="danger" className="mx-5 mb-3">{error}</Banner>}
+      {loading && <Skeleton rows={3} className="px-4" />}
 
       {view === "visual" && !loading && (
-        <>
-          {items.length === 0 && <p className="text-center text-sm text-gray-500">텅 빈 냉장고예요. 장본 영수증을 올려 채워 보세요!</p>}
+        <div className="relative px-4">
           <FridgeVisual items={items} recentIds={recent} dimmedIds={dimmed} onItemClick={setEditing} openSignal={openSignal} />
-        </>
+          {empty && (
+            <div className="pointer-events-none absolute inset-x-0 top-20 z-[1] flex justify-center">
+              <div className="pointer-events-auto mx-6 w-full max-w-[340px] rounded-card bg-surface/85 backdrop-blur-sm">{emptyState}</div>
+            </div>
+          )}
+        </div>
       )}
 
-      {view === "list" && StorageLocation.options.map((loc) => grouped[loc].length > 0 && (
-        <section key={loc}>
-          <h2 className="mb-1 mt-2 text-sm font-semibold text-gray-500">{loc} · {grouped[loc].length}</h2>
-          <ul className="overflow-hidden rounded-2xl bg-white divide-y divide-orange-50">
-            {grouped[loc].map((it) => (
-              <li key={it.id}>
-                <button onClick={() => setEditing(it)} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-orange-50">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span aria-hidden>{itemLook(it).emoji}</span>
-                      <span className="truncate font-medium">{it.name}</span>
-                      <ExpiryBadge expiresAt={it.expiresAt} estimated={it.expiresEstimated} />
-                    </div>
-                    {it.memo && <p className="truncate text-xs text-gray-500">{it.memo}</p>}
-                  </div>
-                  <span className="shrink-0 text-sm text-gray-600">{it.qty != null ? `${it.qty} ${it.unit}` : it.unit !== "기타" ? it.unit : ""}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+      {view === "list" && !loading && (empty ? emptyState : (
+        <>
+          {StorageLocation.options.map((loc) => grouped[loc].length > 0 && (
+            <section key={loc}>
+              <GroupLabel>{loc} <span className="tabular-nums">{grouped[loc].length}</span></GroupLabel>
+              <Card className="mx-4 overflow-hidden">
+                <ul>
+                  {grouped[loc].map((it) => {
+                    const exp = expiryInfo(it.expiresAt, it.expiresEstimated);
+                    const amount = formatAmount({ qty: it.qty, unit: it.unit });
+                    return (
+                      <li key={it.id} className={rowLineInset}>
+                        <button type="button" onClick={() => setEditing(it)} className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2">
+                          <FoodThumb emoji={itemLook(it).emoji} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-body text-ink">{it.name}</span>
+                            {it.memo && <span className="mt-0.5 block truncate text-caption text-ink-3">{it.memo}</span>}
+                          </span>
+                          {amount && <span className="shrink-0 text-callout text-ink-2 tabular-nums">{amount}</span>}
+                          {exp && <Badge tone={exp.tone}>{exp.label}{it.expiresEstimated && <span className="sr-only"> 추정</span>}</Badge>}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            </section>
+          ))}
+          {filtered.length === 0 && <p className="px-5 py-12 text-center text-callout text-ink-3">찾는 재료가 없어요</p>}
+        </>
       ))}
 
-      <button onClick={() => setAdding(true)} aria-label="재료 추가"
-        className="fixed right-5 z-20 h-14 w-14 rounded-full bg-orange-500 text-3xl leading-none text-white shadow-lg active:scale-95"
-        style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>+</button>
+      {!loading && !empty && <ExtendedFab onClick={() => setFilling(true)}>채우기</ExtendedFab>}
+
+      {filling && (
+        <Sheet title="냉장고 채우기" onClose={() => setFilling(false)} flush>
+          <ul className="pb-2">
+            <FillRow testId="open-receipt" icon={<Receipt size={20} />} title="영수증·주문내역" sub="찍거나 캡처를 골라요, 4장까지" onClick={() => openFill("receipt")} />
+            <FillRow icon={<Camera size={20} />} title="식재료 사진" sub="장본 것이나 냉장고 안을 찍어요" onClick={() => openFill("photo")} />
+            <FillRow icon={<SquarePen size={20} />} title="직접 추가" sub="이름과 기한만 적어요" onClick={() => openFill("manual")} />
+          </ul>
+        </Sheet>
+      )}
 
       {importing && (
-        <ReceiptImport onClose={() => setImporting(false)} existing={items}
+        <ReceiptImport initialMode={importing} onClose={() => setImporting(null)} existing={items}
           onConfirm={async (inputs, mode) => {
             try {
               // 영수증이면 장보기 목록에서 이번에 산 것을 지운다 (사진은 산 것인지 원래 있던 것인지 몰라 건드리지 않는다)
               const bought = mode === "receipt" ? shopping.filter((sh) => inputs.some((i) => sameFood(sh, { key: i.key, name: i.name }))) : [];
               const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => {
-                setSearch("");
+                closeSearch();
                 setView("visual");
                 setRecent(new Set(ids));
                 setOpenSignal((n) => n + 1);
               }, bought.map((b) => b.id));
               // 저장이 끝난 뒤에 닫는다 (실패하면 영수증 화면에 남아 결과를 지킨다)
-              setImporting(false);
-              showToast(`🎉 ${ids.length}개를 냉장고에 넣었어요${bought.length ? ` · 장보기 ${bought.length}개 완료` : ""}`);
+              setImporting(null);
+              toast.show(`냉장고에 ${ids.length}개 넣었어요${bought.length ? ` · 장보기 ${bought.length}개 완료` : ""}`, { kind: "done" });
               void normalizeKeysInBackground(familyId, "fridge_items", ids.map((id, i) => ({ id, name: inputs[i].name, key: inputs[i].key })));
             } catch (e) {
               setRecent(new Set());
               throw new Error(writeErrorMessage(e));
             }
           }} />
-      )}
-      {toast && (
-        <div role="status" className="pointer-events-none fixed inset-x-0 z-30 mx-auto w-fit max-w-[90%] rounded-full bg-slate-900/90 px-4 py-2 text-sm text-white shadow-lg"
-          style={{ bottom: "calc(var(--safe-bottom) + 150px)" }}>{toast}</div>
       )}
       {adding && (
         <FridgeItemForm title="재료 추가" onClose={() => setAdding(false)}
@@ -186,18 +243,31 @@ export function FridgeTab() {
           }} />
       )}
       {editing && (
-        <FridgeItemForm title="재료 수정" initial={editing} onClose={() => setEditing(null)}
+        <FridgeItemForm key={editing.id} title={editing.name} emoji={itemLook(editing).emoji} initial={editing} onClose={() => setEditing(null)}
           onSubmit={async (v) => {
             const renamed = await updateFridgeItem(familyId, editing.id, v, editing);
             if (renamed) void normalizeKeysInBackground(familyId, "fridge_items", [{ id: editing.id, name: v.name }]);
           }}
-          onUsedUp={async (toShopping) => {
-            await deleteFridgeItem(familyId, editing.id);
-            if (toShopping) {
-              const res = await addShoppingItems(familyId, user.uid, [{ name: editing.name, key: editing.key, qty: null, unit: editing.unit, category: editing.category, emoji: editing.emoji }], shopping);
-              void normalizeKeysInBackground(familyId, "shopping_items", res.added);
-            }
-            showToast(toShopping ? `🛒 ${editing.name}을(를) 다 써서 장보기에 담았어요` : `${editing.name}을(를) 냉장고에서 뺐어요`);
+          onUsedUp={async () => {
+            const item = editing;
+            await deleteFridgeItem(familyId, item.id);
+            // 다 먹으면 바로 빼고, 다시 살지는 토스트에서 고른다
+            toast.show(`${withObject(item.name)} 냉장고에서 뺐어요`, {
+              action: {
+                label: "장보기에 담기",
+                onClick: () => {
+                  void (async () => {
+                    try {
+                      const res = await addShoppingItems(familyId, user.uid, [{ name: item.name, key: item.key, qty: null, unit: item.unit, category: item.category, emoji: item.emoji }], shoppingRef.current);
+                      void normalizeKeysInBackground(familyId, "shopping_items", res.added);
+                      toast.show(`${withObject(item.name)} 장보기에 담았어요`, { kind: "done" });
+                    } catch (e) {
+                      toast.show(writeErrorMessage(e), { kind: "error" });
+                    }
+                  })();
+                },
+              },
+            });
           }}
           onDelete={() => deleteFridgeItem(familyId, editing.id)} />
       )}
