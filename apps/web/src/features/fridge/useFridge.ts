@@ -55,26 +55,30 @@ export async function deleteFridgeItem(familyId: string, id: string) {
 }
 
 /** 영수증 등에서 여러 개를 한 번에 넣는다. 새 문서 id 목록을 돌려준다 (애니메이션용) */
-export async function addFridgeItems(familyId: string, uid: string, inputs: (FridgeInput & { key?: string })[]): Promise<string[]> {
+export async function addFridgeItems(
+  familyId: string, uid: string, inputs: (FridgeInput & { key?: string })[],
+  /** 저장 직전에 새 id 를 알려준다. 화면에 나타나기 전에 애니메이션을 준비할 수 있다 */
+  onIds?: (ids: string[]) => void,
+): Promise<string[]> {
   const db = getDb();
   const col = collection(db, "families", familyId, "fridge_items");
   const now = new Date().toISOString();
-  const ids: string[] = [];
   // Firestore batch 는 500개까지. 영수증 한 번에 그만큼 나올 일은 없지만 나눠서 안전하게
-  for (let i = 0; i < inputs.length; i += 400) {
-    const batch = writeBatch(db);
-    for (const input of inputs.slice(i, i + 400)) {
-      const ref = doc(col);
-      ids.push(ref.id);
-      batch.set(ref, FridgeItem.parse({
-        ...input,
-        key: input.key?.trim() || provisionalKey(input.name),
-        addedBy: uid,
-        addedAt: now,
-        photoUrl: null,
-      }));
-    }
-    await batch.commit();
-  }
+  const batches: ReturnType<typeof writeBatch>[] = [];
+  const ids: string[] = [];
+  inputs.forEach((input, i) => {
+    if (i % 400 === 0) batches.push(writeBatch(db));
+    const ref = doc(col);
+    ids.push(ref.id);
+    batches[batches.length - 1].set(ref, FridgeItem.parse({
+      ...input,
+      key: input.key?.trim() || provisionalKey(input.name),
+      addedBy: uid,
+      addedAt: now,
+      photoUrl: null,
+    }));
+  });
+  onIds?.(ids);
+  for (const b of batches) await b.commit();
   return ids;
 }
