@@ -11,7 +11,7 @@ export type StorageLocation = z.infer<typeof StorageLocation>;
 export const IngredientGroup = z.enum(["주재료", "부재료", "양념", "고명", "기타"]);
 export type IngredientGroup = z.infer<typeof IngredientGroup>;
 
-export const SourceType = z.enum(["generated", "youtube", "instagram", "photo", "text", "manual"]);
+export const SourceType = z.enum(["generated", "youtube", "instagram", "photo", "text", "manual", "web"]);
 export type SourceType = z.infer<typeof SourceType>;
 
 /** 사람이 읽는 이름과 매칭용 표준 키를 항상 함께 가진다. key는 영문 snake_case (예: green_onion). */
@@ -164,3 +164,12 @@ export const MealPlanEntry = z.object({
   recipeId: z.string(),
 });
 export type MealPlanEntry = z.infer<typeof MealPlanEntry>;
+
+/** 링크·캡션·사진에서 레시피를 가져온 결과 */
+export const ImportResult = z.object({
+  hasRecipe: z.boolean(),           // 자료에 레시피가 있었는가
+  reason: z.string(),               // 못 찾았으면 이유, 찾았으면 짧은 설명
+  dishName: z.string().nullable(),  // 요리 이름 추정 (못 찾았을 때 AI 레시피 만들기에 쓴다)
+  recipe: RecipeDraft.nullable(),
+});
+export type ImportResult = z.infer<typeof ImportResult>;

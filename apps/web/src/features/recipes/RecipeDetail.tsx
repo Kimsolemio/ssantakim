@@ -27,7 +27,7 @@ type Props = {
 };
 
 export const SOURCE_LABEL: Record<Recipe["source"]["type"], string> = {
-  generated: "AI 생성", youtube: "유튜브", instagram: "인스타그램", photo: "사진", text: "텍스트", manual: "직접 입력",
+  generated: "AI 생성", youtube: "유튜브", instagram: "인스타그램", photo: "사진", text: "텍스트", manual: "직접 입력", web: "블로그·웹",
 };
 
 export function ServingsStepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {

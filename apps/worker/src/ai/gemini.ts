@@ -14,7 +14,9 @@ type GeminiResponse = {
 };
 
 function toGeminiPart(part: AiPart) {
-  return part.type === "text" ? { text: part.text } : { inlineData: { mimeType: part.mediaType, data: part.data } };
+  if (part.type === "text") return { text: part.text };
+  if (part.type === "youtube") return { fileData: { fileUri: part.url } }; // 공개 유튜브 영상은 URL만으로 이해한다
+  return { inlineData: { mimeType: part.mediaType, data: part.data } };
 }
 
 export function geminiProvider(opts: { apiKey: string; model?: string; fetch?: typeof fetch }): AiProvider {

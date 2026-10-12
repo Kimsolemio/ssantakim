@@ -5,12 +5,14 @@ import { selectProvider, describeAi, GenerationError, type AiEnv } from "./ai";
 import { generateRecipe } from "./recipe";
 import { scanReceipt } from "./receipt";
 import { normalizeNames } from "./normalize";
+import { importFromUrl, importFromText } from "./import";
 
 export interface Env extends AiEnv {
   FIREBASE_PROJECT_ID: string;
   ALLOWED_ORIGINS: string;   // 쉼표로 구분
   ALLOWED_EMAILS?: string;   // 쉼표로 구분. 비우면 로그인한 모든 사용자 허용
   // AI 설정은 AiEnv 참고: AI_PROVIDER, ANTHROPIC_API_KEY(secret), CLAUDE_MODEL, GEMINI_API_KEY(secret), GEMINI_MODEL
+  YOUTUBE_API_KEY?: string;  // 선택. 없으면 유튜브 페이지에서 설명란을 읽는다
 }
 
 class HttpError extends Error {
@@ -82,6 +84,13 @@ const ReceiptRequest = z.object({
   today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
+const ImportUrlRequest = z.object({ url: z.string().trim().min(8).max(2000) });
+const ImportTextRequest = z.object({
+  text: z.string().max(8000).nullable().optional(),
+  images: z.array(ImageInput).max(4, "사진은 4장까지 올릴 수 있습니다").optional(),
+  url: z.string().max(2000).nullable().optional(),
+}).refine((b) => (b.text?.trim().length ?? 0) > 0 || (b.images?.length ?? 0) > 0, "글이나 사진이 필요합니다");
+
 const NormalizeRequest = z.object({
   names: z.array(z.string().trim().min(1).max(60)).min(1).max(40, "한 번에 40개까지 정리할 수 있습니다"),
 });
@@ -94,7 +103,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 4, features: ["recipe", "pantry/receipt", "normalize"],
+        ok: true, stage: 5, features: ["recipe", "pantry/receipt", "normalize", "import/url", "import/text"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
         ai: describeAi(env),
       }, 200, cors);
@@ -124,11 +133,27 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json(result, 200, cors);
     }
 
-    // 5단계: /import/*, 6단계: /suggest
+    if (url.pathname === "/import/url" && request.method === "POST") {
+      const user = await authenticate(request, env);
+      const body = await readJson(request, ImportUrlRequest);
+      const r = await importFromUrl(env, body.url);
+      console.log(JSON.stringify({ route: "import/url", uid: user.uid, via: r.via, hasRecipe: r.result.hasRecipe, provider: r.provider, model: r.model }));
+      return json(r, 200, cors);
+    }
+
+    if (url.pathname === "/import/text" && request.method === "POST") {
+      const user = await authenticate(request, env);
+      const body = await readJson(request, ImportTextRequest, 12_000_000);
+      const r = await importFromText(env, body);
+      console.log(JSON.stringify({ route: "import/text", uid: user.uid, via: r.via, images: body.images?.length ?? 0, hasRecipe: r.result.hasRecipe, provider: r.provider }));
+      return json(r, 200, cors);
+    }
+
+    // 6단계: /suggest
     throw new HttpError(404, "not found");
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, cors);
-    if (e instanceof GenerationError) return json({ error: e.message }, e.status, cors);
+    if (e instanceof GenerationError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     console.error(e);
     return json({ error: "서버 오류" }, 500, cors);
   }

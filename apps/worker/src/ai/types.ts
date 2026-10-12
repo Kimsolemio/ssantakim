@@ -1,7 +1,8 @@
 /** AI 제공자 공통 인터페이스. 제공자를 바꿔도 나머지 코드는 그대로 둔다. */
 
 export class GenerationError extends Error {
-  constructor(message: string, public status: number) { super(message); }
+  /** code: 화면이 다르게 반응해야 하는 경우 (예: instagram → 캡션 입력으로 전환) */
+  constructor(message: string, public status: number, public code?: string) { super(message); }
 }
 
 export type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
@@ -9,7 +10,9 @@ export type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/
 /** 사용자 메시지 조각: 글 또는 사진(base64). 사진은 5·6단계(스크린샷·냉장고 사진)에서 쓴다. */
 export type AiPart =
   | { type: "text"; text: string }
-  | { type: "image"; mediaType: ImageMediaType; data: string };
+  | { type: "image"; mediaType: ImageMediaType; data: string }
+  /** 유튜브 영상 자체 (Gemini만 이해할 수 있다) */
+  | { type: "youtube"; url: string };
 
 export type JsonRequest = {
   system: string;

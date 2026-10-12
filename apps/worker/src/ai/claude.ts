@@ -7,6 +7,7 @@ const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 function toClaudeContent(part: AiPart): Anthropic.Beta.BetaContentBlockParam {
   if (part.type === "text") return { type: "text", text: part.text };
+  if (part.type === "youtube") throw new GenerationError("Claude는 유튜브 영상을 직접 볼 수 없습니다 (Gemini 키 필요)", 500);
   return { type: "image", source: { type: "base64", media_type: part.mediaType, data: part.data } };
 }
 
