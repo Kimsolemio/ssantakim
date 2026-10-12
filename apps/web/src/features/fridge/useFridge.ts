@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy,
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, writeBatch,
 } from "firebase/firestore";
 import { FridgeItem, provisionalKey } from "@cook/shared";
 import { getDb } from "../../lib/firebase";
@@ -52,4 +52,29 @@ export async function updateFridgeItem(familyId: string, id: string, input: Part
 
 export async function deleteFridgeItem(familyId: string, id: string) {
   await deleteDoc(doc(getDb(), "families", familyId, "fridge_items", id));
+}
+
+/** 영수증 등에서 여러 개를 한 번에 넣는다. 새 문서 id 목록을 돌려준다 (애니메이션용) */
+export async function addFridgeItems(familyId: string, uid: string, inputs: (FridgeInput & { key?: string })[]): Promise<string[]> {
+  const db = getDb();
+  const col = collection(db, "families", familyId, "fridge_items");
+  const now = new Date().toISOString();
+  const ids: string[] = [];
+  // Firestore batch 는 500개까지. 영수증 한 번에 그만큼 나올 일은 없지만 나눠서 안전하게
+  for (let i = 0; i < inputs.length; i += 400) {
+    const batch = writeBatch(db);
+    for (const input of inputs.slice(i, i + 400)) {
+      const ref = doc(col);
+      ids.push(ref.id);
+      batch.set(ref, FridgeItem.parse({
+        ...input,
+        key: input.key?.trim() || provisionalKey(input.name),
+        addedBy: uid,
+        addedAt: now,
+        photoUrl: null,
+      }));
+    }
+    await batch.commit();
+  }
+  return ids;
 }

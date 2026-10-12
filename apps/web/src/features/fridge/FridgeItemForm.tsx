@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Unit, StorageLocation } from "@cook/shared";
+import { Unit, StorageLocation, FoodCategory, CATEGORY_EMOJI, guessFood, addDays as addDaysTo, localDate } from "@cook/shared";
 import type { FridgeInput } from "./useFridge";
 import { Sheet } from "../../components/Sheet";
 
@@ -11,9 +11,9 @@ type Props = {
   onClose: () => void;
 };
 
+/** 오늘(현지 날짜) + n일. toISOString 은 UTC라 한국 새벽에 하루가 어긋난다 */
 function addDays(n: number): string {
-  const d = new Date(); d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
+  return addDaysTo(localDate(), n);
 }
 
 export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: Props) {
@@ -23,6 +23,7 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: 
   const [location, setLocation] = useState<StorageLocation>(initial?.location ?? "냉장");
   const [expiresAt, setExpiresAt] = useState(initial?.expiresAt ?? "");
   const [memo, setMemo] = useState(initial?.memo ?? "");
+  const [category, setCategory] = useState<FoodCategory | "auto">(initial?.category ?? "auto");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -31,12 +32,22 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: 
     if (!name.trim()) { setErr("재료 이름을 입력하세요"); return; }
     setBusy(true); setErr(null);
     try {
+      const n = name.trim();
+      const guess = guessFood(n);
+      const cat: FoodCategory = category === "auto" ? guess.category : category;
+      // 이름·분류가 그대로면 기존 이모지(영수증에서 AI가 고른 것)를 유지한다
+      const keepEmoji = initial?.emoji && initial.name === n && (category === "auto" || category === initial.category);
+      const emoji = keepEmoji ? initial!.emoji! : guess.category === cat ? guess.emoji : CATEGORY_EMOJI[cat];
       await onSubmit({
-        name: name.trim(),
+        name: n,
         qty: qty.trim() === "" ? null : Number(qty),
         unit, location,
         expiresAt: expiresAt || null,
         memo: memo.trim() || undefined,
+        category: cat,
+        emoji,
+        source: initial?.source ?? "manual",
+        purchasedAt: initial?.purchasedAt ?? null,
       });
       onClose();
     } catch (e) {
@@ -73,6 +84,10 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onClose }: 
             <button type="button" onClick={() => setExpiresAt("")} className="rounded-full bg-gray-100 px-3 py-1">없음</button>
           </div>
         </div>
+        <select className={field} value={category} onChange={(e) => setCategory(e.target.value as FoodCategory | "auto")} aria-label="분류">
+          <option value="auto">분류: 이름으로 자동 ({guessFood(name || " ").category})</option>
+          {FoodCategory.options.map((c) => <option key={c} value={c}>{CATEGORY_EMOJI[c]} {c}</option>)}
+        </select>
         <input className={field} placeholder="메모 (선택)" value={memo} onChange={(e) => setMemo(e.target.value)} />
         {err && <p className="text-sm text-red-600">{err}</p>}
         <button disabled={busy} className="rounded-xl bg-orange-500 py-3 font-semibold text-white disabled:opacity-50">
