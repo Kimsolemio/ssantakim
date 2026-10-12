@@ -55,15 +55,18 @@ await mom.getByRole("heading", { name: "레시피" }).waitFor();
 await mom.screenshot({ path: `${shots}/01-recipes-empty.png` });
 
 // 초대 코드 읽기 + 가족 취향 저장
-await mom.getByText("👨‍👩‍👧 테스트네").click();
-const code = (await mom.locator(".tracking-widest").first().textContent()).trim();
+await mom.getByLabel("우리 가족").click();
+const code = (await mom.getByTestId("invite-code").textContent()).trim();
 assert.match(code, /^[A-Z0-9]{6}$/);
-await mom.getByLabel("아이가 함께 먹어요").check();
-await mom.getByPlaceholder("싫어하는 재료 (쉼표로: 고수, 오이)").fill("고수");
-await mom.getByText("취향 저장").click();
-await mom.getByText("저장했어요").waitFor();
+// 취향은 바뀔 때마다 저장된다
+await mom.getByRole("switch", { name: "아이가 함께 먹어요" }).click();
+await mom.getByTestId("toast").getByText("저장했어요").waitFor();
+await mom.getByRole("button", { name: /^싫어하는 재료/ }).click();
+await mom.getByPlaceholder("쉼표로: 고수, 오이").fill("고수");
+await mom.getByRole("button", { name: "저장", exact: true }).click();
+await mom.getByRole("button", { name: /^싫어하는 재료\s*고수/ }).waitFor();
 await mom.screenshot({ path: `${shots}/02-family-menu.png` });
-await mom.getByRole("button", { name: "닫기", exact: true }).click();
+await mom.getByLabel("뒤로").click();
 
 // ---------- AI 레시피 생성 → 편집 → 저장 ----------
 await mom.getByLabel("AI 레시피 만들기").click();
@@ -246,13 +249,14 @@ await mom.getByText("냉장고에 3/5개 있어요").waitFor();
 await mom.getByText(/필수 재료는 다 있어요 · 늘 있는 양념 1개 제외/).waitFor();
 // 가족 설정에서 소금을 빼면 다시 "없음"
 await mom.getByLabel("뒤로").click();
-await mom.getByText("👨‍👩‍👧 테스트네").click();
+await mom.getByLabel("우리 가족").click();
+await mom.getByRole("button", { name: /^늘 있는 양념/ }).click();
 const staplesBox = mom.getByPlaceholder("소금, 설탕, 간장");
 assert.match(await staplesBox.inputValue(), /^소금, 설탕/);
 await staplesBox.fill((await staplesBox.inputValue()).replace(/^소금, /, ""));
-await mom.getByText("취향 저장").click();
-await mom.getByText("저장했어요").waitFor();
-await mom.getByRole("button", { name: "닫기", exact: true }).click();
+await mom.getByRole("button", { name: "저장", exact: true }).click();
+await mom.getByTestId("toast").getByText("저장했어요").waitFor();
+await mom.getByLabel("뒤로").last().click();
 await mom.locator("li", { hasText: "알리오올리오" }).first().click();
 await mom.getByTestId("fridge-summary").waitFor();
 await status("소금").and(mom.locator('[data-status="missing"]')).waitFor();
