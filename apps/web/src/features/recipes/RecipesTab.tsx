@@ -25,7 +25,7 @@ export function RecipesTab() {
   const folders = useFolders(familyId);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>({ kind: "all" });
-  const [generating, setGenerating] = useState<false | { dish?: string; notes?: string; auto?: boolean }>(false);
+  const [generating, setGenerating] = useState<false | { dish?: string; notes?: string; auto?: boolean; servings?: number }>(false);
   const [importing, setImporting] = useState<false | { initial: SharedPayload | null }>(false);
   const [draftNote, setDraftNote] = useState<string | null>(null);
   const { pendingImport, consumeImport, pendingGenerate, consumeGenerate, pendingRecipe, consumeRecipe } = useNav();
@@ -148,7 +148,7 @@ export function RecipesTab() {
         style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>✨</button>
 
       {generating && (
-        <GenerateSheet profile={family?.profile ?? null} initialDish={generating.dish} initialNotes={generating.notes} autoStart={generating.auto}
+        <GenerateSheet profile={family?.profile ?? null} initialDish={generating.dish} initialNotes={generating.notes} initialServings={generating.servings} autoStart={generating.auto}
           onClose={() => setGenerating(false)}
           onResult={(d) => { setGenerating(false); setDraftNote(null); setDraft(d); }} />
       )}
@@ -180,7 +180,10 @@ export function RecipesTab() {
         <RecipeEditor title="레시피 수정" initial={editing} onClose={() => setEditing(null)}
           onSave={async (d) => {
             const id = editing.id;
-            await updateRecipe(familyId, id, d); setEditing(null);
+            // 바뀐 칸만 보낸다: 그사이 다른 가족이 즐겨찾기·폴더·요리 기록을 바꿨어도 덮지 않게
+            const patch = Object.fromEntries(Object.entries(d).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify((editing as Record<string, unknown>)[k])));
+            if (Object.keys(patch).length) await updateRecipe(familyId, id, patch);
+            setEditing(null);
             void fixRecipeKeysInBackground(familyId, id, d);
           }} />
       )}

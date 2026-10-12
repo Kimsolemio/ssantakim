@@ -20,7 +20,10 @@ export function useFridge(familyId: string | null) {
     return onSnapshot(q, (snap) => {
       const list: FridgeDoc[] = [];
       snap.forEach((d) => {
-        const parsed = FridgeItem.safeParse(d.data());
+        const raw = d.data();
+        // 두 기기가 동시에 빼면 수량이 0 밑으로 내려갈 수 있다: 0 으로 보여 준다 (검증에서 떨어져 사라지지 않게)
+        if (typeof raw.qty === "number" && raw.qty < 0) raw.qty = 0;
+        const parsed = FridgeItem.safeParse(raw);
         if (parsed.success) list.push({ id: d.id, ...parsed.data });
       });
       setItems(list);
@@ -57,13 +60,17 @@ export type FridgeUpdate = { id: string; /** 쓴 양 (품목 단위) */ use?: nu
 export async function applyFridgeUpdates(familyId: string, updates: FridgeUpdate[]) {
   if (updates.length === 0) return;
   const db = getDb();
+  // 지우기는 한 묶음으로 (이미 없는 문서를 지워도 실패하지 않는다).
+  // 빼기(update)는 하나씩: 그사이 다른 기기에서 지운 품목이 섞여 있어도 나머지가 함께 취소되지 않게
   const batch = writeBatch(db);
+  const writes: Promise<void>[] = [];
   for (const u of updates) {
     const ref = doc(db, "families", familyId, "fridge_items", u.id);
     if (u.remove) batch.delete(ref);
-    else if (u.use && u.use > 0) batch.update(ref, { qty: increment(-u.use) });
+    else if (u.use && u.use > 0) writes.push(updateDoc(ref, { qty: increment(-u.use) }).catch((e) => console.warn("차감 건너뜀", u.id, e)));
   }
-  await settle(batch.commit());
+  writes.push(batch.commit());
+  await settle(Promise.all(writes));
 }
 
 /**

@@ -13,6 +13,8 @@ export type RecipeFit<R> = {
   needed: number;
   /** 그중 냉장고에 있는 수 (양이 모자란 것은 빼고, 양을 모르는 것은 있다고 본다) */
   have: number;
+  /** have 중 양을 비교하지 못한 것 (단위가 달라 "있음·양 확인") */
+  unsure: number;
   /** 없거나 모자란 꼭 필요한 재료 이름 */
   missing: string[];
   /** 이 레시피가 쓰는 임박(3일 이내) 냉장고 품목 이름 */
@@ -28,15 +30,19 @@ export function rankRecipesByFridge<R extends Pick<Recipe, "ingredients" | "cook
   const out: RecipeFit<R>[] = [];
   for (const recipe of recipes) {
     const matches = matchIngredients(recipe.ingredients, fresh, opts);
-    let needed = 0, have = 0;
+    let needed = 0, have = 0, unsure = 0;
     const missing: string[] = [];
     const expiring = new Set<string>();
     for (const m of matches) {
       for (const it of m.items) { const d = daysUntil(it.expiresAt, today); if (d != null && d <= 3) expiring.add(it.name); }
       if (m.ingredient.optional || m.status === "always" || m.status === "staple") continue;
       needed++;
-      if (m.status === "enough" || m.status === "unknown_amount") have++;
-      else missing.push(m.ingredient.name);
+      if (m.status === "enough" || m.status === "unknown_amount") {
+        have++;
+        if (m.status === "unknown_amount") unsure++;
+      } else {
+        missing.push(m.ingredient.name);
+      }
     }
     if (needed === 0 || have === 0) continue;
     if (missing.length > (opts.maxMissing ?? 3)) continue;
@@ -44,7 +50,7 @@ export function rankRecipesByFridge<R extends Pick<Recipe, "ingredients" | "cook
     const last = recipe.cookedLog[recipe.cookedLog.length - 1]?.date;
     const recent = last ? (today.getTime() - new Date(last).getTime()) / 86400000 < 2 : false;
     const score = (have / needed) * 100 + expiring.size * 15 - missing.length * 5 - (recent ? 30 : 0);
-    out.push({ recipe, needed, have, missing, expiring: [...expiring], score });
+    out.push({ recipe, needed, have, unsure, missing, expiring: [...expiring], score });
   }
   return out.sort((a, b) => b.score - a.score);
 }

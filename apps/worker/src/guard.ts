@@ -103,8 +103,12 @@ export async function refundUsage(env: GuardEnv, uid: string, cost: number, now 
   await Promise.all(keys.map((k, i) => env.USAGE!.put(k, String(Math.max(0, Number(vals[i] ?? 0) - cost)), { expirationTtl: 60 * 60 * 48 })));
 }
 
-export async function usageToday(env: GuardEnv, uid: string, now = Date.now()): Promise<{ used: number; limit: number } | null> {
+/** 오늘 사용량. remaining 은 내 한도와 가족 전체 한도 중 적은 쪽 */
+export async function usageToday(env: GuardEnv, uid: string, now = Date.now()): Promise<{ used: number; limit: number; familyUsed: number; familyLimit: number; remaining: number } | null> {
   if (!env.USAGE) return null;
-  const used = Number((await env.USAGE.get(`u:${kstDay(now)}:${uid}`)) ?? 0);
-  return { used, limit: num(env.DAILY_LIMIT_PER_USER, 40) };
+  const day = kstDay(now);
+  const [u, t] = await Promise.all([env.USAGE.get(`u:${day}:${uid}`), env.USAGE.get(`t:${day}`)]).catch(() => [null, null]);
+  const used = Number(u ?? 0), familyUsed = Number(t ?? 0);
+  const limit = num(env.DAILY_LIMIT_PER_USER, 40), familyLimit = num(env.DAILY_LIMIT_TOTAL, 150);
+  return { used, limit, familyUsed, familyLimit, remaining: Math.max(0, Math.min(limit - used, familyLimit - familyUsed)) };
 }

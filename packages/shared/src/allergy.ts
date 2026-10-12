@@ -15,13 +15,14 @@ const ALLERGEN_WORDS: Record<string, string[]> = {
   호두: ["호두"],
   잣: ["잣"],
   견과류: ["땅콩", "호두", "잣", "아몬드", "캐슈", "피스타치오", "헤이즐넛", "마카다미아", "피칸", "브라질너트", "견과"],
-  새우: ["새우", "대하", "새우젓", "크릴", "칵테일새우"],
-  게: ["게", "꽃게", "대게", "킹크랩", "크랩", "맛살", "크래미"],
-  갑각류: ["새우", "대하", "새우젓", "게", "꽃게", "대게", "크랩", "맛살", "크래미", "랍스터", "가재"],
-  조개류: ["조개", "바지락", "홍합", "굴", "전복", "가리비", "모시조개", "꼬막", "재첩", "키조개", "굴소스"],
+  // 김치·젓갈에는 보통 새우젓·멸치액젓이 들어간다
+  새우: ["새우", "대하", "새우젓", "크릴", "칵테일새우", "젓갈", "김치"],
+  게: ["게", "꽃게", "대게", "킹크랩", "크랩", "맛살", "크래미", "게장"],
+  갑각류: ["새우", "대하", "새우젓", "게", "꽃게", "대게", "크랩", "맛살", "크래미", "게장", "랍스터", "가재", "젓갈", "김치"],
+  조개류: ["조개", "바지락", "홍합", "굴", "전복", "가리비", "모시조개", "꼬막", "재첩", "키조개", "굴소스", "굴국", "굴전", "굴밥", "굴무침", "석화", "생굴"],
   오징어: ["오징어", "한치", "갑오징어"],
   고등어: ["고등어"],
-  생선: ["생선", "멸치", "액젓", "피시소스", "피쉬소스", "쯔유", "가쓰오부시", "가다랑어", "고등어", "연어", "참치", "어묵", "명태", "황태", "북어", "대구", "갈치", "꽁치", "삼치", "다시마멸치"],
+  생선: ["생선", "멸치", "액젓", "젓갈", "김치", "피시소스", "피쉬소스", "쯔유", "가쓰오부시", "가다랑어", "고등어", "연어", "참치", "어묵", "명태", "황태", "북어", "대구", "갈치", "꽁치", "삼치", "다시마멸치"],
   메밀: ["메밀", "모밀", "소바", "냉면", "막국수"],
   복숭아: ["복숭아"],
   토마토: ["토마토", "케첩", "케찹"],
@@ -86,13 +87,31 @@ export function findAllergens(ingredients: { name: string }[], allergies: readon
   return hits;
 }
 
-/** 싫어하는 재료는 이름이 들어 있는지만 본다 */
+/**
+ * 싫어하는 재료는 이름이 들어 있는지만 본다.
+ * 한 글자("파", "무")는 다른 재료 이름의 일부일 때가 많아(양파·파프리카, 무화과) 이름이 정확히 같을 때만 본다.
+ */
 export function findDislikes(ingredients: { name: string }[], dislikes: readonly string[]): AllergyHit[] {
   const hits: AllergyHit[] = [];
   for (const raw of dislikes) {
     const d = provisionalKey(raw);
     if (d.length === 0) continue;
-    for (const ing of ingredients) if (nameHas(provisionalKey(ing.name), d)) hits.push({ allergy: raw.trim(), ingredient: ing.name });
+    for (const ing of ingredients) {
+      const n = provisionalKey(ing.name);
+      const hit = d.length === 1 ? n === d || n === `대${d}` || n === `생${d}` : n.includes(d);
+      if (hit) hits.push({ allergy: raw.trim(), ingredient: ing.name });
+    }
   }
   return hits;
+}
+
+/** 늘 있는 양념 중 가족 알레르기에 걸리는 것 (참깨 알레르기 → 참기름·참깨, 밀·대두 → 간장) */
+export function staplesWithAllergens(staples: readonly string[], allergies: readonly string[]): string[] {
+  return staples.filter((s) => findAllergens([{ name: s }], allergies).length > 0);
+}
+
+/** 알레르기에 걸리지 않는 늘 있는 양념만 */
+export function safeStaples(staples: readonly string[], allergies: readonly string[]): string[] {
+  const bad = new Set(staplesWithAllergens(staples, allergies));
+  return staples.filter((s) => !bad.has(s));
 }

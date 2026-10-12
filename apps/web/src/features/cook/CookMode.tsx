@@ -60,6 +60,7 @@ export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
 
   const finish = async () => {
     setBusy(true);
+    if (running > 0 && !window.confirm(`타이머 ${running}개가 아직 돌고 있어요. 요리를 마칠까요?`)) { setBusy(false); return; }
     try { await onComplete(); stopSpeak(); onClose(); } finally { setBusy(false); }
   };
 
@@ -142,7 +143,7 @@ export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
         {step ? (
           <button onClick={next} className="flex-[2] rounded-2xl bg-orange-500 py-4 text-lg font-semibold">{idx === steps.length - 1 ? "마무리 ›" : "다음 ›"}</button>
         ) : (
-          <button onClick={() => { stopSpeak(); onClose(); }} className="flex-[2] rounded-2xl bg-gray-700 py-4 text-lg font-semibold">기록 없이 닫기</button>
+          <button onClick={tryClose} className="flex-[2] rounded-2xl bg-gray-700 py-4 text-lg font-semibold">기록 없이 닫기</button>
         )}
       </footer>
     </div>

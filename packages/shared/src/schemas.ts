@@ -95,7 +95,7 @@ export const FridgeItem = z.object({
   // 가상 냉장고(영수증 입력)에서 추가된 필드. 옛 데이터에는 없을 수 있다 → guessFood 로 추정
   category: FoodCategory.optional(),
   emoji: z.string().optional(),
-  source: z.enum(["manual", "receipt"]).optional(),
+  source: z.enum(["manual", "receipt", "photo"]).optional(),
   purchasedAt: z.string().nullable().optional(), // YYYY-MM-DD
   /** 유통기한이 포장 표시가 아니라 보통 보관 기간으로 추정한 값인가 */
   expiresEstimated: z.boolean().optional(),
@@ -113,6 +113,8 @@ export const ReceiptItem = z.object({
   category: FoodCategory,
   emoji: z.string(),
   shelfLifeDays: z.number().int().nonnegative().nullable(), // 산 날부터 보통 며칠 (추정)
+  /** shelfLifeDays 가 포장에 적힌 유통기한·소비기한을 읽어서 낸 값인가 (아니면 보통 보관 기간으로 어림) */
+  dateFromPackage: z.boolean().default(false),
   memo: z.string(),                 // 브랜드·용량 등 (없으면 빈 문자열)
   isFood: z.boolean(),              // 봉투·세제 등은 false
 });

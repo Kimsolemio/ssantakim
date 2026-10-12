@@ -408,6 +408,10 @@ await mom.getByTestId("receipt-files").setInputFiles({ name: "food.png", mimeTyp
 await mom.getByText("📸 식재료 찾기").click();
 await mom.getByText(/사진에서 식재료 3개 찾음/).waitFor({ timeout: 15000 });
 await mom.screenshot({ path: `${shots}/25-food-photo-review.png` });
+// 냉장고에 이미 있는 달걀은 중복을 막으려고 기본으로 빠져 있다 → 이번엔 일부러 넣는다
+await mom.getByTestId("receipt-row").filter({ hasText: "달걀" }).getByText("이미 냉장고에 있음").waitFor();
+assert.equal(await mom.getByLabel("달걀 넣기").isChecked(), false);
+await mom.getByLabel("달걀 넣기").check();
 await mom.getByText("🧊 냉장고에 넣기 (3개)").click();
 await mom.getByText(/🎉 3개를 냉장고에 넣었어요/).waitFor();
 await mom.getByTestId("zone-crisper").getByLabel(/^양배추 0\.5포기/).waitFor();

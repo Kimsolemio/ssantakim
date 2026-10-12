@@ -245,7 +245,8 @@ describe("today: rank saved recipes by fridge", () => {
       r("스테이크", [["소고기", "beef"]]),
     ], fridge, { staples: ["소금", "참기름"], today });
     expect(list.map((x) => x.recipe.title)).toEqual(["김치찌개", "김치볶음밥"]);
-    expect(list[0]).toMatchObject({ needed: 3, have: 2, missing: ["돼지고기"], expiring: ["두부"] });
+    expect(list[0]).toMatchObject({ needed: 3, have: 2, unsure: 0, missing: ["돼지고기"], expiring: ["두부"] });
+    expect(list[1]).toMatchObject({ missing: ["밥"] });
   });
   it("pushes back what was cooked yesterday", () => {
     const list = rankRecipesByFridge([
@@ -266,5 +267,17 @@ describe("allergy wording", () => {
     expect(isKnownAllergy("갑각류 알레르기")).toBe(true);
     expect(isKnownAllergy("키위")).toBe(false);
     expect(formatAmount({ qty: null, unit: "kg" })).toBe("");
+  });
+});
+
+import { safeStaples } from "../src";
+
+describe("allergy edge cases from review", () => {
+  it("catches 게장 and kimchi for seafood allergies, ignores one-letter dislikes inside other names", () => {
+    expect(findAllergens([{ name: "간장게장" }, { name: "양념게장" }], ["게"])).toHaveLength(2);
+    expect(findAllergens([{ name: "배추김치" }], ["새우"])).toHaveLength(1);
+    expect(findDislikes([{ name: "양파" }, { name: "파프리카" }, { name: "대파" }], ["파"]).map((h) => h.ingredient)).toEqual(["대파"]);
+    expect(safeStaples(["소금", "참기름", "참깨", "간장"], ["참깨"])).toEqual(["소금", "간장"]);
+    expect(safeStaples(["소금", "간장"], ["대두"])).toEqual(["소금"]);
   });
 });

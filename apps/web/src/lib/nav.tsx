@@ -29,7 +29,7 @@ type NavState = {
   consumeRecipe: () => void;
 };
 
-export type GenerateRequest = { dish: string; notes?: string; auto?: boolean };
+export type GenerateRequest = { dish: string; notes?: string; auto?: boolean; servings?: number };
 
 const NavCtx = createContext<NavState | null>(null);
 

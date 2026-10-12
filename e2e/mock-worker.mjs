@@ -78,7 +78,7 @@ createServer((req, res) => {
       const insta = String(b.url ?? "").includes("instagram.com");
       return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make(insta ? "인스타 떡볶이" : "메모 떡볶이", insta ? { type: "instagram", url: b.url } : { type: b.text ? "text" : "photo" }) }, via: b.text ? "caption" : "photo", provider: "mock", model: "mock" }), 700);
     }
-    if (req.url === "/usage") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ today: { used: 3.25, limit: 40 } })); }
+    if (req.url === "/usage") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ today: { used: 3.25, limit: 40, familyUsed: 10, familyLimit: 150, remaining: 36.75 } })); }
     if (req.url === "/suggest") {
       const b = JSON.parse(body || "{}");
       console.log("mock /suggest", JSON.stringify({ items: b.items?.length, mustUse: b.mustUse, exclude: b.exclude, mood: b.mood, avoid: b.avoid }));
@@ -107,7 +107,7 @@ createServer((req, res) => {
       if (!ok) { res.writeHead(400, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ error: "사진 형식 오류 (mock)" })); }
       const photoItems = [
         { name: "양배추", key: "cabbage", rawText: "랩에 싼 양배추 반 통", qty: 0.5, unit: "포기", location: "냉장", category: "채소", emoji: "🥬", shelfLifeDays: 14, memo: "", isFood: true },
-        { name: "달걀", key: "egg", rawText: "달걀 10구 판", qty: 10, unit: "개", location: "냉장", category: "달걀", emoji: "🥚", shelfLifeDays: 13, memo: "유통기한 10/25", isFood: true },
+        { name: "달걀", key: "egg", rawText: "달걀 10구 판", qty: 10, unit: "개", location: "냉장", category: "달걀", emoji: "🥚", shelfLifeDays: 13, dateFromPackage: true, memo: "유통기한 10/25", isFood: true },
         { name: "요거트", key: "yogurt", rawText: "플레인 요거트 컵", qty: 4, unit: "개", location: "냉장", category: "유제품", emoji: "🥛", shelfLifeDays: null, memo: "확인 필요", isFood: true },
       ];
       const scan = b.mode === "photo" ? { store: null, purchasedAt: null, items: photoItems } : { store: "이마트 성수점", purchasedAt: minusDays(b.today, 1), items: receiptItems };

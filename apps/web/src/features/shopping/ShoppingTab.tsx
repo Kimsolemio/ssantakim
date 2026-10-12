@@ -36,7 +36,7 @@ export function ShoppingTab() {
   const [undo, setUndo] = useState<{ items: ShoppingDoc[]; label: string } | null>(null);
   useEffect(() => {
     if (!undo) return;
-    const t = setTimeout(() => setUndo(null), 6000);
+    const t = setTimeout(() => setUndo(null), 9000);
     return () => clearTimeout(t);
   }, [undo]);
   const removeWithUndo = (list: ShoppingDoc[], label: string) => {
@@ -155,7 +155,8 @@ export function ShoppingTab() {
           <span>{undo.label}</span>
           <button type="button" className="rounded-full bg-white/15 px-3 py-1 font-semibold" onClick={() => {
             const items = undo.items; setUndo(null);
-            void Promise.all(items.map((x) => restoreShoppingItem(familyId, x)));
+            Promise.all(items.map((x) => restoreShoppingItem(familyId, x)))
+              .catch(() => { setNotice("되돌리지 못했어요. 다시 담아 주세요"); setTimeout(() => setNotice(null), 3000); });
           }}>되돌리기</button>
         </div>
       )}

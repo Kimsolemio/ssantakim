@@ -1,4 +1,4 @@
-import { doc, runTransaction } from "firebase/firestore";
+import { doc, runTransaction, updateDoc } from "firebase/firestore";
 import { getDb } from "./firebase";
 import { callWorker, workerConfigured } from "./api";
 
@@ -24,10 +24,13 @@ export async function normalizeKeysInBackground(
       const ref = doc(db, "families", familyId, collectionName, t.id);
       return runTransaction(db, async (tx) => {
         const snap = await tx.get(ref);
+        // 아직 서버에 안 올라간 새 문서(약한 인터넷)는 트랜잭션이 못 본다 → 아래에서 순서대로 쓰기
+        if (!snap.exists()) return "pending" as const;
         const cur = snap.data() as { name?: string; key?: string } | undefined;
-        if (!snap.exists() || cur?.name !== t.name || (cur?.key && isStandardKey(cur.key))) return;
+        if (cur?.name !== t.name || (cur?.key && isStandardKey(cur.key))) return "skip" as const;
         tx.update(ref, { key });
-      });
+        return "done" as const;
+      }).then((r) => (r === "pending" ? updateDoc(ref, { key }) : undefined));
     }));
   } catch (e) {
     console.warn("재료 이름 정리 실패 (나중에 다시 시도됩니다)", e);
@@ -58,15 +61,15 @@ async function recipeKeyFixes(ingredients: { name: string; key: string }[]): Pro
  * 트랜잭션으로 지금 문서를 읽어 이름·key 가 그대로인 재료만 바꾸고 나머지 수정은 건드리지 않는다.
  * 조리 단계의 key 는 그 key 를 쓰던 재료가 더 남지 않을 때만 새 key 로 옮긴다.
  */
-export async function fixRecipeKeysInBackground(familyId: string, recipeId: string, saved: { ingredients: { name: string; key: string }[] }): Promise<void> {
+export async function fixRecipeKeysInBackground(familyId: string, recipeId: string, saved: { ingredients: { name: string; key: string }[] }, attempt = 0): Promise<void> {
   try {
     const fixes = await recipeKeyFixes(saved.ingredients);
     if (fixes.length === 0) return;
     const db = getDb();
     const ref = doc(db, "families", familyId, "recipes", recipeId);
-    await runTransaction(db, async (tx) => {
+    const result = await runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
-      if (!snap.exists()) return;
+      if (!snap.exists()) return "pending" as const;
       const cur = snap.data() as { ingredients: { name: string; key: string }[]; steps: { ingredientKeys: string[] }[] };
       let changed = false;
       const ingredients = cur.ingredients.map((g) => {
@@ -75,11 +78,14 @@ export async function fixRecipeKeysInBackground(familyId: string, recipeId: stri
         changed = true;
         return { ...g, key: f.to };
       });
-      if (!changed) return;
+      if (!changed) return "done" as const;
       const stillUsed = new Set(ingredients.map((g) => g.key));
       const map = new Map(fixes.filter((f) => !stillUsed.has(f.from)).map((f) => [f.from, f.to]));
       tx.update(ref, { ingredients, steps: remapStepKeys(cur.steps, map) });
+      return "done" as const;
     });
+    // 아직 서버에 안 올라간 새 레시피면 잠시 뒤 다시 (최대 3번)
+    if (result === "pending" && attempt < 3) setTimeout(() => void fixRecipeKeysInBackground(familyId, recipeId, saved, attempt + 1), 15_000);
   } catch (e) {
     console.warn("레시피 재료 이름 정리 실패", e);
   }

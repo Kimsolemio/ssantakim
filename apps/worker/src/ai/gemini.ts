@@ -2,7 +2,7 @@
  * Gemini API (무료 등급) — Claude 키가 없을 때의 대안. SDK 없이 REST 로 호출한다.
  * 구조화 출력: generationConfig.responseMimeType=application/json + responseJsonSchema
  */
-import { GenerationError, lazyFetch, type AiPart, type AiProvider, type JsonRequest, type JsonResult } from "./types";
+import { billedError, GenerationError, lazyFetch, type AiPart, type AiProvider, type JsonRequest, type JsonResult } from "./types";
 
 export const GEMINI_DEFAULT_MODEL = "gemini-2.5-flash";
 
@@ -51,10 +51,10 @@ export function geminiProvider(opts: { apiKey: string; model?: string; fetch?: t
       if (data.promptFeedback?.blockReason) throw new GenerationError("AI가 이 요청을 처리할 수 없다고 판단했습니다", 422);
       const cand = data.candidates?.[0];
       const finish = cand?.finishReason ?? "";
-      if (finish === "SAFETY" || finish === "PROHIBITED_CONTENT") throw new GenerationError("AI가 이 요청에 응답할 수 없다고 판단했습니다", 422);
-      if (finish === "MAX_TOKENS") throw new GenerationError("응답이 너무 길어 잘렸습니다. 다시 시도하세요", 502);
+      if (finish === "SAFETY" || finish === "PROHIBITED_CONTENT") throw billedError("AI가 이 요청에 응답할 수 없다고 판단했습니다", 422);
+      if (finish === "MAX_TOKENS") throw billedError("응답이 너무 길어 잘렸습니다. 다시 시도하세요", 502);
       const text = (cand?.content?.parts ?? []).map((p) => p.text ?? "").join("");
-      if (!text) throw new GenerationError("AI가 빈 응답을 보냈습니다. 다시 시도하세요", 502);
+      if (!text) throw billedError("AI가 빈 응답을 보냈습니다. 다시 시도하세요", 502);
       const u = data.usageMetadata ?? {};
       return { text, model, usage: { input: u.promptTokenCount ?? 0, output: (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0) } };
     },

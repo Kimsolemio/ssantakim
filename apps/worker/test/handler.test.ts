@@ -256,3 +256,14 @@ describe("too long input", () => {
     expect(await r.json()).toMatchObject({ code: "too_long" });
   });
 });
+
+describe("refund policy", () => {
+  it("keeps the charge when the AI already produced (truncated) output", async () => {
+    stubFetch(() => jsonResponse(claudeMessage("{", { stop_reason: "max_tokens" })));
+    const m = new Map<string, string>();
+    const kv = { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); } } as unknown as KVNamespace;
+    const r = await recipeReq({ ...baseEnv, ANTHROPIC_API_KEY: "k", USAGE: kv });
+    expect(r.status).toBe(502);
+    expect([...m.values()]).toContain("1");
+  });
+});

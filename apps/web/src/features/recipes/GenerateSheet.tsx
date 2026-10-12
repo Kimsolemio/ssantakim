@@ -11,6 +11,7 @@ type Props = {
   onClose: () => void;
   initialDish?: string;
   initialNotes?: string;
+  initialServings?: number;
   /** 열자마자 만들기 시작 ("오늘 뭐 먹지"에서 고른 메뉴) */
   autoStart?: boolean;
 };
@@ -20,9 +21,9 @@ const WAITING = ["재료를 고르는 중…", "분량을 계산하는 중…", 
 type RecipeResponse = { recipe: RecipeDraft; model: string; usage: { input: number; output: number } };
 
 /** 음식 이름 → AI 레시피 생성. 결과는 편집 화면으로 넘긴다. */
-export function GenerateSheet({ profile, onResult, onClose, initialDish, initialNotes, autoStart }: Props) {
+export function GenerateSheet({ profile, onResult, onClose, initialDish, initialNotes, initialServings, autoStart }: Props) {
   const [dish, setDish] = useState(initialDish ?? "");
-  const [servings, setServings] = useState(profile?.defaultServings ?? 2);
+  const [servings, setServings] = useState(initialServings ?? profile?.defaultServings ?? 2);
   const [notes, setNotes] = useState(initialNotes ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

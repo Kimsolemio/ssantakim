@@ -32,6 +32,8 @@ export function useShopping(familyId: string | null) {
 export async function addShoppingItems(familyId: string, uid: string, inputs: ShoppingInput[], existing: ShoppingDoc[]): Promise<{ added: { id: string; name: string }[]; merged: number }> {
   const db = getDb();
   const batch = writeBatch(db);
+  // 양 합치기(update)는 따로: 합칠 줄을 다른 기기에서 지웠어도 새로 담는 품목까지 취소되지 않게
+  const merges: Promise<void>[] = [];
   const now = new Date().toISOString();
   const added: { id: string; name: string }[] = [];
   let merged = 0;
@@ -43,7 +45,10 @@ export async function addShoppingItems(familyId: string, uid: string, inputs: Sh
       if (same.qty != null && input.qty != null) {
         const c = convertQty(input.qty, input.unit, same.unit);
         // 덮어쓰지 않고 더한다 (그사이 다른 가족이 같은 줄의 양을 바꿔도 둘 다 반영)
-        if (c != null) { same.qty = roundQty(same.qty + c, same.unit); batch.update(doc(col(familyId), same.id), { qty: increment(roundQty(c, same.unit)) }); }
+        if (c != null) {
+          same.qty = roundQty(same.qty + c, same.unit);
+          merges.push(updateDoc(doc(col(familyId), same.id), { qty: increment(roundQty(c, same.unit)) }).catch((e) => console.warn("양 합치기 건너뜀", same.id, e)));
+        }
       }
       merged++;
       continue;
@@ -60,7 +65,7 @@ export async function addShoppingItems(familyId: string, uid: string, inputs: Sh
     pending.push({ id: ref.id, ...data });
     added.push({ id: ref.id, name: data.name });
   }
-  await settle(batch.commit());
+  await settle(Promise.all([batch.commit(), ...merges]));
   return { added, merged };
 }
 

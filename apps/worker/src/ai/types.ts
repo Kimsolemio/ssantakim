@@ -3,6 +3,15 @@
 export class GenerationError extends Error {
   /** code: 화면이 다르게 반응해야 하는 경우 (예: instagram → 캡션 입력으로 전환) */
   constructor(message: string, public status: number, public code?: string) { super(message); }
+  /** AI가 이미 답을 만들어 요금이 나간 실패 (잘림·거절·형식 오류). 하루 사용량을 돌려주지 않는다 */
+  billed = false;
+}
+
+/** 요금이 나간 실패로 표시 */
+export function billedError(message: string, status: number): GenerationError {
+  const e = new GenerationError(message, status);
+  e.billed = true;
+  return e;
 }
 
 export type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";

@@ -1,5 +1,5 @@
 import { RecipeDraft, recipeDraftJsonSchema, type FamilyProfile } from "@cook/shared";
-import { GenerationError, type AiProvider, type ProviderName } from "./ai";
+import { billedError, type AiProvider, type ProviderName } from "./ai";
 import { RECIPE_SYSTEM_PROMPT, buildRecipeUserMessage } from "./prompts";
 
 const RECIPE_SCHEMA = recipeDraftJsonSchema();
@@ -14,12 +14,12 @@ export function parseAiJson<T>(
   prepare?: (raw: unknown) => unknown,
 ): T {
   let raw: unknown;
-  try { raw = JSON.parse(text); } catch { throw new GenerationError("AI 응답을 해석할 수 없습니다 (JSON 오류)", 502); }
+  try { raw = JSON.parse(text); } catch { throw billedError("AI 응답을 해석할 수 없습니다 (JSON 오류)", 502); }
   if (prepare) raw = prepare(raw);
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     const i = parsed.error.issues[0];
-    throw new GenerationError(`AI 응답이 형식에 맞지 않습니다: ${i?.path.map(String).join(".")} ${i?.message}`, 502);
+    throw billedError(`AI 응답이 형식에 맞지 않습니다: ${i?.path.map(String).join(".")} ${i?.message}`, 502);
   }
   return parsed.data;
 }

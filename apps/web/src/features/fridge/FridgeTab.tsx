@@ -153,11 +153,11 @@ export function FridgeTab() {
         style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>+</button>
 
       {importing && (
-        <ReceiptImport onClose={() => setImporting(false)}
-          onConfirm={async (inputs) => {
+        <ReceiptImport onClose={() => setImporting(false)} existing={items}
+          onConfirm={async (inputs, mode) => {
             try {
-              // 장보기 목록에서 이번에 산 것은 지운다
-              const bought = shopping.filter((sh) => inputs.some((i) => sameFood(sh, { key: i.key, name: i.name })));
+              // 영수증이면 장보기 목록에서 이번에 산 것을 지운다 (사진은 산 것인지 원래 있던 것인지 몰라 건드리지 않는다)
+              const bought = mode === "receipt" ? shopping.filter((sh) => inputs.some((i) => sameFood(sh, { key: i.key, name: i.name }))) : [];
               const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => {
                 setSearch("");
                 setView("visual");

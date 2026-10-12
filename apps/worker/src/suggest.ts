@@ -1,5 +1,5 @@
 import {
-  DEFAULT_STAPLES, SuggestResult, findAllergens, findDislikes, provisionalKey, sameFood, suggestResultJsonSchema,
+  DEFAULT_STAPLES, SuggestResult, findAllergens, findDislikes, provisionalKey, safeStaples, sameFood, suggestResultJsonSchema,
   type FamilyProfile, type MenuSuggestion,
 } from "@cook/shared";
 import type { AiProvider, ProviderName } from "./ai";
@@ -54,7 +54,8 @@ export function cleanSuggestions(raw: MenuSuggestion[], input: SuggestInput, sta
       if (!name || isStaple(name) || fridge.some((f) => sameFood(f, asNamed(name))) || missing.includes(name)) continue;
       missing.push(name);
     }
-    const all = [{ name: title }, ...uses.map((name) => ({ name })), ...missing.map((name) => ({ name }))];
+    // 알레르기 검사는 정리하기 전 AI 원문 전부로 (늘 있는 양념이라 지운 것도 포함해서)
+    const all = [{ name: title }, ...s.uses.map((name) => ({ name })), ...s.missing.map((name) => ({ name })), ...uses.map((name) => ({ name })), ...missing.map((name) => ({ name }))];
     if (findAllergens(all, banned).length > 0 || findDislikes(all, avoidWords).length > 0) { dropped++; continue; }
     seen.add(key);
     list.push({ ...s, title, uses, missing });
@@ -63,7 +64,8 @@ export function cleanSuggestions(raw: MenuSuggestion[], input: SuggestInput, sta
 }
 
 export async function suggestMenus(ai: AiProvider, input: SuggestInput): Promise<SuggestResponse> {
-  const staples = input.profile?.staples ?? [...DEFAULT_STAPLES];
+  // 알레르기에 걸리는 양념(참깨 알레르기의 참기름 등)은 "늘 있다"고 알려 주지 않는다
+  const staples = safeStaples(input.profile?.staples ?? [...DEFAULT_STAPLES], input.profile?.allergies ?? []);
   // 걸러서 모자라지 않게 조금 더 받는다
   const ask = Math.min(input.count + 2, 10);
   const out = await ai.generateJson({

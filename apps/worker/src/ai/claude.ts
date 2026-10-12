@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { GenerationError, lazyFetch, type AiPart, type AiProvider, type JsonRequest, type JsonResult } from "./types";
+import { billedError, GenerationError, lazyFetch, type AiPart, type AiProvider, type JsonRequest, type JsonResult } from "./types";
 
 export const CLAUDE_DEFAULT_MODEL = "claude-opus-5-5";
 /** 안전 분류기가 거절하면 같은 호출 안에서 알맞은 대체 모델로 다시 시도한다 */
@@ -57,10 +57,10 @@ export function claudeProvider(opts: { apiKey: string; model?: string; fetch?: t
         try { msg = await client.beta.messages.create(base); } catch (e2) { throw mapError(e2); }
       }
 
-      if (msg.stop_reason === "refusal") throw new GenerationError("AI가 이 요청에 응답할 수 없다고 판단했습니다", 422);
-      if (msg.stop_reason === "max_tokens") throw new GenerationError("응답이 너무 길어 잘렸습니다. 다시 시도하세요", 502);
+      if (msg.stop_reason === "refusal") throw billedError("AI가 이 요청에 응답할 수 없다고 판단했습니다", 422);
+      if (msg.stop_reason === "max_tokens") throw billedError("응답이 너무 길어 잘렸습니다. 다시 시도하세요", 502);
       const text = msg.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-      if (!text) throw new GenerationError("AI가 빈 응답을 보냈습니다. 다시 시도하세요", 502);
+      if (!text) throw billedError("AI가 빈 응답을 보냈습니다. 다시 시도하세요", 502);
       return { text, model: msg.model, usage: { input: msg.usage.input_tokens, output: msg.usage.output_tokens } };
     },
   };

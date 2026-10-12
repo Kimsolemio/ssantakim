@@ -56,7 +56,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
   const { user } = useAuth();
   const { items: fridge, loading: fridgeLoading } = useFridge(familyId);
   const { items: shopping, loading: shoppingLoading } = useShopping(familyId);
-  const matches = useRecipeMatches(recipe, servings, fridge, family?.profile.staples);
+  const matches = useRecipeMatches(recipe, servings, fridge, family?.profile.staples, family?.profile.allergies);
   // 냉장고·장보기를 다 불러오기 전에는 "없음"으로 잘못 보이지 않게 대조 결과를 숨긴다
   const ready = !fridgeLoading && !shoppingLoading;
 

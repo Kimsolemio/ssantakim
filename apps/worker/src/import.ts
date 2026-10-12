@@ -72,14 +72,19 @@ async function youtubeInfo(id: string, apiKey: string | undefined, f: typeof fet
   return info;
 }
 
-export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fetch = lazyFetch): Promise<ImportResponse> {
+/** AI·페이지 읽기 없이 바로 알 수 있는 거절 (사용량을 쓰기 전에 부른다) */
+export function precheckImportUrl(rawUrl: string): void {
   const url = rawUrl.trim();
   if (!isSafePublicUrl(url)) throw new GenerationError("열 수 없는 주소입니다 (http/https 공개 주소만 가능)", 400);
-  const kind = linkKind(url);
-
-  if (kind === "instagram") {
+  if (linkKind(url) === "instagram") {
     throw new GenerationError("인스타그램은 링크만으로 내용을 볼 수 없어요. 캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요.", 422, "instagram");
   }
+}
+
+export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fetch = lazyFetch): Promise<ImportResponse> {
+  const url = rawUrl.trim();
+  precheckImportUrl(url);
+  const kind = linkKind(url);
 
   if (kind === "youtube") {
     const id = youtubeId(url)!;

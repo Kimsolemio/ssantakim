@@ -5,7 +5,7 @@ import { selectProvider, describeAi, GenerationError, type AiEnv } from "./ai";
 import { generateRecipe } from "./recipe";
 import { scanReceipt } from "./receipt";
 import { normalizeNames } from "./normalize";
-import { importFromUrl, importFromText } from "./import";
+import { importFromUrl, importFromText, precheckImportUrl } from "./import";
 import { suggestMenus } from "./suggest";
 import { checkAllowed, chargeUsage, refundUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
 
@@ -57,9 +57,11 @@ type Ctx = { refund: (() => Promise<void>) | null };
  * 로그인 → 본문 검사 → 사용량 차감 순서. 잘못된 요청은 사용량을 쓰지 않고,
  * 차감한 뒤 실패하면(AI 오류, 인스타 링크, 페이지 못 읽음 등) handle 의 catch 가 돌려준다.
  */
-async function begin<T>(ctx: Ctx, request: Request, env: Env, route: string, schema: z.ZodType<T>, maxBytes?: number, cost?: (body: T) => number): Promise<{ user: Verified; body: T }> {
+async function begin<T>(ctx: Ctx, request: Request, env: Env, route: string, schema: z.ZodType<T>, maxBytes?: number, cost?: (body: T) => number, precheck?: (body: T) => void): Promise<{ user: Verified; body: T }> {
   const user = await authenticate(request, env);
   const body = await readJson(request, schema, maxBytes);
+  // AI 없이 바로 끝나는 거절(인스타 링크, 열 수 없는 주소)은 사용량을 쓰기 전에
+  precheck?.(body);
   const charged = await chargeUsage(env, user.uid, route, Date.now(), cost?.(body));
   ctx.refund = () => refundUsage(env, user.uid, charged);
   return { user, body };
@@ -84,7 +86,7 @@ async function readJson<T>(request: Request, schema: z.ZodType<T>, maxBytes = 1_
 const RecipeRequest = z.object({
   dish: z.string().trim().min(1).max(100),
   servings: z.number().positive().max(50).default(2),
-  profile: FamilyProfile.nullable().optional(),
+  profile: FamilyProfile.transform((p) => ({ ...p, allergies: p.allergies.slice(0, 30), dislikes: p.dislikes.slice(0, 30), staples: p.staples.slice(0, 40) })).nullable().optional(),
   notes: z.string().max(500).nullable().optional(),
 });
 
@@ -111,24 +113,37 @@ const ImportTextRequest = z.object({
   url: z.string().max(2000).nullable().optional(),
 }).refine((b) => (b.text?.trim().length ?? 0) > 0 || (b.images?.length ?? 0) > 0, "글이나 사진이 필요합니다");
 
-const Name = z.string().trim().min(1).max(60);
+/**
+ * 추천 요청은 냉장고 한 줄이 이상하다고 가족 모두의 추천이 막히면 안 되므로, 거절하지 않고 잘라서 받는다.
+ * 줄바꿈은 프롬프트 구조를 바꿀 수 있어 공백으로 바꾼다.
+ */
+const oneLine = (max: number) => z.string().transform((s) => s.replace(/[\r\n\t]+/g, " ").trim().slice(0, max));
+const Name = oneLine(60).pipe(z.string().min(1));
+const names = (n: number, max = 60) => z.array(oneLine(max)).transform((a) => a.filter(Boolean).slice(0, n));
+/** 가족 설정의 목록도 길이를 제한해서 보낸다 (아주 긴 목록이 그대로 AI 입력이 되지 않게) */
+const ProfileIn = FamilyProfile.transform((p) => ({
+  ...p,
+  allergies: p.allergies.slice(0, 30).map((s) => s.slice(0, 30)),
+  dislikes: p.dislikes.slice(0, 30).map((s) => s.slice(0, 30)),
+  staples: p.staples.slice(0, 40).map((s) => s.slice(0, 30)),
+}));
 const SuggestRequest = z.object({
   items: z.array(z.object({
     name: Name,
     qty: z.number().nonnegative().nullable().optional(),
     unit: z.string().max(10).optional(),
-    daysLeft: z.number().int().min(-3650).max(3650).nullable().optional(),
+    daysLeft: z.number().int().nullable().optional().transform((d) => (d == null ? d : Math.max(-3650, Math.min(3650, d)))),
     /** 기한이 포장 표시가 아니라 추정값인가 */
     estimated: z.boolean().optional(),
     location: StorageLocation.optional(),
-  })).max(200, "냉장고 품목은 200개까지 보낼 수 있습니다"),
-  mustUse: z.array(Name).max(10).default([]),
-  exclude: z.array(Name).max(30).default([]),
-  mood: z.string().trim().max(100).nullable().optional(),
+  })).transform((a) => a.slice(0, 200)),
+  mustUse: names(10).default([]),
+  exclude: names(30).default([]),
+  mood: oneLine(100).nullable().optional(),
   servings: z.number().int().positive().max(20).default(2),
-  profile: FamilyProfile.nullable().optional(),
-  recent: z.array(z.string().trim().max(100)).max(30).default([]),
-  avoid: z.array(z.string().trim().max(100)).max(30).default([]),
+  profile: ProfileIn.nullable().optional(),
+  recent: names(30, 100).default([]),
+  avoid: names(30, 100).default([]),
   count: z.number().int().min(1).max(8).default(5),
 });
 
@@ -179,7 +194,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     }
 
     if (url.pathname === "/import/url" && request.method === "POST") {
-      const { user, body } = await begin(ctx, request, env, "/import/url", ImportUrlRequest);
+      const { user, body } = await begin(ctx, request, env, "/import/url", ImportUrlRequest, undefined, undefined, (b) => precheckImportUrl(b.url));
       const r = await importFromUrl(env, body.url);
       console.log(JSON.stringify({ route: "import/url", uid: user.uid, via: r.via, hasRecipe: r.result.hasRecipe, provider: r.provider, model: r.model }));
       return json(r, 200, cors);
@@ -202,8 +217,10 @@ async function handle(request: Request, env: Env): Promise<Response> {
 
     throw new HttpError(404, "not found");
   } catch (e) {
-    // 사용량을 차감한 뒤 AI·페이지 읽기가 실패했으면 돌려준다
-    if (ctx.refund && !(e instanceof GuardError)) await ctx.refund().catch((err) => console.warn("refund failed", err));
+    // 사용량을 차감한 뒤 실패했으면 돌려준다. 단 AI가 이미 답을 만들어 요금이 나간 실패(잘림·거절·형식 오류)는 돌려주지 않는다
+    // (일부러 실패시켜 하루 한도를 피하는 것을 막는다)
+    const billed = e instanceof GenerationError && e.billed;
+    if (ctx.refund && !(e instanceof GuardError) && !billed) await ctx.refund().catch((err) => console.warn("refund failed", err));
     if (e instanceof HttpError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     if (e instanceof GuardError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     if (e instanceof GenerationError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);

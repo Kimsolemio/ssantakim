@@ -9,7 +9,10 @@ export async function settle<T>(write: Promise<T>, ms = 2500): Promise<void> {
   const timeout = new Promise<"timeout">((r) => { timer = setTimeout(() => r("timeout"), ms); });
   try {
     const r = await Promise.race([late, timeout]);
-    if (r === "timeout") late.catch((e) => console.warn("저장이 늦게 실패했어요", e));
+    if (r === "timeout") late.catch((e) => {
+      console.warn("저장이 늦게 실패했어요", e);
+      window.dispatchEvent(new CustomEvent("cook:write-failed", { detail: writeErrorMessage(e) }));
+    });
   } finally {
     clearTimeout(timer);
   }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FamilyProfile, isKnownAllergy } from "@cook/shared";
+import { FamilyProfile, isKnownAllergy, staplesWithAllergens } from "@cook/shared";
 
 type Props = { initial: FamilyProfile; onSave: (p: FamilyProfile) => Promise<void> };
 
@@ -35,6 +35,9 @@ export function ProfileForm({ initial, onSave }: Props) {
       <input className={small} placeholder="싫어하는 재료 (쉼표로: 고수, 오이)" value={dislikes} onChange={(e) => setDislikes(e.target.value)} />
       <label className="text-xs text-gray-500">늘 있는 양념 (냉장고에 없어도 "있음"으로 봐요)
         <input className={small + " mt-1 w-full"} placeholder="소금, 설탕, 간장" value={staples} onChange={(e) => setStaples(e.target.value)} /></label>
+      {staplesWithAllergens(split(staples), split(allergies)).length > 0 && (
+        <p className="text-xs text-red-700" data-testid="staple-allergy">⚠️ {staplesWithAllergens(split(staples), split(allergies)).join(", ")}은(는) 가족 알레르기에 걸려요. 늘 있는 양념으로 보지 않고, 레시피에 나오면 경고해요.</p>
+      )}
       {msg && <p className="text-xs text-gray-500">{msg}</p>}
       <button disabled={busy} className="rounded-lg bg-orange-500 py-2 font-semibold text-white disabled:opacity-50"
         onClick={async () => {
