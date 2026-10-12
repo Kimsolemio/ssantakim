@@ -28,8 +28,14 @@ export default defineConfig({
         share_target: { action: "/share", method: "GET", params: { title: "title", text: "text", url: "url" } },
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // 글꼴 조각(수백 개)은 미리 다 받지 않고, 쓴 것만 처음 받을 때 저장해 둔다
+        globPatterns: ["**/*.{js,css,html,svg,png}"],
         navigateFallback: "/index.html",
+        runtimeCaching: [{
+          urlPattern: ({ url }) => url.pathname.endsWith(".woff2"),
+          handler: "CacheFirst",
+          options: { cacheName: "fonts", expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 365 } },
+        }],
       },
     }),
   ],
