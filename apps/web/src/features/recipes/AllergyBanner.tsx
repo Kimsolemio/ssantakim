@@ -23,3 +23,11 @@ export function AllergyBanner({ ingredients, profile }: { ingredients: { name: s
     </div>
   );
 }
+
+/** 재료 한 줄 옆에 붙이는 알레르기 표시 */
+export function AllergyChip({ name, profile }: { name: string; profile: FamilyProfile | null | undefined }) {
+  if (!profile || !name.trim()) return null;
+  const hits = findAllergens([{ name }], profile.allergies);
+  if (hits.length === 0) return null;
+  return <span className="shrink-0 rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] font-bold text-red-700" data-testid="allergy-chip">⚠️ {hits.map((h) => h.allergy).join("·")}</span>;
+}

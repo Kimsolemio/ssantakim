@@ -44,8 +44,11 @@ export function isSafePublicUrl(raw: string): boolean {
   if (u.protocol !== "https:" && u.protocol !== "http:") return false;
   if (u.username || u.password) return false;
   if (u.port && !["80", "443"].includes(u.port)) return false;
-  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (!h.includes(".") || h === "localhost" || /\.(local|localhost|internal|lan|home|arpa)$/.test(h)) return false;
+  // 끝의 점("localhost.", "10.0.0.1.")은 떼고 본다
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
+  if (!h.includes(".") || h === "localhost" || /\.(local|localhost|internal|lan|home|arpa|test|invalid)$/.test(h)) return false;
+  // 주소 안에 IP를 넣어 내부망으로 풀리게 하는 공개 와일드카드 DNS
+  if (/(^|\.)(nip\.io|sslip\.io|xip\.io|localtest\.me|lvh\.me|traefik\.me|vcap\.me|lacolhost\.com|127\.0\.0\.1\.[a-z]+)$/.test(h)) return false;
   if (/^\d+\.\d+\.\d+\.\d+$/.test(h)) {
     const [a, b] = h.split(".").map(Number);
     if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224) return false;

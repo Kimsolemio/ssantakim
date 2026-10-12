@@ -77,6 +77,28 @@ describe("/import/url — YouTube", () => {
     expect(g.body.contents[0].parts[0]).toEqual({ fileData: { fileUri: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" } });
   });
 
+  it("keeps the description result when video analysis fails", async () => {
+    stub([
+      { match: (u) => u.startsWith("https://www.youtube.com/watch"), reply: () => html(`<meta property="og:title" content="브이로그"><script>{"shortDescription":"구독과 좋아요 부탁드려요! 오늘은 맛있는 파스타를 만들어 봤어요"}</script>`) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(notFound)) },
+      { match: isGemini, reply: () => jsonResponse({ error: { code: 429, message: "quota", status: "RESOURCE_EXHAUSTED" } }, 429) },
+    ]);
+    const r = await post("/import/url", { url: "https://youtu.be/dQw4w9WgXcQ" }, { ...env, GEMINI_API_KEY: "g" });
+    expect(r.status).toBe(200);
+    expect((await r.json() as any).result).toMatchObject({ hasRecipe: false, dishName: "알리오올리오" });
+  });
+
+  it("ignores a malformed source url written by the AI", async () => {
+    const bad = JSON.parse(found());
+    bad.recipe.source = { type: "youtube", url: "not a url" };
+    stub([
+      { match: (u) => u.startsWith("https://www.youtube.com/watch"), reply: () => html(`<script>{"shortDescription":"재료: 스파게티 200g, 마늘 8쪽, 올리브오일 4큰술 1. 면을 삶는다"}</script>`) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(JSON.stringify(bad))) },
+    ]);
+    const j = await (await post("/import/url", { url: "https://youtu.be/dQw4w9WgXcQ" })).json() as any;
+    expect(j.result.recipe.source.url).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  });
+
   it("reports no recipe (with a dish name) when there is no Gemini key", async () => {
     stub([
       { match: (u) => u.startsWith("https://www.youtube.com/watch"), reply: () => html(`<script>{"shortDescription":"구독과 좋아요 부탁드려요! 오늘은 맛있는 파스타를 만들어 봤어요"}</script>`) },

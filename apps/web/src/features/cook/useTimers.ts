@@ -2,12 +2,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Timer = { id: string; label: string; totalMs: number; endsAt: number; done: boolean; acknowledged: boolean };
 
-/** 짧은 알림음 (Web Audio, 파일 없음) */
-function beep() {
+/**
+ * 소리 장치는 사용자가 버튼을 누를 때(타이머 시작) 미리 만들어 깨워 둔다.
+ * iOS·크롬은 터치 없이 만든 AudioContext 를 "잠든" 상태로 두어, 나중에 끝날 때 소리가 안 난다.
+ */
+let shared: AudioContext | null = null;
+export function unlockAudio() {
   try {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx();
+    shared ??= new Ctx();
+    if (shared.state === "suspended") void shared.resume();
+  } catch { /* 소리 실패는 무시 */ }
+}
+
+/** 짧은 알림음 (Web Audio, 파일 없음) */
+function beep() {
+  try {
+    if (!shared) unlockAudio();
+    const ctx = shared;
+    if (!ctx) return;
+    if (ctx.state === "suspended") void ctx.resume();
     const now = ctx.currentTime;
     [0, 0.35, 0.7].forEach((t) => {
       const osc = ctx.createOscillator(), gain = ctx.createGain();
@@ -18,7 +33,6 @@ function beep() {
       osc.connect(gain).connect(ctx.destination);
       osc.start(now + t); osc.stop(now + t + 0.32);
     });
-    setTimeout(() => ctx.close().catch(() => {}), 1500);
   } catch { /* 소리 실패는 무시 */ }
 }
 
@@ -62,6 +76,7 @@ export function useTimers() {
   }, [timers]);
 
   const start = useCallback((label: string, minutes: number) => {
+    unlockAudio();
     const id = Math.random().toString(36).slice(2);
     const totalMs = Math.round(minutes * 60 * 1000);
     setTimers((l) => [...l, { id, label, totalMs, endsAt: Date.now() + totalMs, done: false, acknowledged: false }]);

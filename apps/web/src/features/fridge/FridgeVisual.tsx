@@ -40,11 +40,11 @@ function Tile({ it, isNew, delay, dim, size, onClick }: { it: FridgeDoc; isNew: 
     <button type="button" onClick={onClick} data-testid="fridge-item" data-zone={zone} data-new={isNew ? "true" : undefined}
       aria-label={`${it.name}${amount ? ` ${amount}` : ""}${exp ? ` ${exp.spoken}` : ""}`}
       title={`${it.name}${amount ? ` · ${amount}` : ""}${it.expiresAt ? ` · ${it.expiresEstimated ? "약 " : ""}${it.expiresAt}까지` : ""}`}
-      className={`relative flex flex-col items-center rounded-xl bg-white/70 shadow-sm ring-1 ring-black/5 transition active:scale-95 ${size === "md" ? "w-[52px] px-0.5 pb-0.5 pt-1" : "w-[38px] px-0.5 pb-0.5 pt-0.5"} ${dim ? "opacity-25" : ""} ${isNew ? "item-new" : ""}`}
+      className={`relative flex flex-col items-center rounded-xl bg-white/70 shadow-sm ring-1 ring-black/5 transition active:scale-95 ${size === "md" ? "w-[56px] px-0.5 pb-0.5 pt-1" : "w-[42px] px-0.5 pb-0.5 pt-0.5"} ${dim ? "opacity-25" : ""} ${isNew ? "item-new" : ""}`}
       style={isNew ? ({ "--delay": `${delay}ms` } as React.CSSProperties) : undefined}>
       <span className={`${size === "md" ? "text-[26px]" : "text-[19px]"} leading-none drop-shadow-sm`} aria-hidden>{emoji}</span>
-      <span className={`mt-0.5 w-full truncate text-center ${size === "md" ? "text-[10px]" : "text-[8.5px]"} font-medium leading-tight text-slate-700`}>{it.name}</span>
-      {exp && <span className={`absolute -right-1 -top-1.5 rounded-full px-1 text-[8.5px] font-bold leading-[14px] ${exp.cls}`}>{exp.label}</span>}
+      <span className={`mt-0.5 w-full truncate text-center ${size === "md" ? "text-[11px]" : "text-[9.5px]"} font-semibold leading-tight text-slate-800`}>{it.name}</span>
+      {exp && <span className={`absolute -right-1.5 -top-2 rounded-full px-1 text-[10px] font-bold leading-[15px] shadow-sm ${exp.cls}`}>{exp.label}</span>}
       {isNew && <span className="absolute -left-1 -top-1.5 rounded-full bg-orange-500 px-1 text-[8px] font-bold leading-[14px] text-white">NEW</span>}
     </button>
   );

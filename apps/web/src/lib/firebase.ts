@@ -2,7 +2,9 @@ import { initializeApp, type FirebaseApp } from "firebase/app";
 import {
   getAuth, GoogleAuthProvider, connectAuthEmulator, signInWithCredential, type Auth,
 } from "firebase/auth";
-import { initializeFirestore, connectFirestoreEmulator, type Firestore } from "firebase/firestore";
+import {
+  initializeFirestore, connectFirestoreEmulator, persistentLocalCache, persistentMultipleTabManager, type Firestore,
+} from "firebase/firestore";
 
 const env = import.meta.env;
 const config = {
@@ -26,7 +28,12 @@ if (firebaseConfigured) {
   app = initializeApp(config);
   auth = getAuth(app);
   // undefined 필드(예: 비어 있는 note)를 저장 시 자동으로 건너뛴다
-  db = initializeFirestore(app, { ignoreUndefinedProperties: true });
+  // 기기에 사본을 둔다: 마트 지하처럼 인터넷이 약한 곳에서도 냉장고·장보기 목록을 보고 체크할 수 있고,
+  // 다시 연결되면 자동으로 올라간다. (IndexedDB를 못 쓰는 사생활 보호 모드에서는 메모리로 동작)
+  db = initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
   if (useEmulators) {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
     connectFirestoreEmulator(db, "127.0.0.1", 8080);

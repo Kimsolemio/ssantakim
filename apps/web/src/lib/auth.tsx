@@ -39,9 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isStandalone()) await signInWithRedirect(auth, googleProvider);
       else await signInWithPopup(auth, googleProvider);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/popup/i.test(msg)) await signInWithRedirect(auth, googleProvider);
-      else setError(msg);
+      const code = (e as { code?: string }).code ?? "";
+      // 팝업이 막혔을 때만 리다이렉트로 다시 시도한다. 사용자가 창을 닫은 것은 취소로 본다
+      if (code === "auth/popup-blocked" || code === "auth/operation-not-supported-in-this-environment") await signInWithRedirect(auth, googleProvider);
+      else if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request" || code === "auth/user-cancelled") return;
+      else if (code === "auth/unauthorized-domain") setError("이 주소는 Firebase 로그인 허용 도메인에 없어요. Firebase 콘솔 → Authentication → 설정 → 승인된 도메인에 추가해 주세요.");
+      else if (code === "auth/network-request-failed") setError("인터넷 연결을 확인하고 다시 시도해 주세요.");
+      else setError(e instanceof Error ? e.message : String(e));
     }
   };
 

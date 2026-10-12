@@ -30,7 +30,16 @@ export async function callWorker<T>(path: string, body: unknown, signal?: AbortS
   try { data = await res.json(); } catch { /* 본문 없음 */ }
   if (!res.ok) {
     const d = data as { error?: string; code?: string } | null;
-    throw new ApiError(d?.error ?? `요청 실패 (${res.status})`, res.status, d?.code);
+    throw new ApiError(friendly(res.status, d?.error), res.status, d?.code);
   }
   return data as T;
+}
+
+/** 서버 메시지 중 개발자용 표현(토큰·JSON·필드 경로)은 가족이 알아듣는 말로 바꾼다. 원문은 콘솔에 남긴다 */
+function friendly(status: number, msg: string | undefined): string {
+  if (status === 401) { console.warn("401", msg); return "로그인이 만료됐어요. 화면을 새로 고치거나 다시 로그인해 주세요"; }
+  if (!msg) return status >= 500 ? "AI 서버에 문제가 생겼어요. 잠시 뒤 다시 시도해 주세요" : `요청이 처리되지 않았어요 (${status})`;
+  if (/AI 응답(이|을)/.test(msg)) { console.warn(msg); return "AI가 알아볼 수 없는 답을 보냈어요. 한 번 더 시도해 주세요"; }
+  if (/요청 형식 오류|JSON 본문/.test(msg)) { console.warn(msg); return "앱과 서버 버전이 맞지 않아요. 화면을 새로 고쳐 주세요"; }
+  return msg;
 }

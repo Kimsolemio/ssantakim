@@ -124,7 +124,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
               : <p className="rounded-2xl bg-white p-3 text-sm text-gray-500" data-testid="fridge-summary-loading">🧊 냉장고 확인 중…</p>}
           </div>
           <IngredientList ingredients={recipe.ingredients} servingsBase={recipe.servingsBase} servings={servings}
-            statuses={ready ? matches.map((m) => ({ status: m.status, label: statusLabel(m) })) : undefined}
+            statuses={ready ? matches.map((m) => ({ status: m.status, label: statusLabel(m) })) : undefined} profile={family?.profile}
             onStatusClick={(i) => { if (matches[i].status !== "always") setLinking(i); }} />
         </section>
 

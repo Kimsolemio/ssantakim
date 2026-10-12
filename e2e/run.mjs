@@ -366,6 +366,46 @@ assert.equal(await mom.getByRole("link", { name: "원본 보기" }).getAttribute
 await mom.getByLabel("뒤로").click();
 await mom.locator("li", { hasText: "인스타 떡볶이" }).waitFor();
 
+// ---------- 비판 검토 반영: 알레르기 경고, 저장 안 한 초안, 다 썼어요, 영수증 결과 보관 ----------
+await mom.getByText("✨ 음식 이름으로").click();
+assert.match(await mom.getByTestId("ai-notice").textContent(), /Google\(Gemini 무료 등급\)/, "어느 AI로 가는지 알린다");
+await mom.getByPlaceholder(/알리오올리오/).fill("새우볶음밥");
+await mom.getByRole("button", { name: "레시피 만들기", exact: true }).click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+await mom.getByText("+ 재료 추가").click();
+await mom.getByPlaceholder("재료", { exact: true }).last().fill("새우젓");
+await mom.getByTestId("allergy-banner").getByText(/가족 알레르기 재료가 있어요: 새우\(새우젓\)/).waitFor();
+await mom.getByTestId("allergy-chip").getByText("⚠️ 새우").waitFor(); // 그 재료 줄에도 표시
+await mom.screenshot({ path: `${shots}/22-allergy-banner.png` });
+await mom.getByLabel("뒤로").click(); // "저장하지 않고 닫을까요?" → 확인
+await mom.getByTestId("pending-draft").getByText("새우볶음밥").waitFor();
+await mom.reload(); // 앱을 껐다 켜도 초안이 남는다
+await mom.getByTestId("pending-draft").getByText("이어서").click();
+assert.equal(await mom.getByPlaceholder("재료", { exact: true }).last().inputValue(), "새우젓");
+await mom.getByLabel("뒤로").click();
+await mom.getByTestId("pending-draft").getByText("버리기").click();
+await mom.getByTestId("pending-draft").waitFor({ state: "detached" });
+
+await mom.locator("nav").getByText("냉장고", { exact: true }).click();
+await mom.getByTestId("zone-crisper").getByLabel(/^사과/).click();
+await mom.getByText("🛒 다 썼어요 · 또 살래요").click();
+await mom.getByText(/사과을\(를\) 다 써서 장보기에 담았어요/).waitFor();
+assert.equal(await mom.getByTestId("zone-crisper").getByLabel(/^사과/).count(), 0);
+await mom.getByTestId("open-receipt").click();
+await mom.getByTestId("receipt-files").setInputFiles({ name: "receipt.png", mimeType: "image/png", buffer: fakeReceipt });
+await mom.getByText("🧾 분석하기").click();
+await mom.getByText(/식품 14개 찾음/).waitFor({ timeout: 15000 });
+await mom.getByLabel("뒤로").click(); // 넣지 않고 닫기 → 확인
+await mom.getByTestId("open-receipt").click();
+await mom.getByTestId("pending-receipt").getByText(/넣지 않은 영수증 결과 14개/).waitFor();
+await mom.getByTestId("pending-receipt").getByText("이어서").click();
+assert.equal(await mom.getByTestId("receipt-row").count(), 14);
+await mom.getByText("다시 찍기").click();
+await mom.getByLabel("뒤로").click();
+await mom.locator("nav").getByText("장보기", { exact: true }).click();
+await mom.getByTestId("shopping-row").filter({ hasText: "사과" }).waitFor();
+await mom.locator("nav").getByText("레시피", { exact: true }).click();
+
 // ---------- 사용자 2: 초대 코드로 참여 → 같은 데이터 ----------
 const dad = await newUserTracked("dad@test.local", "아빠");
 await dad.getByRole("button", { name: "초대 코드로 참여" }).click();

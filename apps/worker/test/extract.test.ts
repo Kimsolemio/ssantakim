@@ -19,10 +19,12 @@ describe("link parsing", () => {
     expect(naverBlogMobileUrl("https://blog.naver.com/PostView.naver?blogId=cook_mom&logNo=223456789012")).toBe("https://m.blog.naver.com/cook_mom/223456789012");
   });
   it("blocks private and odd URLs", () => {
-    for (const u of ["http://localhost/x", "http://127.0.0.1/", "http://10.0.0.5/a", "http://192.168.0.1/", "http://169.254.169.254/latest", "file:///etc/passwd", "http://intranet/", "https://a.internal/x", "http://user:pw@example.com/", "http://example.com:8080/", "http://[::1]/"]) {
+    for (const u of ["http://localhost/x", "http://127.0.0.1/", "http://10.0.0.5/a", "http://192.168.0.1/", "http://169.254.169.254/latest", "file:///etc/passwd", "http://intranet/", "https://a.internal/x", "http://user:pw@example.com/", "http://example.com:8080/", "http://[::1]/",
+      "http://localhost./", "http://10.0.0.1./", "http://0x7f.0.0.1/", "http://127.1/", "http://127.0.0.1.nip.io/", "https://10-0-0-1.sslip.io/", "http://app.localtest.me/", "http://a.test/"]) {
       expect(isSafePublicUrl(u), u).toBe(false);
     }
     expect(isSafePublicUrl("https://m.blog.naver.com/a/1")).toBe(true);
+    expect(isSafePublicUrl("https://www.10000recipe.com./recipe/1")).toBe(true);
   });
 });
 

@@ -17,7 +17,12 @@ export type ImportResponse = { result: ImportResult; via: ImportVia; provider: P
 
 async function runImport(ai: AiProvider, parts: AiPart[], source: RecipeSource, via: ImportVia): Promise<ImportResponse> {
   const out = await ai.generateJson({ system: IMPORT_SYSTEM_PROMPT, parts, schema: SCHEMA, effort: "medium", maxTokens: 16000 });
-  const r = parseAiJson(out.text, ImportResult);
+  // source 는 앱이 원본 정보로 바꾼다. AI가 이상한 주소를 적어도 검증에서 떨어지지 않게 미리 비운다
+  const r = parseAiJson(out.text, ImportResult, (raw) => {
+    const o = raw as { recipe?: { source?: unknown } | null } | null;
+    if (o && o.recipe && typeof o.recipe === "object") o.recipe.source = { type: "text" };
+    return o;
+  });
   const result: ImportResult = r.hasRecipe && r.recipe
     ? { ...r, recipe: { ...r.recipe, source } }
     : { ...r, hasRecipe: false, recipe: null };
@@ -90,8 +95,19 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
     // 설명란에 레시피가 없으면 영상 자체를 본다 (Gemini 키가 있을 때만)
     if (env.GEMINI_API_KEY) {
       const gem = geminiProvider({ apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL, fetch: f });
-      const video = await runImport(gem, [{ type: "youtube", url: canonical }, { type: "text", text: `${header}\n\n영상에서 보여 주는 요리의 재료와 조리 순서를 정리해 주세요.` }], source, "youtube_video");
-      if (video.result.hasRecipe || !first) return video;
+      try {
+        const video = await runImport(gem, [{ type: "youtube", url: canonical }, { type: "text", text: `${header}\n\n영상에서 보여 주는 요리의 재료와 조리 순서를 정리해 주세요.` }], source, "youtube_video");
+        if (video.result.hasRecipe || !first) return video;
+      } catch (e) {
+        // 영상 분석이 실패해도 (긴 영상, 무료 한도 등) 설명란 결과나 "못 찾음" 안내는 돌려준다
+        console.warn("youtube video analysis failed", e instanceof Error ? e.message : e);
+        if (!first) {
+          return {
+            result: { hasRecipe: false, reason: `영상을 분석하지 못했어요${e instanceof GenerationError ? ` (${e.message})` : ""}`, dishName: info.title, recipe: null },
+            via: "youtube_video", provider: "gemini", model: "",
+          };
+        }
+      }
     }
     if (first) return first;
     return {

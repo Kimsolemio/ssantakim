@@ -3,7 +3,7 @@ import { IngredientGroup, RecipeDraft, Unit, provisionalKey, type Ingredient, ty
 import { FullScreen } from "../../components/FullScreen";
 import { remapStepKeys } from "../../lib/normalize";
 import { useFamily } from "../../lib/family";
-import { AllergyBanner } from "./AllergyBanner";
+import { AllergyBanner, AllergyChip } from "./AllergyBanner";
 
 type Props = {
   title: string;
@@ -114,11 +114,12 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
                   <input className={small + " min-w-0 flex-1"} placeholder="재료" value={ing.name} onChange={(e) => setIng(i, { name: e.target.value })} />
                   <input className={small + " w-16"} type="number" inputMode="decimal" step="any" min={0} placeholder="수량" value={ing.qty ?? ""}
                     onChange={(e) => setIng(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
-                  <select className={small + " w-20"} value={ing.unit} onChange={(e) => setIng(i, { unit: e.target.value as Unit, ...(e.target.value === "기타" ? { scalable: false } : {}) })}>
+                  <select className={small + " w-24"} value={ing.unit} onChange={(e) => setIng(i, { unit: e.target.value as Unit, ...(e.target.value === "기타" ? { scalable: false } : {}) })}>
                     {Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <AllergyChip name={ing.name} profile={family?.profile} />
                   <select className={small + " py-1"} value={ing.group} onChange={(e) => setIng(i, { group: e.target.value as IngredientGroup })}>
                     {IngredientGroup.options.map((g) => <option key={g} value={g}>{g}</option>)}
                   </select>

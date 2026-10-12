@@ -1,4 +1,5 @@
-import { IngredientGroup, formatAmount, scaleIngredients, type Ingredient, type MatchStatus } from "@cook/shared";
+import { IngredientGroup, formatAmount, scaleIngredients, type FamilyProfile, type Ingredient, type MatchStatus } from "@cook/shared";
+import { AllergyChip } from "./AllergyBanner";
 
 type Props = {
   ingredients: Ingredient[];
@@ -8,6 +9,8 @@ type Props = {
   /** 원래 재료 순서와 같은 길이. 냉장고 대조 결과를 줄마다 표시 */
   statuses?: { status: MatchStatus; label: string }[];
   onStatusClick?: (index: number) => void;
+  /** 있으면 알레르기 재료 줄에 표시 */
+  profile?: FamilyProfile | null;
 };
 
 const STATUS_STYLE: Record<MatchStatus, string> = {
@@ -20,7 +23,7 @@ const STATUS_STYLE: Record<MatchStatus, string> = {
 };
 
 /** 그룹별로 묶어 인분 스케일링된 재료를 표시 */
-export function IngredientList({ ingredients, servingsBase, servings, highlightKeys, statuses, onStatusClick }: Props) {
+export function IngredientList({ ingredients, servingsBase, servings, highlightKeys, statuses, onStatusClick, profile }: Props) {
   const scaled = scaleIngredients(ingredients, servingsBase, servings).map((ing, index) => ({ ing, index }));
   const groups = IngredientGroup.options.filter((g) => scaled.some((x) => x.ing.group === g));
   const hl = new Set(highlightKeys ?? []);
@@ -39,6 +42,7 @@ export function IngredientList({ ingredients, servingsBase, servings, highlightK
                     {i.optional && <span className="ml-1 text-xs text-gray-400">(선택)</span>}
                     {i.note && <span className="ml-1 text-xs text-gray-500">· {i.note}</span>}
                   </span>
+                  <AllergyChip name={i.name} profile={profile} />
                   <span className="shrink-0 font-medium text-gray-700">{formatAmount(i) || "약간"}</span>
                   {st && (
                     <button type="button" onClick={() => onStatusClick?.(index)} data-status={st.status}
