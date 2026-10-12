@@ -43,3 +43,17 @@ export function claudeMessage(text: string, extra: Record<string, unknown> = {})
     stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 1200, output_tokens: 2400 }, ...extra,
   };
 }
+
+export const SAMPLE_SCAN = {
+  store: "이마트 성수점",
+  purchasedAt: "2026-10-12",
+  items: [
+    { name: "우유", key: "milk", rawText: "서울우유 1L", qty: 1, unit: "팩", location: "냉장", category: "유제품", emoji: "🥛", shelfLifeDays: 10, memo: "서울우유 1L", isFood: true },
+    { name: "대파", key: "green_onion", rawText: "대파 1단", qty: 1, unit: "봉", location: "냉장", category: "채소", emoji: "🌿", shelfLifeDays: 10, memo: "", isFood: true },
+    { name: "만두", key: "dumpling", rawText: "비비고 왕교자 1.05kg", qty: 1.05, unit: "kg", location: "냉동", category: "냉동식품", emoji: "🥟", shelfLifeDays: 180, memo: "비비고", isFood: true },
+    { name: "종량제봉투", key: "trash_bag", rawText: "종량제봉투 20L", qty: 1, unit: "개", location: "실온", category: "기타", emoji: "🛍️", shelfLifeDays: null, memo: "", isFood: false },
+  ],
+};
+
+/** 작은 가짜 JPEG base64 (내용은 검증하지 않는다) */
+export const FAKE_IMAGE = "/9j/" + "A".repeat(400);

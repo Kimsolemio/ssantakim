@@ -3,6 +3,7 @@ import { FamilyProfile } from "@cook/shared";
 import { verifyFirebaseIdToken, AuthError, type Verified } from "./auth";
 import { selectProvider, describeAi, GenerationError, type AiEnv } from "./ai";
 import { generateRecipe } from "./recipe";
+import { scanReceipt } from "./receipt";
 
 export interface Env extends AiEnv {
   FIREBASE_PROJECT_ID: string;
@@ -47,11 +48,13 @@ async function authenticate(request: Request, env: Env): Promise<Verified> {
   return user;
 }
 
-async function readJson<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
+async function readJson<T>(request: Request, schema: z.ZodType<T>, maxBytes = 1_000_000): Promise<T> {
   const len = Number(request.headers.get("Content-Length") ?? "0");
-  if (len > 1_000_000) throw new HttpError(413, "요청이 너무 큽니다");
+  if (len > maxBytes) throw new HttpError(413, "요청이 너무 큽니다");
+  const text = await request.text();
+  if (text.length > maxBytes) throw new HttpError(413, "요청이 너무 큽니다");
   let body: unknown;
-  try { body = await request.json(); } catch { throw new HttpError(400, "JSON 본문이 필요합니다"); }
+  try { body = JSON.parse(text); } catch { throw new HttpError(400, "JSON 본문이 필요합니다"); }
   const parsed = schema.safeParse(body);
   if (!parsed.success) throw new HttpError(400, `요청 형식 오류: ${parsed.error.issues[0]?.path.join(".")} ${parsed.error.issues[0]?.message}`);
   return parsed.data;
@@ -64,6 +67,20 @@ const RecipeRequest = z.object({
   notes: z.string().max(500).nullable().optional(),
 });
 
+/** 사진 한 장: base64 (data: 접두사 없이). Claude는 장당 5MB까지 받는다 */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ImageInput = z.object({
+  mediaType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]),
+  // 큰 문자열 전체에 정규식을 돌리면 무료 요금제 CPU 한도(10ms)를 쓰므로 앞부분만 검사한다
+  data: z.string().min(100)
+    .refine((d) => /^[A-Za-z0-9+/]{64}/.test(d.slice(0, 64)), "base64 형식이 아닙니다 (data: 접두사 없이 보내야 합니다)")
+    .refine((d) => Math.floor((d.length * 3) / 4) <= MAX_IMAGE_BYTES, "사진 한 장이 너무 큽니다 (5MB 이하)"),
+});
+const ReceiptRequest = z.object({
+  images: z.array(ImageInput).min(1, "사진이 필요합니다").max(4, "사진은 4장까지 올릴 수 있습니다"),
+  today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
 async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const cors = corsHeaders(env, request);
@@ -72,7 +89,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 3,
+        ok: true, stage: 3, features: ["recipe", "pantry/receipt"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
         ai: describeAi(env),
       }, 200, cors);
@@ -86,7 +103,15 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json(result, 200, cors);
     }
 
-    // 4단계: /normalize, 5단계: /import/*, 6단계: /pantry/photo, /suggest
+    if (url.pathname === "/pantry/receipt" && request.method === "POST") {
+      const user = await authenticate(request, env);
+      const body = await readJson(request, ReceiptRequest, 12_000_000);
+      const result = await scanReceipt(selectProvider(env), body);
+      console.log(JSON.stringify({ route: "pantry/receipt", uid: user.uid, images: body.images.length, items: result.scan.items.length, provider: result.provider, model: result.model, usage: result.usage }));
+      return json(result, 200, cors);
+    }
+
+    // 4단계: /normalize, 5단계: /import/*, 6단계: /suggest
     throw new HttpError(404, "not found");
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, cors);

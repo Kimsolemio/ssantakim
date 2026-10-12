@@ -36,3 +36,14 @@ export function daysUntil(dateStr: string | null, today = new Date()): number | 
   const base = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   return Math.round((target.getTime() - base.getTime()) / 86400000);
 }
+
+/** 로컬 날짜 YYYY-MM-DD */
+export function localDate(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** YYYY-MM-DD + n일 → YYYY-MM-DD */
+export function addDays(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return localDate(new Date(y, m - 1, d + n));
+}

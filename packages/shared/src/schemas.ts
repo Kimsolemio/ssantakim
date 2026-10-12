@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FoodCategory } from "./food";
 
 /** 재료 표준 단위. "약간/적당량" 같은 비계량 표현은 unit="기타" + scalable=false 로 저장한다. */
 export const Unit = z.enum(["g", "kg", "ml", "L", "개", "큰술", "작은술", "컵", "줌", "쪽", "장", "봉", "팩", "캔", "기타"]);
@@ -84,8 +85,36 @@ export const FridgeItem = z.object({
   addedAt: z.string(), // ISO
   photoUrl: z.string().url().nullable().default(null),
   memo: z.string().optional(),
+  // 가상 냉장고(영수증 입력)에서 추가된 필드. 옛 데이터에는 없을 수 있다 → guessFood 로 추정
+  category: FoodCategory.optional(),
+  emoji: z.string().optional(),
+  source: z.enum(["manual", "receipt"]).optional(),
+  purchasedAt: z.string().nullable().optional(), // YYYY-MM-DD
 });
 export type FridgeItem = z.infer<typeof FridgeItem>;
+
+/** 영수증·주문내역 캡처 한 줄을 AI가 읽은 결과 */
+export const ReceiptItem = z.object({
+  name: z.string().min(1),          // 브랜드·용량을 뺀 일반 재료 이름 (예: 깐마늘)
+  key: z.string().min(1),           // 레시피 재료와 같은 규칙의 영문 snake_case (예: garlic)
+  rawText: z.string(),              // 영수증에 적힌 원래 글자
+  qty: z.number().nonnegative().nullable(),
+  unit: Unit,
+  location: StorageLocation,
+  category: FoodCategory,
+  emoji: z.string(),
+  shelfLifeDays: z.number().int().nonnegative().nullable(), // 산 날부터 보통 며칠 (추정)
+  memo: z.string(),                 // 브랜드·용량 등 (없으면 빈 문자열)
+  isFood: z.boolean(),              // 봉투·세제 등은 false
+});
+export type ReceiptItem = z.infer<typeof ReceiptItem>;
+
+export const ReceiptScan = z.object({
+  store: z.string().nullable(),
+  purchasedAt: z.string().nullable(), // YYYY-MM-DD, 영수증에 날짜가 있을 때만
+  items: z.array(ReceiptItem),
+});
+export type ReceiptScan = z.infer<typeof ReceiptScan>;
 
 export const ShoppingItem = z.object({
   name: z.string().min(1),

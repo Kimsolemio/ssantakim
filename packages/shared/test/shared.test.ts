@@ -61,3 +61,35 @@ describe("schemas", () => {
     }).success).toBe(true);
   });
 });
+
+import { guessFood, fridgeZone, receiptScanJsonSchema, ReceiptScan, addDays, localDate, FridgeItem as FI } from "../src";
+
+describe("virtual fridge helpers", () => {
+  it("guesses category and emoji from Korean names", () => {
+    expect(guessFood("서울우유")).toEqual({ category: "유제품", emoji: "🥛" });
+    expect(guessFood("배추")).toMatchObject({ category: "채소" });
+    expect(guessFood("배")).toMatchObject({ category: "과일" });
+    expect(guessFood("냉동 만두")).toMatchObject({ category: "냉동식품" });
+    expect(guessFood("삼겹살")).toMatchObject({ category: "육류", emoji: "🥩" });
+    expect(guessFood("정체불명")).toMatchObject({ category: "기타" });
+  });
+  it("places items in fridge zones", () => {
+    expect(fridgeZone("냉동", "육류")).toBe("freezer");
+    expect(fridgeZone("실온", "곡물·면")).toBe("pantry");
+    expect(fridgeZone("냉장", "음료")).toBe("door");
+    expect(fridgeZone("냉장", "달걀")).toBe("top");
+    expect(fridgeZone("냉장", "해산물")).toBe("bottom");
+    expect(fridgeZone("냉장", "과일")).toBe("crisper");
+    expect(fridgeZone("냉장", "반찬·가공")).toBe("middle");
+  });
+  it("date helpers use local calendar days", () => {
+    expect(addDays("2026-12-30", 3)).toBe("2027-01-02");
+    expect(localDate(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+  it("receipt schema is AI-safe and old fridge items still parse", () => {
+    const txt = JSON.stringify(receiptScanJsonSchema());
+    for (const k of ["minLength", "minimum", "maximum", "default", "$schema"]) expect(txt).not.toContain(`"${k}"`);
+    expect(ReceiptScan.safeParse({ store: null, purchasedAt: null, items: [] }).success).toBe(true);
+    expect(FI.safeParse({ name: "대파", key: "대파", qty: 1, unit: "개", location: "냉장", expiresAt: null, addedBy: "u", addedAt: "x" }).success).toBe(true);
+  });
+});
