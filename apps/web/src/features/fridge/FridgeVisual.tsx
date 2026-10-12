@@ -139,7 +139,7 @@ export function FridgeVisual({ items, recentIds, dimmedIds, onItemClick, openSig
   return (
     // 열린 문이 회전하며 화면 밖으로 나가 가로 스크롤이 생기지 않도록 잘라낸다
     <div className="-mx-1 flex flex-col items-center gap-3 overflow-hidden px-1 pb-1 pt-2">
-      <div className="fridge relative w-full max-w-[400px]" data-open={open ? "true" : "false"} data-testid="fridge">
+      <div className="fridge theme-light relative w-full max-w-[400px] text-ink" data-open={open ? "true" : "false"} data-testid="fridge">
         {/* 몸체 */}
         <div className="rounded-[28px] bg-[linear-gradient(160deg,#F2F1EE_0%,#E4E3DF_55%,#D7D6D1_100%)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,.8),inset_0_-1px_0_rgba(28,26,23,.06),0_28px_40px_-28px_rgba(28,26,23,.45)]">
           {/* 냉동실 */}

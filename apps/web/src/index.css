@@ -16,6 +16,11 @@
   --text-cook: 28px;     --text-cook--line-height: 40px;     --text-cook--letter-spacing: -0.02em;     --text-cook--font-weight: 600;
   --text-timer: 56px;    --text-timer--line-height: 60px;    --text-timer--letter-spacing: -0.02em;    --text-timer--font-weight: 600;
 
+  /* 기본 팔레트(orange-500 등)를 지워 토큰만 쓰게 한다 */
+  --color-*: initial;
+  --color-white: #FFFFFF;
+  --color-black: #000000;
+
   --color-canvas: #F3F2EE;
   --color-surface: #FFFFFF;
   --color-surface-2: #F0EEEA;
@@ -78,7 +83,31 @@
   --color-toast: #3A3733; --color-toast-action: #86D4B1; --color-scrim: rgb(0 0 0 / 0.6);
 }
 
-/* OS 다크 모드 연결은 모든 화면을 토큰으로 옮긴 뒤에 켠다 (마무리 단계) */
+
+/* 가상 냉장고는 흰 가전이라 다크 모드에서도 밝은 토큰을 쓴다 */
+.theme-light {
+  color-scheme: light;
+  --color-canvas: #F3F2EE; --color-surface: #FFFFFF; --color-surface-2: #F0EEEA; --color-fill-pressed: #E7E4DF;
+  --color-thumb: #FFFFFF; --color-line: #E8E5E0; --color-line-strong: #D9D5CF;
+  --color-ink: #1C1A17; --color-ink-2: #5E5850; --color-ink-3: #6F6962; --color-ink-disabled: #A8A29A;
+  --color-accent: #1F6B4F; --color-accent-pressed: #17543E; --color-accent-soft: #E6F1EB; --color-accent-strong: #17573F;
+  --color-on-accent: #FFFFFF; --color-success: #1F6B4F; --color-success-soft: #E6F1EB;
+  --color-warning: #8A5300; --color-warning-soft: #FFF4D9; --color-danger: #B42318; --color-danger-soft: #FDEDEB;
+}
+
+/* OS가 다크 모드면 앱도 어둡게 (설정에서 data-theme="light"로 끌 수 있게 해 둠) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --color-canvas: #141311; --color-surface: #1D1B19; --color-surface-2: #2A2825; --color-fill-pressed: #34312D;
+  --color-thumb: #3A3733; --color-line: #2E2B28; --color-line-strong: #45413C;
+  --color-ink: #F4F2EE; --color-ink-2: #BDB7AE; --color-ink-3: #9A948B; --color-ink-disabled: #625D57;
+  --color-accent: #6CBF9A; --color-accent-pressed: #5BAE89; --color-accent-soft: #1B3328; --color-accent-strong: #86D4B1;
+  --color-on-accent: #0C1F17; --color-success: #6CBF9A; --color-success-soft: #1B3328;
+  --color-warning: #F2C46B; --color-warning-soft: #362B14; --color-danger: #FF8F84; --color-danger-soft: #3A1C19;
+  --color-toast: #3A3733; --color-toast-action: #86D4B1; --color-scrim: rgb(0 0 0 / 0.6);
+}
+}
 
 @layer base {
   html, body { height: 100%; }
