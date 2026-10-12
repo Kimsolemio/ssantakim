@@ -104,7 +104,9 @@ npx firebase-tools emulators:start --only auth,firestore --project demo-cook   #
 ## 자동 테스트
 
 - 단위·통합 테스트: `pnpm test` (공용 스키마·인분 환산, Worker 토큰 검증·권한·요청 형식, Claude/Gemini 요청 형식과 오류 처리를 가짜 응답으로 검증).
-- 실제 Claude로 레시피 1건 생성해 보기(요금 1회 발생): `COOK_ANTHROPIC_API_KEY=sk-ant-... pnpm --filter @cook/worker test live`
+- 실제 AI로 확인하기(키가 있을 때만 돈다): 레시피 1건 생성 + 예시 영수증(`apps/worker/test/fixtures/sample-receipt.png`, "실제 거래 아님" 표시된 가짜 영수증) 인식.
+  `COOK_ANTHROPIC_API_KEY=sk-ant-... pnpm --filter @cook/worker test live` (Claude, 요금 2회 발생) 또는 `COOK_GEMINI_API_KEY=... pnpm --filter @cook/worker test live` (Gemini 무료).
+  영수증 테스트는 품목 12개 이상, 날짜, 보관 위치(우유 냉장·만두 냉동·라면 실온), 봉투는 식품 아님, 콜라 2개, 카드번호·합계가 결과에 없는지를 확인하고 읽은 품목 전체를 출력한다.
 - 브라우저 E2E(`e2e/run.mjs`): 가족 생성 → AI 레시피 생성 → 편집·저장 → 인분 환산 → 쿡 모드 → 즐겨찾기·폴더 → 실패 처리 → 영수증으로 냉장고 채우기(칸 배치·기한·애니메이션) → 직접 추가 → 두 번째 가족 구성원 초대 참여 → 실시간 반영까지 한 번에 검증한다. 터미널 3개가 필요하다.
 
 ```bash
