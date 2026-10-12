@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { FamilyProfile, RecipeDraft } from "@cook/shared";
 import { Sheet } from "../../components/Sheet";
+import { AiNotice } from "../../components/AiNotice";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { ServingsStepper } from "./RecipeDetail";
 
@@ -57,6 +58,7 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish }: Props
         {profile && (
           <p className="text-xs text-gray-500">가족 취향 반영: {profile.spicyLevel}{profile.kidsFriendly ? " · 아이 있음" : ""}{profile.allergies.length ? ` · 알레르기 ${profile.allergies.join(", ")}` : ""}</p>
         )}
+        <AiNotice what="요리 이름과 가족 취향(알레르기 포함)" />
         {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
         {busy ? (
           <div className="flex items-center justify-between rounded-xl bg-orange-50 px-4 py-3 text-sm text-orange-800">

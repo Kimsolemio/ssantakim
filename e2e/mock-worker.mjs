@@ -46,6 +46,7 @@ let calls = 0;
 createServer((req, res) => {
   const cors = { "Access-Control-Allow-Origin": req.headers.origin ?? "*", "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,OPTIONS" };
   if (req.method === "OPTIONS") { res.writeHead(204, cors); return res.end(); }
+  if (req.url === "/health") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, ai: { provider: process.env.MOCK_PROVIDER ?? "gemini", model: "mock" } })); }
   let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
     const auth = req.headers.authorization ?? "";
     if (!auth.startsWith("Bearer ") || auth.length < 40) { res.writeHead(401, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ error: "로그인이 필요합니다" })); }

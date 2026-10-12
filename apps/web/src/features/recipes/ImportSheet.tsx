@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ImportResult, RecipeDraft } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
+import { AiNotice } from "../../components/AiNotice";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { prepareImage, type PreparedImage } from "../../lib/image";
 import type { SharedPayload } from "../../lib/share";
@@ -164,6 +165,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
             {mode === "link" && <button type="button" onClick={() => toPaste(null)} className="ml-2 underline">캡션·사진으로 하기</button>}
           </div>
         )}
+        {!busy && <AiNotice what={mode === "link" ? "링크의 글(유튜브는 영상)" : "붙여넣은 글과 사진"} />}
         {miss && (
           <div className="flex flex-col gap-2 rounded-2xl bg-white p-4 text-sm" data-testid="import-miss">
             <p className="font-semibold">레시피를 찾지 못했어요</p>

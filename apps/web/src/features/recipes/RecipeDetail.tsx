@@ -12,6 +12,7 @@ import { useShopping, addShoppingItems } from "../shopping/useShopping";
 import { normalizeKeysInBackground, remapStepKeys } from "../../lib/normalize";
 import { useRecipeMatches, statusLabel, FridgeSummary, AddToShoppingSheet, LinkSheet } from "./FridgeCheck";
 import { updateRecipe, type FolderDoc } from "./useRecipes";
+import { AllergyBanner } from "./AllergyBanner";
 
 type Props = {
   recipe: Recipe;
@@ -101,6 +102,7 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
         <button onClick={() => setMenu(true)} aria-label="더보기" className="px-2 py-2 text-xl">⋯</button>
       </>}>
       <div className="flex flex-col gap-4 p-4 pb-24">
+        <AllergyBanner ingredients={recipe.ingredients} profile={family?.profile} />
         <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
           <span className="rounded-full bg-orange-100 px-2 py-0.5 text-orange-800">{SOURCE_LABEL[recipe.source.type]}</span>
           {recipe.timeMinutes != null && <span>⏱ {recipe.timeMinutes}분</span>}

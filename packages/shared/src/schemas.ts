@@ -97,6 +97,8 @@ export const FridgeItem = z.object({
   emoji: z.string().optional(),
   source: z.enum(["manual", "receipt"]).optional(),
   purchasedAt: z.string().nullable().optional(), // YYYY-MM-DD
+  /** 유통기한이 포장 표시가 아니라 보통 보관 기간으로 추정한 값인가 */
+  expiresEstimated: z.boolean().optional(),
 });
 export type FridgeItem = z.infer<typeof FridgeItem>;
 

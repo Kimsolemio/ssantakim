@@ -190,7 +190,7 @@ assert.deepEqual(await zoneNames("pantry"), ["라면", "양파"]);
 assert.equal(await mom.locator('[data-testid="fridge-item"][data-new="true"]').count(), 13);
 // 유통기한: 영수증 날짜(어제) + 보관 기간. 우유 10일 → D-9, 고등어 2일 → D-1
 await mom.getByTestId("zone-top").getByLabel(/^우유/).getByText("NEW").waitFor();
-assert.match(await mom.getByTestId("zone-bottom").getByLabel(/^고등어/).getAttribute("aria-label"), /D-1/);
+assert.match(await mom.getByTestId("zone-bottom").getByLabel(/^고등어/).getAttribute("aria-label"), /D-1 추정/);
 await mom.getByTestId("zone-top").getByLabel(/^우유/).click();
 const today = new Date(); const exp = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 9);
 const ymd = `${exp.getFullYear()}-${String(exp.getMonth() + 1).padStart(2, "0")}-${String(exp.getDate()).padStart(2, "0")}`;
@@ -202,7 +202,7 @@ assert.equal(await mom.locator('[data-testid="fridge-item"][data-new="true"]').c
 // 문 닫으면 임박 메모(고등어)가 붙어 있다
 await mom.getByTestId("fridge-toggle").click();
 await mom.waitForTimeout(900);
-await mom.getByText(/📌 고등어 D-1/).waitFor();
+await mom.getByText(/📌 고등어 ~D-1/).waitFor(); // 영수증 기한은 추정값
 await mom.screenshot({ path: `${shots}/16-fridge-closed-magnets.png` });
 await mom.getByTestId("fridge-toggle").click();
 // 목록 보기에서도 보인다

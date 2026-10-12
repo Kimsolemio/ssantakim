@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { IngredientGroup, RecipeDraft, Unit, provisionalKey, type Ingredient, type Step } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { remapStepKeys } from "../../lib/normalize";
+import { useFamily } from "../../lib/family";
+import { AllergyBanner } from "./AllergyBanner";
 
 type Props = {
   title: string;
@@ -29,6 +31,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
   const [tagsText, setTagsText] = useState(initial.tags.join(", "));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { family } = useFamily();
 
   // 재료 이름을 바꾸면 예전 key(예전 이름의 것)를 버린다. 처음 key 는 단계의 ingredientKeys 를 고칠 때 쓴다
   const [origKeys, setOrigKeys] = useState<(string | null)[]>(() => initial.ingredients.map((i) => i.key));
@@ -83,6 +86,7 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
       <div className="flex flex-col gap-5 p-4">
         {note && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800" data-testid="import-note">✅ {note}{initial.source.url ? " · 원본 링크가 함께 저장돼요" : ""}. 저장 전에 재료와 순서를 확인해 주세요.</p>}
         {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
+        <AllergyBanner ingredients={d.ingredients.filter((i) => i.name.trim())} profile={family?.profile} />
 
         <section className="flex flex-col gap-2">
           <input className={`${field} text-lg font-bold`} placeholder="요리 이름" value={d.title} onChange={(e) => setD({ ...d, title: e.target.value })} />

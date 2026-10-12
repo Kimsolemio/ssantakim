@@ -149,7 +149,7 @@ export function ShoppingTab() {
   );
 }
 
-type MoveRow = { id: string; name: string; key: string; qty: number | null; unit: Unit; location: StorageLocation; expiresAt: string | null; category: FoodCategory; emoji: string; memo?: string };
+type MoveRow = { id: string; name: string; key: string; qty: number | null; unit: Unit; location: StorageLocation; expiresAt: string | null; estimated: boolean; category: FoodCategory; emoji: string; memo?: string };
 
 /** 장본 것을 냉장고로: 보관 위치와 유통기한만 확인 */
 function MoveToFridgeSheet({ items, onClose, onConfirm }: { items: ShoppingDoc[]; onClose: () => void; onConfirm: (inputs: (FridgeInput & { key: string })[], movedIds: string[]) => Promise<void> }) {
@@ -159,7 +159,7 @@ function MoveToFridgeSheet({ items, onClose, onConfirm }: { items: ShoppingDoc[]
     const category = it.category ?? guess.category;
     const days = DEFAULT_SHELF_DAYS[category];
     return { id: it.id, name: it.name, key: it.key, qty: it.qty, unit: it.unit, location: defaultLocation(category),
-      expiresAt: days != null ? addDays(today, days) : null, category, emoji: it.emoji ?? guess.emoji, memo: it.memo };
+      expiresAt: days != null ? addDays(today, days) : null, estimated: days != null, category, emoji: it.emoji ?? guess.emoji, memo: it.memo };
   }));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -179,8 +179,9 @@ function MoveToFridgeSheet({ items, onClose, onConfirm }: { items: ShoppingDoc[]
                   ))}
                 </div>
                 <label className="flex items-center gap-1 text-gray-500">기한
-                  <input type="date" className="rounded-lg border border-orange-200 px-2 py-1" value={r.expiresAt ?? ""} onChange={(e) => set(i, { expiresAt: e.target.value || null })} />
+                  <input type="date" className="rounded-lg border border-orange-200 px-2 py-1" value={r.expiresAt ?? ""} onChange={(e) => set(i, { expiresAt: e.target.value || null, estimated: false })} />
                 </label>
+                {r.estimated && r.expiresAt && <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">추정</span>}
               </div>
             </li>
           ))}
@@ -190,7 +191,7 @@ function MoveToFridgeSheet({ items, onClose, onConfirm }: { items: ShoppingDoc[]
           onClick={async () => {
             setBusy(true); setErr(null);
             try {
-              await onConfirm(rows.map((r) => ({ name: r.name, key: r.key, qty: r.qty, unit: r.unit, location: r.location, expiresAt: r.expiresAt,
+              await onConfirm(rows.map((r) => ({ name: r.name, key: r.key, qty: r.qty, unit: r.unit, location: r.location, expiresAt: r.expiresAt, expiresEstimated: r.estimated && !!r.expiresAt,
                 memo: r.memo, category: r.category, emoji: r.emoji, source: "manual", purchasedAt: today })), rows.map((r) => r.id));
               onClose();
             } catch (e) { setErr(e instanceof Error ? e.message : "넣지 못했습니다"); setBusy(false); }

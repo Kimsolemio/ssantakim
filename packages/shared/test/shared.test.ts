@@ -189,3 +189,23 @@ describe("matching", () => {
     expect(JSON.stringify(normalizedNamesJsonSchema())).not.toContain('"minLength"');
   });
 });
+
+import { findAllergens, findDislikes } from "../src";
+
+describe("allergy check", () => {
+  const ings = [{ name: "새우젓" }, { name: "진간장" }, { name: "꽃게" }, { name: "땅콩버터" }, { name: "마요네즈" }, { name: "애호박" }, { name: "게맛살" }];
+  it("finds hidden allergens by ingredient name", () => {
+    expect(findAllergens(ings, ["새우"]).map((h) => h.ingredient)).toEqual(["새우젓"]);
+    expect(findAllergens(ings, ["갑각류"]).map((h) => h.ingredient)).toEqual(["새우젓", "꽃게", "게맛살"]);
+    expect(findAllergens(ings, ["밀"]).map((h) => h.ingredient)).toEqual(["진간장"]);
+    expect(findAllergens(ings, ["계란"]).map((h) => h.ingredient)).toEqual(["마요네즈"]);
+    expect(findAllergens(ings, ["땅콩"]).map((h) => h.ingredient)).toEqual(["땅콩버터"]);
+    expect(findAllergens(ings, ["견과류"]).map((h) => h.ingredient)).toEqual(["땅콩버터"]);
+    expect(findAllergens(ings, ["복숭아"])).toEqual([]);
+    // 사전에 없는 알레르기도 이름으로 찾는다
+    expect(findAllergens([{ name: "키위 2개" }], ["키위"])).toHaveLength(1);
+  });
+  it("finds disliked ingredients", () => {
+    expect(findDislikes([{ name: "오이" }, { name: "고수" }], ["고수"]).map((h) => h.ingredient)).toEqual(["고수"]);
+  });
+});

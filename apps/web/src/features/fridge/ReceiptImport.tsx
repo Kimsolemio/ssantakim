@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { StorageLocation, Unit, addDays, daysUntil, localDate, provisionalKey, type ReceiptScan, type ReceiptItem } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
+import { AiNotice } from "../../components/AiNotice";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { prepareImage, type PreparedImage } from "../../lib/image";
 import type { FridgeInput } from "./useFridge";
@@ -21,6 +22,8 @@ export type Candidate = {
   unit: Unit;
   location: StorageLocation;
   expiresAt: string | null;
+  /** 기한이 AI 추정값인가 (사람이 고치면 false) */
+  estimated: boolean;
   emoji: string;
   category: ReceiptItem["category"];
   memo: string;
@@ -48,6 +51,7 @@ export function toCandidates(scan: ReceiptScan, today: string): Candidate[] {
     checked: it.isFood,
     name: it.name, key: it.key, qty: it.qty, unit: it.unit, location: it.location,
     expiresAt: it.shelfLifeDays != null ? addDays(base, it.shelfLifeDays) : null,
+    estimated: it.shelfLifeDays != null,
     emoji: it.emoji || "📦", category: it.category, memo: it.memo, rawText: it.rawText, isFood: it.isFood,
     aiName: it.name, aiKey: it.key,
   }));
@@ -130,7 +134,7 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
     try {
       clearPending(pendingName);
       await onConfirm(chosen.map((c) => ({
-        name: c.name.trim(), key: c.key, qty: c.qty, unit: c.unit, location: c.location, expiresAt: c.expiresAt,
+        name: c.name.trim(), key: c.key, qty: c.qty, unit: c.unit, location: c.location, expiresAt: c.expiresAt, expiresEstimated: c.estimated && !!c.expiresAt,
         memo: c.memo.trim() || undefined, category: c.category, emoji: c.emoji, source: "receipt",
         purchasedAt: scan ? purchaseBase(scan.purchasedAt, today) : today,
       })));
@@ -164,7 +168,8 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
           ))}
         </div>
         <label className="flex items-center gap-1 text-gray-500">기한
-          <input className={small + " py-1"} type="date" value={c.expiresAt ?? ""} onChange={(e) => set(c.id, { expiresAt: e.target.value || null })} />
+          <input className={small + " py-1"} type="date" value={c.expiresAt ?? ""} onChange={(e) => set(c.id, { expiresAt: e.target.value || null, estimated: false })} />
+          {c.estimated && c.expiresAt && <span className="rounded-full bg-gray-100 px-1.5 text-[11px] text-gray-500">추정</span>}
         </label>
       </div>
       <p className="mt-1 truncate pl-7 text-[11px] text-gray-400">영수증: {c.rawText}{c.memo ? ` · ${c.memo}` : ""}</p>
@@ -207,7 +212,8 @@ export function ReceiptImport({ onClose, onConfirm }: Props) {
           {err && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{err}</p>}
           <button disabled={images.length === 0 || preparing || !workerConfigured} onClick={analyze}
             className="rounded-xl bg-orange-500 py-3.5 text-lg font-semibold text-white disabled:opacity-40">🧾 분석하기</button>
-          <p className="text-center text-xs text-gray-400">사진은 앱에 저장하지 않고 분석에만 써요. 카드번호 같은 결제 정보는 결과에 넣지 않도록 했어요.</p>
+          <AiNotice what="영수증 사진" />
+          <p className="text-center text-xs text-gray-400">사진은 앱에 저장하지 않아요. 카드번호·적립번호 부분은 가리고 찍으면 더 안전해요.</p>
         </div>
       )}
 

@@ -19,24 +19,27 @@ export function itemLook(it: FridgeDoc) {
   return { category, emoji: it.emoji || (it.category ? (guess.category === it.category ? guess.emoji : CATEGORY_EMOJI[it.category]) : guess.emoji), zone: fridgeZone(it.location, category) };
 }
 
-function expiryInfo(expiresAt: string | null) {
+/** 임박 표시. 추정 기한은 "~"를 붙이고, 읽어 주는 이름에는 "추정"을 붙인다 */
+export function expiryInfo(expiresAt: string | null, estimated?: boolean) {
   const d = daysUntil(expiresAt);
   if (d === null) return null;
-  if (d < 0) return { label: "지남", cls: "bg-gray-500 text-white", d };
-  if (d === 0) return { label: "오늘", cls: "bg-red-600 text-white", d };
-  if (d <= 3) return { label: `D-${d}`, cls: "bg-red-500 text-white", d };
-  if (d <= 7) return { label: `D-${d}`, cls: "bg-amber-400 text-amber-950", d };
+  const mark = estimated ? "~" : "";
+  const say = estimated ? " 추정" : "";
+  if (d < 0) return { label: `${mark}지남`, spoken: `지남${say}`, cls: "bg-gray-500 text-white", d };
+  if (d === 0) return { label: `${mark}오늘`, spoken: `오늘까지${say}`, cls: "bg-red-600 text-white", d };
+  if (d <= 3) return { label: `${mark}D-${d}`, spoken: `D-${d}${say}`, cls: "bg-red-500 text-white", d };
+  if (d <= 7) return { label: `${mark}D-${d}`, spoken: `D-${d}${say}`, cls: "bg-amber-400 text-amber-950", d };
   return null;
 }
 
 function Tile({ it, isNew, delay, dim, size, onClick }: { it: FridgeDoc; isNew: boolean; delay: number; dim: boolean; size: "md" | "sm"; onClick: () => void }) {
   const { emoji, zone } = itemLook(it);
-  const exp = expiryInfo(it.expiresAt);
+  const exp = expiryInfo(it.expiresAt, it.expiresEstimated);
   const amount = formatAmount({ qty: it.qty, unit: it.unit });
   return (
     <button type="button" onClick={onClick} data-testid="fridge-item" data-zone={zone} data-new={isNew ? "true" : undefined}
-      aria-label={`${it.name}${amount ? ` ${amount}` : ""}${exp ? ` ${exp.label}` : ""}`}
-      title={`${it.name}${amount ? ` · ${amount}` : ""}${it.expiresAt ? ` · ~${it.expiresAt}` : ""}`}
+      aria-label={`${it.name}${amount ? ` ${amount}` : ""}${exp ? ` ${exp.spoken}` : ""}`}
+      title={`${it.name}${amount ? ` · ${amount}` : ""}${it.expiresAt ? ` · ${it.expiresEstimated ? "약 " : ""}${it.expiresAt}까지` : ""}`}
       className={`relative flex flex-col items-center rounded-xl bg-white/70 shadow-sm ring-1 ring-black/5 transition active:scale-95 ${size === "md" ? "w-[52px] px-0.5 pb-0.5 pt-1" : "w-[38px] px-0.5 pb-0.5 pt-0.5"} ${dim ? "opacity-25" : ""} ${isNew ? "item-new" : ""}`}
       style={isNew ? ({ "--delay": `${delay}ms` } as React.CSSProperties) : undefined}>
       <span className={`${size === "md" ? "text-[26px]" : "text-[19px]"} leading-none drop-shadow-sm`} aria-hidden>{emoji}</span>
@@ -160,7 +163,7 @@ export function FridgeVisual({ items, recentIds, dimmedIds, onItemClick, openSig
               <div className="absolute right-5 top-6 flex w-36 flex-col gap-2">
                 {soon.slice(0, 3).map((it, i) => (
                   <span key={it.id} className={`rounded-sm bg-yellow-100 px-2 py-1.5 text-xs font-medium text-yellow-900 shadow ${i % 2 ? "rotate-2" : "-rotate-2"}`}>
-                    📌 {it.name} {expiryInfo(it.expiresAt)?.label ?? ""}
+                    📌 {it.name} {expiryInfo(it.expiresAt, it.expiresEstimated)?.label ?? ""}
                   </span>
                 ))}
                 <span className="rounded-sm bg-white/80 px-2 py-1.5 text-xs text-slate-600 shadow">🧊 {fridgeCount}개 보관 중</span>

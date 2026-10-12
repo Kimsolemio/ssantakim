@@ -11,7 +11,7 @@ import { useShopping, deleteShoppingItems, addShoppingItems } from "../shopping/
 import { sameFood } from "@cook/shared";
 import { FridgeItemForm } from "./FridgeItemForm";
 
-function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
+function ExpiryBadge({ expiresAt, estimated }: { expiresAt: string | null; estimated?: boolean }) {
   const d = daysUntil(expiresAt);
   if (d === null) return null;
   let cls = "bg-gray-100 text-gray-600";
@@ -20,7 +20,7 @@ function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
   else if (d === 0) { cls = "bg-red-500 text-white"; label = "오늘까지"; }
   else if (d <= 3) { cls = "bg-red-100 text-red-700"; }
   else if (d <= 7) { cls = "bg-amber-100 text-amber-700"; }
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`} title={estimated ? "보통 보관 기간으로 추정한 날짜" : undefined}>{label}{estimated ? " · 추정" : ""}</span>;
 }
 
 export function FridgeTab() {
@@ -135,7 +135,7 @@ export function FridgeTab() {
                     <div className="flex items-center gap-2">
                       <span aria-hidden>{itemLook(it).emoji}</span>
                       <span className="truncate font-medium">{it.name}</span>
-                      <ExpiryBadge expiresAt={it.expiresAt} />
+                      <ExpiryBadge expiresAt={it.expiresAt} estimated={it.expiresEstimated} />
                     </div>
                     {it.memo && <p className="truncate text-xs text-gray-500">{it.memo}</p>}
                   </div>

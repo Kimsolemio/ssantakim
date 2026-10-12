@@ -45,6 +45,8 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, o
         qty: qty.trim() === "" ? null : Number(qty),
         unit, location,
         expiresAt: expiresAt || null,
+        // 날짜를 그대로 두면 추정 여부도 그대로, 사람이 고르면 추정이 아니다
+        expiresEstimated: (expiresAt || null) === (initial?.expiresAt ?? null) ? (initial?.expiresEstimated ?? false) && !!expiresAt : false,
         memo: memo.trim(),
         category: cat,
         emoji,
@@ -85,7 +87,8 @@ export function FridgeItemForm({ initial, title, onSubmit, onDelete, onUsedUp, o
           ))}
         </div>
         <div>
-          <input className={field} type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
+          <label className="mb-1 block text-xs text-gray-500">유통기한{initial?.expiresEstimated && expiresAt === (initial.expiresAt ?? "") ? " (보통 보관 기간으로 추정한 날짜예요. 포장에 적힌 날짜로 고쳐 주세요)" : ""}</label>
+          <input className={field} type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} aria-label="유통기한" />
           <div className="mt-2 flex gap-2 text-sm">
             {[3, 7, 14, 30].map((n) => (
               <button type="button" key={n} onClick={() => setExpiresAt(addDays(n))} className="rounded-full bg-orange-100 px-3 py-1">+{n}일</button>
