@@ -30,7 +30,11 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     setFamilyId(null);
     setFamily(null);
     setLoading(true);
-    return onSnapshot(doc(getDb(), "users", user.uid), (snap) => {
+    // 가족 만들기·참여는 한 번에(batch) 저장된다. 로컬에 먼저 반영된(아직 서버 확정 전) 값으로
+    // 가족 데이터를 읽기 시작하면 보안 규칙이 거절하고 그 구독은 다시 시도하지 않으므로,
+    // 서버가 저장을 확정한 스냅샷만 사용한다.
+    return onSnapshot(doc(getDb(), "users", user.uid), { includeMetadataChanges: true }, (snap) => {
+      if (snap.metadata.hasPendingWrites) return;
       setFamilyId((snap.data()?.familyId as string | undefined) ?? null);
       setLoading(false);
     }, () => setLoading(false));

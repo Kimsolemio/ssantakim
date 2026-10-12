@@ -19,6 +19,8 @@ Run `pnpm install --frozen-lockfile` and `pnpm test:rules` with Node 22 and Java
 
 Local verification: 11/11 rules tests passed using Firebase CLI 13.35.1 / Firestore emulator 1.19.8 on Java 17 (the installed runtime). The checked-in CLI 15.33.0 requires Java 21, which CI provisions. Typecheck and production build passed. Browser UI end-to-end tests and production deployment were not performed.
 
+Browser E2E (`e2e/run.mjs`, 2026-10-12): the first run under these rules found a client race. The batched create/join wrote the `users/{uid}` pointer to the local cache before the server commit, so family and collection listeners started early, were denied by the rules, and stayed dead (blank family name, `Null value error` on list). `FamilyProvider` now ignores user-pointer snapshots with pending writes. After that fix the full scenario passes: create, invite join, shared edits in real time, outsider isolation, cook mode.
+
 Tests cover atomic creation, collision rejection, valid and repeated joins, shared inventory, profile edits, missing/invalid/cross-family proofs, direct self-add, extra-user injection, membership replacement/removal/duplication, invitation mutation/enumeration, anonymous access, forged user pointers, cross-family data access, revoked codes and stale proofs, and authorization-record writes.
 
 ## Deployment and remaining limits
