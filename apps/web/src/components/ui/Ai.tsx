@@ -18,22 +18,25 @@ export function AiPill({ className = "", ...rest }: ButtonHTMLAttributes<HTMLBut
 }
 
 /** 지난 초 (AI 진행 표시용) */
-export function useSeconds(running = true) {
-  const [sec, setSec] = useState(0);
+export function useSeconds(running = true, startedAt?: number) {
+  const since = () => (startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0);
+  const [sec, setSec] = useState(since);
   useEffect(() => {
     if (!running) { setSec(0); return; }
-    const start = Date.now();
+    const start = startedAt ?? Date.now();
+    setSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
     const t = setInterval(() => setSec(Math.floor((Date.now() - start) / 1000)), 1000);
     return () => clearInterval(t);
-  }, [running]);
+  }, [running, startedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   return sec;
 }
 
 /** AI 작업 중 (모든 AI 기능 공통). messages 는 6초마다 다음 문구로 */
-export function AiProgress({ messages, typical, onCancel, size = "lg", icon, className = "" }: {
+export function AiProgress({ messages, typical, onCancel, size = "lg", icon, className = "", startedAt }: {
   messages: string[]; typical?: string; onCancel?: () => void; size?: "lg" | "sm"; icon?: ReactNode; className?: string;
+  /** 탭을 옮겼다 와도 이어서 세도록 시작 시각(ms) */ startedAt?: number;
 }) {
-  const sec = useSeconds();
+  const sec = useSeconds(true, startedAt);
   const msg = messages[Math.min(Math.floor(sec / 6), messages.length - 1)] ?? "AI가 일하는 중…";
   if (size === "sm") {
     return (

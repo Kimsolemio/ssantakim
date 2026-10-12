@@ -58,6 +58,7 @@ await mom.screenshot({ path: `${shots}/01-recipes-empty.png` });
 await mom.getByLabel("우리 가족").click();
 const code = (await mom.getByTestId("invite-code").textContent()).trim();
 assert.match(code, /^[A-Z0-9]{6}$/);
+await mom.getByTestId("usage-left").getByText("36회").waitFor();
 // 취향은 바뀔 때마다 저장된다
 await mom.getByRole("switch", { name: "아이가 함께 먹어요" }).click();
 await mom.getByTestId("toast").getByText("저장했어요").waitFor();
@@ -224,7 +225,7 @@ await mom.getByTestId("zone-crisper").getByLabel(/^대파 2개 D-3/).waitFor();
 
 // ---------- 4단계: 냉장고 대조 → 장보기 → 요리 후 차감 → 장본 것 냉장고로 ----------
 await mom.locator("nav").getByText("장보기", { exact: true }).click();
-await mom.getByText("살 것이 없어요.").waitFor(); // 영수증으로 산 두부는 장보기에서 지워졌다
+await mom.getByText("살 것이 없어요").waitFor(); // 영수증으로 산 두부는 장보기에서 지워졌다
 assert.equal(await mom.getByTestId("shopping-row").count(), 0);
 await mom.locator("nav").getByText("냉장고", { exact: true }).click();
 for (const [name, qty, unit] of [["스파게티면", "500", "g"], ["깐마늘", "200", "g"], ["올리브유", "500", "ml"]]) {
@@ -303,12 +304,12 @@ await mom.getByText("추가", { exact: true }).click();
 await mom.getByTestId("shopping-row").filter({ hasText: "우유" }).getByText("2개").waitFor();
 await mom.getByLabel("소금 담음").check();
 await mom.getByLabel("스파게티면 담음").check();
-await mom.getByText("장바구니에 담음 2").waitFor();
+await mom.getByText("담은 것 2").waitFor();
 await mom.screenshot({ path: `${shots}/19-shopping.png` });
 await mom.getByTestId("move-to-fridge").click();
 assert.equal(await mom.getByTestId("move-row").count(), 2);
-await mom.getByText("🧊 2개 넣기").click();
-await mom.getByText("🎉 장본 것 2개를 냉장고에 넣었어요").waitFor();
+await mom.getByRole("button", { name: "2개 넣기", exact: true }).click();
+await mom.getByTestId("toast").getByText("장본 것 2개를 냉장고에 넣었어요").waitFor();
 await mom.getByTestId("fridge").waitFor();
 assert.equal(await mom.locator('[data-testid="fridge-item"][data-new="true"]').count(), 2);
 await mom.getByTestId("zone-pantry").getByLabel(/^스파게티면 100g/).waitFor(); // 곡물·면 → 실온
@@ -426,28 +427,29 @@ await mom.locator("nav").getByText("레시피", { exact: true }).click();
 await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
 await mom.getByRole("heading", { name: "오늘 뭐 먹지?" }).waitFor();
 const mackerel = mom.getByTestId("expiring-card").filter({ hasText: "고등어" });
-await mackerel.getByText(/D-1 추정/).waitFor();
+await mackerel.getByLabel(/D-1 추정/).waitFor();
+await mackerel.getByText("~D-1").waitFor();
 await mackerel.click();
 assert.equal(await mackerel.getAttribute("aria-pressed"), "true");
 // 저장된 레시피 중 지금 만들 수 있는 것 (알리오올리오: 스파게티면·마늘·올리브유·소금이 냉장고에)
 await mom.getByTestId("fit-row").filter({ hasText: "알리오올리오" }).getByText("재료가 다 있어요").waitFor();
-await mom.getByTestId("usage-left").getByText("오늘 남은 AI 사용 36회").waitFor();
-await mom.getByRole("button", { name: "⚡ 15분 안에" }).click();
+await mom.getByTestId("open-conditions").click();
+await mom.getByRole("button", { name: "15분 안에" }).click();
 await mom.getByLabel("빼고 싶은 재료").fill("오이");
 await mom.getByRole("button", { name: "추가", exact: true }).click();
 await mom.getByRole("button", { name: "오이 빼기 취소" }).waitFor();
 await mom.screenshot({ path: `${shots}/23-today-form.png` });
-await mom.getByText("✨ 메뉴 5개 추천받기").click();
+await mom.getByRole("button", { name: "이 조건으로 추천받기" }).click();
 await mom.getByTestId("suggest-card").first().waitFor({ timeout: 15000 });
 assert.equal(await mom.getByTestId("suggest-card").count(), 5);
 assert.match(await mom.getByTestId("suggest-card").first().textContent(), /꼭 쓰기: 고등어 \/ 분위기: 15분 안에 \/ 빼기: 오이/);
 await mom.screenshot({ path: `${shots}/24-today-suggestions.png` });
 const zucchini = mom.getByTestId("suggest-card").filter({ hasText: "두부 된장찌개" });
-await zucchini.getByText("🛒 살 것: 애호박").waitFor();
-await zucchini.getByText("🛒 살 것 담기").click();
-await zucchini.getByText("✓ 담았어요").waitFor();
+await zucchini.getByText(/살 것\s*애호박/).waitFor();
+await zucchini.getByText("살 것 담기").click();
+await zucchini.getByText("담았어요", { exact: true }).waitFor();
 // 고른 메뉴로 바로 레시피 만들기 → 레시피 탭의 확인 화면
-await mom.getByTestId("suggest-card").filter({ hasText: "고등어 구이" }).getByText("✨ 레시피 만들기").click();
+await mom.getByTestId("suggest-card").filter({ hasText: "고등어 구이" }).getByRole("button", { name: "레시피 만들기", exact: true }).click();
 await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
 assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue(), "고등어 구이");
 await mom.getByLabel("뒤로").click();
@@ -455,10 +457,11 @@ await mom.getByTestId("pending-draft").getByText("버리기").click();
 // 다시 와도 추천이 남아 있고, "다른 메뉴로"는 다른 메뉴를 준다
 await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
 await mom.getByTestId("suggest-card").filter({ hasText: "고등어 구이" }).waitFor();
-await mom.getByText("🔄 다른 메뉴로").click();
+await mom.getByRole("button", { name: "다른 메뉴", exact: true }).click();
 await mom.getByTestId("suggest-card").filter({ hasText: "고등어 김치찜" }).waitFor({ timeout: 15000 });
 assert.equal(await mom.getByTestId("suggest-card").filter({ hasText: "고등어 구이" }).count(), 0);
-// 내 레시피 → 상세
+// 내 레시피 → 상세 (추천 결과를 닫고 처음 화면으로)
+await mom.getByRole("button", { name: "처음으로" }).click();
 await mom.getByTestId("fit-row").filter({ hasText: "알리오올리오" }).click();
 await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
 await mom.getByLabel("뒤로").click();

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { CircleAlert, CircleCheckBig } from "lucide-react";
 
 type Action = { label: string; onClick: () => void };
-type ToastOpts = { action?: Action; kind?: "done" | "error" | "plain"; /** 하단 고정 버튼이 있는 화면이면 그 위로 */ raised?: boolean };
+type ToastOpts = { action?: Action; kind?: "done" | "error" | "plain"; /** 하단 고정 버튼이 있는 화면이면 그 위로 ("aboveTabs": 탭바 위 고정 버튼) */ raised?: boolean | "aboveTabs" };
 type ToastState = { id: number; message: string } & ToastOpts;
 
 const Ctx = createContext<{ show: (message: string, opts?: ToastOpts) => void; hide: () => void } | null>(null);
@@ -30,7 +30,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 function ToastView({ t, onAction }: { t: ToastState; onAction: () => void }) {
-  const bottom = t.raised ? "calc(var(--safe-bottom) + 92px)" : "calc(var(--safe-bottom) + 56px + 12px)";
+  const bottom = t.raised === "aboveTabs" ? "calc(var(--safe-bottom) + 148px)"
+    : t.raised ? "calc(var(--safe-bottom) + 92px)" : "calc(var(--safe-bottom) + 56px + 12px)";
   return (
     <div role={t.kind === "error" ? "alert" : "status"} aria-live="polite" data-testid="toast"
       className="fixed inset-x-0 z-[80] mx-auto flex w-[calc(100%-40px)] max-w-[440px] items-center gap-3 rounded-card bg-toast py-3 pl-4 pr-2 text-callout text-white shadow-overlay animate-toast-in"

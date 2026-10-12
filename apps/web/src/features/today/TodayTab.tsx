@@ -1,14 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { MenuSuggestion } from "@cook/shared";
+import { Check, ChevronRight, Plus, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { workerConfigured } from "../../lib/api";
 import { AiNotice } from "../../components/AiNotice";
 import { Sheet } from "../../components/Sheet";
+import { AiProgress } from "../../components/ui/Ai";
+import { Badge } from "../../components/ui/Badge";
+import { Banner } from "../../components/ui/Banner";
+import { Button } from "../../components/ui/Button";
+import { ChoiceChip, InputChip, LockedChip } from "../../components/ui/Chip";
+import { SearchField, TextField } from "../../components/ui/Field";
+import { FoodThumb } from "../../components/ui/FoodThumb";
+import { Card, SectionHeader, TextAction, rowLinePlain } from "../../components/ui/Section";
+import { Stepper } from "../../components/ui/Stepper";
+import { useToast } from "../../components/ui/Toast";
+import { TabHeader } from "../family/FamilyScreen";
 import type { FridgeDoc } from "../fridge/useFridge";
 import { itemLook } from "../fridge/FridgeVisual";
-import { ServingsStepper } from "../recipes/RecipeDetail";
 import { MOODS, useToday } from "./useToday";
 
-const WAITING = ["냉장고를 둘러보는 중…", "임박 재료를 챙기는 중…", "메뉴를 고르는 중…", "살 것을 줄이는 중…", "거의 다 됐어요…"];
+const WAITING = ["냉장고를 둘러보는 중…", "임박 재료를 챙기는 중…", "메뉴를 고르는 중…"];
+/** 저장한 지 이만큼 지난 추천은 처음 화면(고르기)을 보여 준다 */
+const STALE_MS = 12 * 3600_000;
+
+// 화면 단계 기억 (탭을 옮겨도 유지). 저장된 추천은 지우지 않고 숨기기만 한다
+let hiddenAt: number | null = null;   // "처음으로"로 숨긴 추천
+let reopenedAt: number | null = null; // 12시간이 지났지만 "지난 추천 보기"로 다시 연 추천
 
 function ago(at: number): string {
   const m = Math.round((Date.now() - at) / 60000);
@@ -18,225 +35,330 @@ function ago(at: number): string {
   return `${Math.round(m / 1440)}일 전`;
 }
 
-const dLabel = (d: number | null) => (d == null ? "" : d <= 0 ? "오늘까지" : `D-${d}`);
+const dShort = (d: number | null) => (d == null ? "" : d <= 0 ? "오늘" : `D-${d}`);
+const dSpoken = (d: number | null) => (d == null ? "" : d <= 0 ? "오늘까지" : `D-${d}`);
+/** 무드 값 앞의 이모지를 떼고 글자만 ("⚡ 15분 안에" → "15분 안에") */
+const moodLabel = (m: string) => m.replace(/^[^\p{L}\p{N}]+/u, "");
+/** 받침에 따라 "로"/"으로" (ㄹ 받침은 "로") */
+function ro(word: string): string {
+  const c = word.charCodeAt(word.length - 1) - 0xac00;
+  const jong = c >= 0 && c < 11172 ? c % 28 : 0;
+  return jong === 0 || jong === 8 ? "로" : "으로";
+}
+
+type Today = ReturnType<typeof useToday>;
 
 export function TodayTab() {
   const t = useToday();
+  const toast = useToast();
+  const [conditions, setConditions] = useState(false);
   const [picking, setPicking] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-  const resultsRef = useRef<HTMLElement | null>(null);
+  const [allFits, setAllFits] = useState(false);
+  const [, setStage] = useState(0);
   const lastAt = useRef<number | null>(t.saved?.at ?? null);
 
-  useEffect(() => {
-    if (!t.run.busy) return;
-    setTick(0);
-    const id = setInterval(() => setTick((x) => x + 1), 1000);
-    return () => clearInterval(id);
-  }, [t.run.busy]);
-  // 새 추천이 오면 결과로 화면을 내린다
+  // 새 추천이 오면 결과(맨 위)로 올린다
   useEffect(() => {
     if (t.saved && t.saved.at !== lastAt.current) {
       lastAt.current = t.saved.at;
-      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [t.saved]);
 
   if (!t.ready) return null;
-  const say = (m: string) => { setNotice(m); setTimeout(() => setNotice((x) => (x === m ? null : x)), 3500); };
+  const { inputs, saved, run } = t;
+  const busy = run.busy;
+
+  const hasResults = !!saved && saved.suggestions.length > 0;
+  const showResults = !!saved && hasResults && hiddenAt !== saved.at && (Date.now() - saved.at < STALE_MS || reopenedAt === saved.at);
+  const goStart = () => { hiddenAt = saved?.at ?? null; reopenedAt = null; setStage((x) => x + 1); window.scrollTo({ top: 0 }); };
+  const reopen = () => { hiddenAt = null; reopenedAt = saved?.at ?? null; setStage((x) => x + 1); window.scrollTo({ top: 0 }); };
+
   const addMissing = async (s: MenuSuggestion) => {
     if (adding) return;
     setAdding(s.title);
-    try { say(`🛒 ${await t.addMissing(s)}`); }
-    catch (e) { say(`담지 못했어요: ${e instanceof Error ? e.message : String(e)}`); }
+    try { toast.show(await t.addMissing(s), { kind: "done" }); }
+    catch (e) { toast.show(`담지 못했어요: ${e instanceof Error ? e.message : String(e)}`, { kind: "error" }); }
     finally { setAdding(null); }
   };
-  const chip = (on: boolean) => `shrink-0 rounded-full px-3 py-1.5 text-sm ${on ? "bg-orange-500 text-white" : "bg-white text-gray-700 ring-1 ring-orange-100"}`;
-  const { inputs, profile } = t;
 
-  return (
-    <div className="flex flex-col gap-4 p-4 pb-28">
-      <header>
-        <h1 className="text-2xl font-bold">오늘 뭐 먹지?</h1>
-        <p className="text-sm text-gray-500">냉장고 {t.fresh.length}개{t.expiring.length ? <span className="text-red-600"> · 임박 {t.expiring.length}</span> : ""}</p>
-      </header>
+  const servingsText = `${t.servings}인분`;
+  const excludeText = inputs.exclude.length ? `${inputs.exclude.join("·")} 빼고` : "";
+  const moodsText = [...inputs.moods.map(moodLabel), inputs.moodText.trim()].filter(Boolean);
+  const startSummary = ["조건", ...moodsText, excludeText, servingsText].filter(Boolean).join(" · ");
+  const must = inputs.mustUse;
+  const suggestLabel = must.length === 0 ? "메뉴 추천받기"
+    : must.length === 1 ? `${must[0]}${ro(must[0])} 메뉴 추천받기`
+      : `${must[0]} 외 ${must.length - 1}개로 메뉴 추천받기`;
+  const canSuggest = workerConfigured && !t.fridgeLoading && !busy;
 
-      {t.expired.length > 0 && (
-        <button type="button" onClick={t.goFridge} className="rounded-2xl bg-gray-100 p-3 text-left text-sm text-gray-600" data-testid="expired-note">
-          🗑️ 기한이 지난 재료 {t.expired.length}개({t.expired.slice(0, 3).map((x) => x.f.name).join(", ")}{t.expired.length > 3 ? " …" : ""})는 추천에 쓰지 않아요. 냉장고에서 확인해 주세요 ›
-        </button>
+  const skeletons = (
+    <div aria-hidden className="mt-3 flex flex-col gap-3 px-5">
+      {[0, 1, 2].map((i) => <div key={i} className="h-[148px] animate-pulse rounded-card bg-surface" />)}
+    </div>
+  );
+
+  const sheets = (
+    <>
+      {conditions && (
+        <ConditionSheet t={t} onClose={() => setConditions(false)} onPick={() => setPicking(true)}
+          onSubmit={() => { setConditions(false); t.suggest(false); }} />
       )}
+      {picking && <PickSheet items={t.fresh.map((x) => x.f)} selected={inputs.mustUse} onClose={() => setPicking(false)} onChange={(v) => t.update({ mustUse: v })} />}
+    </>
+  );
 
-      <section>
-        <h2 className="mb-2 font-bold">⏰ 빨리 먹어야 해요</h2>
-        {t.fridgeLoading ? <p className="text-sm text-gray-500">냉장고 확인 중…</p>
-          : t.fresh.length === 0 ? (
-            <div className="flex items-center gap-3 rounded-2xl bg-white p-3 text-sm text-gray-600">
-              <span className="flex-1">냉장고가 비어 있어요. 장본 것을 넣으면 임박 재료부터 챙겨 드려요.</span>
-              <button type="button" onClick={t.fillFridge} className="shrink-0 rounded-xl bg-orange-500 px-3 py-2 font-semibold text-white">채우기</button>
-            </div>
-          ) : t.expiring.length === 0 ? (
-            <p className="rounded-2xl bg-white p-3 text-sm text-gray-500">3일 안에 기한이 끝나는 재료는 없어요.{t.unknownDate > 0 ? ` (기한을 모르는 재료 ${t.unknownDate}개는 냉장고에서 확인해 주세요)` : ""}</p>
+  // ---------- 상태 C: 결과 ----------
+  if (showResults && saved) {
+    const resultSummary = [...must, ...moodsText, excludeText, servingsText, ago(saved.at)].filter(Boolean).join(" · ");
+    return (
+      <div style={{ paddingBottom: "calc(var(--safe-bottom) + 56px + 32px)" }}>
+        <TabHeader title="오늘 뭐 먹지?" />
+        <div className="mx-5 flex items-center gap-2 rounded-control bg-surface-2 py-2 pl-4 pr-1">
+          <span className="min-w-0 flex-1 truncate text-caption text-ink-2 tabular-nums">{resultSummary}</span>
+          <button type="button" onClick={() => setConditions(true)} disabled={busy}
+            className="-my-1.5 h-11 shrink-0 rounded-control px-3 text-callout font-semibold text-accent active:opacity-60 disabled:text-ink-disabled">조건 바꾸기</button>
+        </div>
+
+        <section data-testid="suggestions">
+          <SectionHeader title="추천 메뉴" right={
+            <TextAction disabled={busy} onClick={() => t.suggest(true)}><RefreshCw size={16} aria-hidden />다른 메뉴</TextAction>
+          } />
+          {run.error && !busy && <Banner kind="danger" className="mx-5 mb-3">{run.error}</Banner>}
+          {busy ? (
+            <>
+              <AiProgress size="sm" messages={WAITING} onCancel={t.cancel} startedAt={t.run.startedAt ?? undefined} className="mx-5" />
+              {skeletons}
+            </>
           ) : (
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-              {t.expiring.map(({ f, d, check }) => {
-                const on = inputs.mustUse.includes(f.name);
-                return (
-                  <button key={f.id} type="button" data-testid="expiring-card" aria-pressed={on} onClick={() => t.toggleMustUse(f.name)}
-                    className={`flex w-24 shrink-0 flex-col items-center gap-0.5 rounded-2xl bg-white p-2 ${on ? "ring-2 ring-orange-500" : "ring-1 ring-orange-100"}`}>
-                    <span className="text-3xl" aria-hidden>{itemLook(f).emoji}</span>
-                    <span className="w-full truncate text-center text-sm font-semibold">{f.name}</span>
-                    <span className={`rounded-full px-1.5 text-xs font-bold ${d != null && d <= 1 ? "bg-red-500 text-white" : "bg-red-100 text-red-700"}`}>{check ? "확인 필요" : `${dLabel(d)}${f.expiresEstimated ? " 추정" : ""}`}</span>
-                    <span className={`text-xs ${on ? "font-semibold text-orange-600" : "text-gray-400"}`}>{on ? "✓ 꼭 쓰기" : "눌러서 꼭 쓰기"}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <>
+              {(saved.dropped ?? 0) > 0 && <p className="-mt-1 px-5 pb-3 text-caption text-ink-3" data-testid="dropped-note">빼기·싫어하는 재료가 든 메뉴 {saved.dropped}개는 뺐어요</p>}
+              <ul className="flex flex-col gap-3 px-5">
+                {saved.suggestions.map((s) => (
+                  <SuggestCard key={s.title} s={s} t={t} added={saved.added.includes(s.title)} adding={adding === s.title} onAdd={() => void addMissing(s)} />
+                ))}
+              </ul>
+              <div className="px-5 pt-3">
+                <Button variant="ghost" size="md" block onClick={goStart}>처음으로</Button>
+              </div>
+            </>
           )}
-      </section>
+        </section>
+        {sheets}
+      </div>
+    );
+  }
 
-      <section>
-        <h2 className="mb-2 font-bold">📖 내 레시피로 바로</h2>
-        {t.fits.length > 0 ? (
-          <ul className="overflow-hidden rounded-2xl bg-white divide-y divide-orange-50">
-            {t.fits.map((x) => (
-              <li key={x.recipe.id}>
-                <button type="button" data-testid="fit-row" onClick={() => t.openRecipe(x.recipe.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-orange-50">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{x.recipe.title}</p>
-                    <p className="truncate text-xs text-gray-500">
-                      {x.missing.length === 0 ? <span className="text-emerald-700">재료가 다 있어요{x.unsure ? ` · 양 확인 ${x.unsure}개` : ""}</span> : <>없는 것: {x.missing.join(", ")}</>}
-                      {x.expiring.length > 0 && <span className="text-red-600"> · 임박 {x.expiring.join(", ")} 사용</span>}
-                    </p>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${x.missing.length === 0 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{x.have}/{x.needed}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="rounded-2xl bg-white p-3 text-sm text-gray-500">{t.recipesCount === 0 ? "레시피를 저장해 두면 지금 냉장고로 만들 수 있는 것을 여기서 바로 보여 드려요 (AI 없이)." : "저장한 레시피 중 지금 냉장고로 만들 수 있는 게 없어요."}</p>
-        )}
-      </section>
+  // ---------- 상태 A(고르기) · B(추천 중) ----------
+  const showEmptyFridge = !t.fridgeLoading && t.fresh.length === 0 && !run.error;
+  return (
+    <div style={{ paddingBottom: "calc(var(--safe-bottom) + 56px + 32px)" }}>
+      <TabHeader title="오늘 뭐 먹지?" />
 
-      <section className="flex flex-col gap-3 rounded-2xl bg-white p-4">
-        <h2 className="font-bold">✨ AI에게 메뉴 추천받기</h2>
-        <div>
-          <p className="mb-1 text-xs text-gray-500">꼭 쓸 재료</p>
-          <div className="flex flex-wrap gap-1.5">
-            {inputs.mustUse.map((n) => (
-              <button key={n} type="button" onClick={() => t.toggleMustUse(n)} className="rounded-full bg-orange-100 px-2.5 py-1 text-sm text-orange-800" aria-label={`${n} 꼭 쓰기 빼기`}>{n} ✕</button>
-            ))}
-            <button type="button" onClick={() => setPicking(true)} disabled={t.fresh.length === 0} className="rounded-full border border-dashed border-orange-300 px-2.5 py-1 text-sm text-orange-700 disabled:opacity-40">+ 냉장고에서 고르기</button>
-          </div>
-        </div>
-        <div>
-          <p className="mb-1 text-xs text-gray-500">어떤 게 당겨요? (여러 개 골라도 돼요)</p>
-          <div className="flex flex-wrap gap-1.5">
-            {MOODS.map((m) => <button key={m} type="button" aria-pressed={inputs.moods.includes(m)} onClick={() => t.toggleMood(m)} className={chip(inputs.moods.includes(m))}>{m}</button>)}
-          </div>
-          <input className="mt-2 w-full rounded-xl border border-orange-200 px-3 py-2 text-base" placeholder="직접 적기 (예: 에어프라이어로, 비 오는 날)" value={inputs.moodText} onChange={(e) => t.update({ moodText: e.target.value })} maxLength={60} />
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); t.commitExclude(); }}>
-          <p className="mb-1 text-xs text-gray-500">빼고 싶은 재료 <span className="text-gray-400">(가족 설정의 싫어하는 재료도 피해요)</span></p>
-          <div className="flex gap-2">
-            <input className="min-w-0 flex-1 rounded-xl border border-orange-200 px-3 py-2 text-base" placeholder="예: 오이, 가지" value={inputs.excludeText} onChange={(e) => t.update({ excludeText: e.target.value })} aria-label="빼고 싶은 재료" maxLength={60} />
-            <button className="shrink-0 rounded-xl bg-orange-100 px-3 font-semibold text-orange-800">추가</button>
-          </div>
-          {(inputs.exclude.length > 0 || (profile && profile.dislikes.length > 0)) && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {profile?.dislikes.map((n) => <span key={`d-${n}`} className="rounded-full bg-gray-50 px-2.5 py-1 text-sm text-gray-500" title="가족 설정의 싫어하는 재료">🔒 {n}</span>)}
-              {inputs.exclude.map((n) => <button key={n} type="button" onClick={() => t.update({ exclude: inputs.exclude.filter((x) => x !== n) })} className="rounded-full bg-gray-100 px-2.5 py-1 text-sm text-gray-700" aria-label={`${n} 빼기 취소`}>🚫 {n} ✕</button>)}
-            </div>
-          )}
-        </form>
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">인분</span>
-          <ServingsStepper value={t.servings} onChange={(v) => t.update({ servings: v })} />
-        </div>
-        {t.run.busy ? (
-          <div className="flex items-center justify-between rounded-xl bg-orange-50 px-4 py-3 text-sm text-orange-800">
-            <span>🍳 {WAITING[Math.min(Math.floor(tick / 4), WAITING.length - 1)]} ({tick}초 · 보통 10~20초)</span>
-            <button type="button" className="text-gray-500" onClick={t.cancel}>취소</button>
-          </div>
-        ) : (
-          <button type="button" disabled={!workerConfigured || t.fridgeLoading} onClick={() => t.suggest(false)} className="rounded-xl bg-orange-500 py-3 text-lg font-semibold text-white disabled:opacity-40">✨ 메뉴 5개 추천받기</button>
-        )}
-        {t.left != null && <p className="-mt-1 text-center text-xs text-gray-500" data-testid="usage-left">오늘 남은 AI 사용 {t.left}회 (추천 1회씩, 사진은 2회)</p>}
-        <AiNotice what="냉장고 목록과 가족 취향" />
-      </section>
-
-      {t.run.error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{t.run.error}</p>}
-
-      {t.saved && t.saved.suggestions.length > 0 && (
-        <section data-testid="suggestions" ref={resultsRef} className="scroll-mt-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-bold">추천 메뉴 <span className="text-sm font-normal text-gray-500">{ago(t.saved.at)}</span></h2>
-            <button type="button" disabled={t.run.busy} onClick={() => t.suggest(true)} className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-orange-700 ring-1 ring-orange-200 disabled:opacity-40">🔄 다른 메뉴로</button>
-          </div>
-          {(t.saved.dropped ?? 0) > 0 && <p className="mb-2 text-xs text-gray-500" data-testid="dropped-note">빼기·싫어하는 재료가 들어간 메뉴 {t.saved.dropped}개는 빼고 보여 드려요.</p>}
-          <ul className="flex flex-col gap-2">
-            {t.saved.suggestions.map((s) => {
-              const added = t.saved!.added.includes(s.title);
+      {t.expiring.length > 0 && (
+        <section>
+          <SectionHeader first title="빨리 먹어야 해요" />
+          <p className="-mt-2 px-5 pb-3 text-caption text-ink-3">고르면 그 재료로 추천해요</p>
+          <div className="flex gap-2 overflow-x-auto px-5 [scrollbar-width:none]">
+            {t.expiring.map(({ f, d, check }) => {
+              const on = inputs.mustUse.includes(f.name);
+              const mark = f.expiresEstimated ? "~" : "";
+              const shown = check ? "확인 필요" : `${mark}${dShort(d)}`;
+              const spoken = check ? "기한 확인 필요" : `${dSpoken(d)}${f.expiresEstimated ? " 추정" : ""}`;
               return (
-                <li key={s.title} data-testid="suggest-card" className="rounded-2xl bg-white p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-lg font-bold">{s.title}</p>
-                    <span className="shrink-0 text-xs text-gray-500">{s.timeMinutes != null ? `⏱ ${s.timeMinutes}분 · ` : ""}{s.difficulty}</span>
-                  </div>
-                  {s.reason && <p className="mt-0.5 text-sm text-gray-600">{s.reason}</p>}
-                  {s.uses.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {s.uses.map((u) => {
-                        const d = t.daysOf.get(u) ?? null;
-                        const urgent = d != null && d <= 3;
-                        return <span key={u} className={`rounded-full px-2 py-0.5 text-xs ${urgent ? "bg-red-100 font-semibold text-red-700" : "bg-emerald-50 text-emerald-800"}`}>🧊 {u}{urgent ? ` ${dLabel(d)}` : ""}</span>;
-                      })}
-                    </div>
+                <button key={f.id} type="button" data-testid="expiring-card" aria-pressed={on} onClick={() => t.toggleMustUse(f.name)}
+                  className={`relative flex w-[88px] shrink-0 flex-col items-center gap-1 rounded-card px-2 pb-2.5 pt-3 transition-colors ${on ? "bg-accent-soft ring-2 ring-inset ring-accent" : "bg-surface active:bg-surface-2"}`}>
+                  {on && (
+                    <span aria-hidden className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-full bg-accent text-on-accent">
+                      <Check size={12} strokeWidth={3} />
+                    </span>
                   )}
-                  <p className={`mt-1.5 text-xs ${s.missing.length ? "text-amber-800" : "text-emerald-700"}`} data-testid="suggest-missing">
-                    {s.missing.length ? `🛒 살 것: ${s.missing.join(", ")}` : "✅ 늘 있는 양념 말고는 따로 살 게 없어요 (양은 확인해 주세요)"}
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    <button type="button" disabled={t.run.busy} onClick={() => t.make(s)} className="flex-1 rounded-xl bg-orange-500 py-2.5 font-semibold text-white disabled:opacity-40">✨ 레시피 만들기</button>
-                    {s.missing.length > 0 && (
-                      <button type="button" disabled={added || adding === s.title} onClick={() => void addMissing(s)} className="rounded-xl bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 ring-1 ring-orange-200 disabled:opacity-50">{added ? "✓ 담았어요" : "🛒 살 것 담기"}</button>
-                    )}
-                  </div>
-                </li>
+                  <FoodThumb emoji={itemLook(f).emoji} size="lg" />
+                  <span className="w-full truncate text-center text-callout font-semibold text-ink">{f.name}</span>
+                  <Badge role="img" aria-label={spoken} tone={check ? "warning" : "danger"}>{shown}</Badge>
+                </button>
               );
             })}
-          </ul>
+          </div>
         </section>
       )}
 
-      {picking && <PickSheet items={t.fresh.map((x) => x.f)} selected={inputs.mustUse} onClose={() => setPicking(false)} onChange={(v) => t.update({ mustUse: v })} />}
-      {notice && (
-        <div role="status" className="pointer-events-none fixed inset-x-0 z-50 mx-auto w-fit max-w-[90%] rounded-full bg-slate-900/90 px-4 py-2 text-sm text-white shadow-lg"
-          style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>{notice}</div>
+      <div className="px-5 pt-6">
+        {showEmptyFridge && <Banner kind="info" className="mb-4" action={{ label: "채우기", onClick: t.fillFridge }}>냉장고가 비어 있어요</Banner>}
+        {busy ? (
+          <AiProgress size="sm" messages={WAITING} onCancel={t.cancel} startedAt={t.run.startedAt ?? undefined} />
+        ) : (
+          <>
+            <Button block ai disabled={!canSuggest} onClick={() => t.suggest(false)}><span className="truncate">{suggestLabel}</span></Button>
+            <Button variant="ghost" size="md" block className="mt-2" data-testid="open-conditions" onClick={() => setConditions(true)}
+              icon={<SlidersHorizontal size={18} aria-hidden />}><span className="truncate">{startSummary}</span></Button>
+            <AiNotice what="냉장고 목록과 가족 취향" kind="fridge" className="mt-3" />
+          </>
+        )}
+        {run.error && !busy && <Banner kind="danger" className="mt-3">{run.error}</Banner>}
+      </div>
+      {busy && skeletons}
+
+      {t.fits.length > 0 && (
+        <section>
+          <SectionHeader title="내 레시피로 바로" right={t.fits.length > 3 && !allFits ? <TextAction onClick={() => setAllFits(true)}>모두 보기</TextAction> : undefined} />
+          <Card className="mx-5 overflow-hidden">
+            <ul>
+              {(allFits ? t.fits : t.fits.slice(0, 3)).map((x) => (
+                <li key={x.recipe.id} className={rowLinePlain}>
+                  <button type="button" data-testid="fit-row" onClick={() => t.openRecipe(x.recipe.id)}
+                    className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-headline text-ink">{x.recipe.title}</span>
+                      <span className="mt-0.5 block truncate text-caption">
+                        {x.missing.length === 0
+                          ? <span className="text-success">재료가 다 있어요</span>
+                          : <span className="text-ink-3">없는 것: {x.missing.join(", ")}</span>}
+                        {x.unsure > 0 && <span className="text-ink-3"> · 양 확인 {x.unsure}개</span>}
+                        {x.expiring.length > 0 && (
+                          <span className="text-danger"> · {x.expiring.map((n) => `${n} ${dShort(t.daysOf.get(n) ?? null)}`.trim()).join(", ")} 사용</span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-callout text-ink-2 tabular-nums">{x.have}/{x.needed}</span>
+                    <ChevronRight size={20} aria-hidden className="shrink-0 text-ink-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
       )}
+
+      {!busy && hasResults && (
+        <div className="px-5 pt-6">
+          <button type="button" onClick={reopen} className="-ml-2 h-11 px-2 text-callout font-semibold text-accent active:opacity-60">지난 추천 보기</button>
+        </div>
+      )}
+
+      {t.expired.length > 0 && (
+        <button type="button" onClick={t.goFridge} data-testid="expired-note" className="block w-full px-5 py-6 text-left text-caption text-ink-3 active:opacity-60">
+          기한 지난 재료 {t.expired.length}개는 추천에서 빠져요 · <span className="font-semibold text-ink-2">냉장고에서 보기</span>
+        </button>
+      )}
+      {sheets}
     </div>
   );
 }
 
-/** 냉장고에서 꼭 쓸 재료 고르기 */
+/** 추천 카드: 카드마다 주 버튼을 두지 않는다 (보조 + 글자 버튼) */
+function SuggestCard({ s, t, added, adding, onAdd }: { s: MenuSuggestion; t: Today; added: boolean; adding: boolean; onAdd: () => void }) {
+  const meta = [s.timeMinutes != null ? `${s.timeMinutes}분` : "", s.difficulty].filter(Boolean).join(" · ");
+  return (
+    <li data-testid="suggest-card" className="rounded-card bg-surface p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="min-w-0 text-title2 text-ink">{s.title}</p>
+        {meta && <span className="shrink-0 text-caption text-ink-3 tabular-nums">{meta}</span>}
+      </div>
+      {s.reason && <p className="mt-1 line-clamp-2 text-callout text-ink-2">{s.reason}</p>}
+      {s.uses.length > 0 && (
+        <p className="mt-3 text-caption text-ink-2">
+          <span className="mr-2 text-ink-3">냉장고</span>
+          {s.uses.map((u, i) => {
+            const d = t.daysOf.get(u) ?? null;
+            const urgent = d != null && d <= 3;
+            return <Fragment key={u}>{i > 0 && " · "}<span className={urgent ? "font-semibold text-danger" : ""}>{u}{urgent ? ` ${dShort(d)}` : ""}</span></Fragment>;
+          })}
+        </p>
+      )}
+      <p className={`${s.uses.length ? "mt-0.5" : "mt-3"} text-caption ${s.missing.length ? "text-warning" : "text-success"}`} data-testid="suggest-missing">
+        {s.missing.length ? <><span className="mr-2 font-semibold">살 것</span>{s.missing.join(", ")}</> : "더 살 것 없어요"}
+      </p>
+      <div className="mt-4 flex gap-2">
+        <Button variant="secondary" size="md" className="flex-1" disabled={t.run.busy} onClick={() => t.make(s)}>레시피 만들기</Button>
+        {s.missing.length > 0 && (
+          <Button variant="ghost" size="md" disabled={added || adding} onClick={onAdd} icon={added ? <Check size={18} strokeWidth={2.5} aria-hidden /> : undefined}>
+            {added ? "담았어요" : "살 것 담기"}
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+const pickChip = "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 text-callout font-medium text-ink-2 transition-colors active:bg-surface-2 disabled:text-ink-disabled";
+
+/** 조건 시트: 꼭 쓸 재료 · 무드 · 빼기 · 인분. 고르는 즉시 기억되고, 제출하면 시트를 닫고 바로 추천한다 */
+function ConditionSheet({ t, onClose, onPick, onSubmit }: { t: Today; onClose: () => void; onPick: () => void; onSubmit: () => void }) {
+  const { inputs, profile } = t;
+  const reset = () => t.update({ mustUse: [], moods: [], moodText: "", exclude: [], excludeText: "", servings: null });
+  return (
+    <Sheet title="조건" onClose={onClose} footer={
+      <>
+        <AiNotice what="냉장고 목록과 가족 취향" kind="fridge" className="mb-3" />
+        <Button block ai disabled={!workerConfigured || t.fridgeLoading || t.run.busy} onClick={onSubmit}>이 조건으로 추천받기</Button>
+        <Button variant="ghost" size="md" block className="mt-1" onClick={reset}>초기화</Button>
+      </>
+    }>
+      <div className="flex flex-col gap-7 pb-2 pt-2">
+        <section>
+          <h3 className="mb-3 text-headline text-ink">꼭 쓸 재료</h3>
+          <div className="flex flex-wrap gap-2">
+            {inputs.mustUse.map((n) => <InputChip key={n} aria-label={`${n} 꼭 쓰기 빼기`} onClick={() => t.toggleMustUse(n)}>{n}</InputChip>)}
+            <button type="button" onClick={onPick} disabled={t.fresh.length === 0} className={pickChip}><Plus size={16} aria-hidden />냉장고에서 고르기</button>
+          </div>
+        </section>
+
+        <section>
+          <h3 className="mb-3 text-headline text-ink">어떤 게 당겨요</h3>
+          <div className="flex flex-wrap gap-2">
+            {MOODS.map((m) => <ChoiceChip key={m} on={inputs.moods.includes(m)} onClick={() => t.toggleMood(m)}>{moodLabel(m)}</ChoiceChip>)}
+          </div>
+          <TextField wrapClass="mt-3" placeholder="직접 적기 (예: 비 오는 날)" aria-label="직접 적기" value={inputs.moodText}
+            onChange={(e) => t.update({ moodText: e.target.value })} maxLength={60} />
+        </section>
+
+        <form onSubmit={(e) => { e.preventDefault(); t.commitExclude(); }}>
+          <h3 className="mb-3 text-headline text-ink">빼고 싶은 재료</h3>
+          <div className="flex gap-2">
+            <TextField wrapClass="min-w-0 flex-1" placeholder="예: 오이, 가지" aria-label="빼고 싶은 재료" value={inputs.excludeText}
+              onChange={(e) => t.update({ excludeText: e.target.value })} maxLength={60} enterKeyHint="done" />
+            <Button type="submit" variant="secondary" size="md">추가</Button>
+          </div>
+          {(inputs.exclude.length > 0 || (profile && profile.dislikes.length > 0)) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {profile?.dislikes.map((n) => <LockedChip key={`d-${n}`}>{n}</LockedChip>)}
+              {inputs.exclude.map((n) => (
+                <InputChip key={n} aria-label={`${n} 빼기 취소`} onClick={() => t.update({ exclude: inputs.exclude.filter((x) => x !== n) })}>{n}</InputChip>
+              ))}
+            </div>
+          )}
+          <p className="mt-2 text-caption text-ink-3">싫어하는 재료는 가족 설정대로 늘 빠져요</p>
+        </form>
+
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-headline text-ink">인분</h3>
+          <Stepper value={t.servings} onChange={(v) => t.update({ servings: v })} />
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 냉장고에서 꼭 쓸 재료 고르기 (최대 10개) */
 function PickSheet({ items, selected, onClose, onChange }: { items: FridgeDoc[]; selected: string[]; onClose: () => void; onChange: (v: string[]) => void }) {
   const names = [...new Set(items.map((i) => i.name))];
   const [q, setQ] = useState("");
   const list = names.filter((n) => !q.trim() || n.includes(q.trim()));
   return (
-    <Sheet title="꼭 쓸 재료 고르기" onClose={onClose}>
-      <div className="flex flex-col gap-2">
-        <input className="rounded-xl border border-orange-200 bg-white px-3 py-2 text-base" placeholder="냉장고에서 찾기" value={q} onChange={(e) => setQ(e.target.value)} />
-        <div className="flex flex-wrap gap-1.5">
+    <Sheet title="꼭 쓸 재료 고르기" onClose={onClose} footer={
+      <Button block onClick={onClose}>다 골랐어요{selected.length > 0 ? ` (${selected.length}개)` : ""}</Button>
+    }>
+      <div className="flex flex-col gap-4 pt-2">
+        <SearchField value={q} onChange={setQ} placeholder="냉장고에서 찾기" label="냉장고에서 찾기" />
+        <div className="flex flex-wrap gap-2">
           {list.map((n) => {
             const on = selected.includes(n);
-            return <button key={n} type="button" aria-pressed={on} onClick={() => onChange(on ? selected.filter((x) => x !== n) : [...selected, n].slice(0, 10))}
-              className={`rounded-full px-3 py-1.5 text-sm ${on ? "bg-orange-500 text-white" : "bg-white text-gray-700 ring-1 ring-orange-100"}`}>{on ? "✓ " : ""}{n}</button>;
+            return <ChoiceChip key={n} on={on} onClick={() => onChange(on ? selected.filter((x) => x !== n) : [...selected, n].slice(0, 10))}>{n}</ChoiceChip>;
           })}
         </div>
-        <button type="button" onClick={onClose} className="rounded-xl bg-orange-500 py-3 font-semibold text-white">{selected.length}개 골랐어요 (최대 10개)</button>
+        {selected.length >= 10 && <p className="text-caption text-ink-3">10개까지 고를 수 있어요</p>}
       </div>
     </Sheet>
   );

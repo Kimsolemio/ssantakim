@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 const tones = {
   neutral: "bg-surface-2 text-ink-2",
@@ -7,6 +7,6 @@ const tones = {
   danger: "bg-danger-soft text-danger",
 };
 
-export function Badge({ tone = "neutral", children, className = "" }: { tone?: keyof typeof tones; children: ReactNode; className?: string }) {
-  return <span className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-badge px-2 text-caption font-semibold tabular-nums ${tones[tone]} ${className}`}>{children}</span>;
+export function Badge({ tone = "neutral", children, className = "", ...rest }: HTMLAttributes<HTMLSpanElement> & { tone?: keyof typeof tones; children: ReactNode }) {
+  return <span className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-badge px-2 text-caption font-semibold tabular-nums ${tones[tone]} ${className}`} {...rest}>{children}</span>;
 }
