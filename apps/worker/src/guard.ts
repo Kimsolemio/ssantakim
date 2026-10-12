@@ -27,6 +27,7 @@ export const ROUTE_COST: Record<string, number> = {
   "/import/url": 1,
   "/import/text": 1,
   "/normalize": 0.25,
+  "/suggest": 1,
 };
 
 export function allowList(env: GuardEnv): string[] {

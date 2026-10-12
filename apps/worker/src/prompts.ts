@@ -103,3 +103,48 @@ export const IMPORT_SYSTEM_PROMPT = `당신은 한국 가정의 집밥을 돕는
 - recipe.source 는 {"type": "text"} 로 두면 됩니다 (앱이 원본 정보로 바꿉니다).
 
 ${RECIPE_FORMAT_RULES}`;
+
+export const SUGGEST_SYSTEM_PROMPT = `당신은 한국 가정의 "냉장고 파먹기"를 돕는 요리 선생님입니다. 가족의 냉장고 목록을 보고 오늘 만들 메뉴를 추천해 JSON 스키마에 맞춰 답합니다.
+
+## 고르는 기준 (위에 있을수록 중요)
+1. 알레르기 재료는 어떤 형태로도 쓰지 않습니다 (예: 새우 알레르기 → 새우젓·새우가루도 안 됨). "빼기" 재료와 싫어하는 재료도 쓰지 않고, 그런 재료가 이름에 들어간 메뉴도 고르지 않습니다.
+2. "꼭 쓰기" 재료가 있으면 모든 추천이 그중 하나 이상을 쓰고, 되도록 전부 씁니다.
+3. 남은 날이 적은 재료(0~3일)를 먼저 씁니다. 여러 임박 재료를 한 번에 쓰는 메뉴를 높게 칩니다.
+4. 더 사야 하는 재료(missing)가 적은 메뉴를 고릅니다. 0~2개가 좋고 많아도 3개까지. "늘 있는 양념"은 있다고 보고 missing에 넣지 않습니다.
+5. 서로 다른 종류로 고릅니다 (국·찌개 / 볶음·구이 / 밥·면 / 반찬 / 양식·간식이 겹치지 않게). 최근에 만든 요리와 "이미 보여 준 추천"은 다시 고르지 않습니다.
+6. "분위기"가 있으면 따릅니다 (예: 15분 안에 → timeMinutes 15 이하, 국물 → 국·찌개·탕 위주).
+7. 한국 가정에서 실제로 해 먹는 현실적인 메뉴를 고르고, title은 짧은 요리 이름으로 씁니다 (예: "두부 김치찌개", "대파 계란볶음밥").
+8. 맵기 취향과 아이가 함께 먹는지를 반영합니다.
+
+## 각 항목
+- uses: 이 메뉴에 쓰는 냉장고 품목. 목록에 적힌 이름을 글자 그대로 씁니다 (늘 있는 양념은 넣지 않습니다).
+- missing: 더 사야 하는 재료의 일반 이름 (예: "양파", "콩나물"). 없으면 빈 배열.
+- reason: 왜 추천하는지 한 문장 (예: "내일까지인 두부와 남은 김치를 한 번에 써요").
+- timeMinutes: 준비+조리 총 시간(분). difficulty: 쉬움/보통/어려움. tags: 2~3개 (예: 국물, 10분요리, 아이반찬).
+- 요청한 개수만큼 suggestions에 넣습니다.`;
+
+export function buildSuggestUserMessage(input: {
+  items: { name: string; qty?: number | null; unit?: string; daysLeft?: number | null; location?: string }[];
+  mustUse: string[]; exclude: string[]; mood?: string | null; servings: number; staples: string[];
+  profile?: FamilyProfile | null; recent: string[]; avoid: string[]; count: number;
+}): string {
+  const lines = [`추천 개수: ${input.count}`, `인분: ${input.servings}`];
+  if (input.mood?.trim()) lines.push(`분위기: ${input.mood.trim()}`);
+  if (input.mustUse.length) lines.push(`꼭 쓰기: ${input.mustUse.join(", ")}`);
+  if (input.exclude.length) lines.push(`빼기: ${input.exclude.join(", ")}`);
+  lines.push(`늘 있는 양념: ${input.staples.join(", ") || "없음"}`);
+  if (input.profile) {
+    const p = input.profile;
+    lines.push(`가족: 맵기 ${p.spicyLevel}, 아이 ${p.kidsFriendly ? "있음" : "없음"}, 알레르기 [${p.allergies.join(", ") || "없음"}], 싫어하는 재료 [${p.dislikes.join(", ") || "없음"}]`);
+  }
+  if (input.recent.length) lines.push(`최근에 만든 요리: ${input.recent.join(", ")}`);
+  if (input.avoid.length) lines.push(`이미 보여 준 추천 (다른 메뉴로): ${input.avoid.join(", ")}`);
+  const fmtLeft = (d: number | null | undefined) => (d == null ? "기한 없음" : d <= 0 ? "오늘까지" : `${d}일 남음`);
+  lines.push("", "냉장고 (남은 날이 적은 순):");
+  if (input.items.length === 0) lines.push("- (비어 있음: 늘 있는 양념과 흔한 재료 조금으로 만들 수 있는 메뉴를 추천)");
+  for (const it of input.items) {
+    const amount = it.qty != null ? ` ${it.qty}${it.unit && it.unit !== "기타" ? it.unit : ""}` : "";
+    lines.push(`- ${it.name}${amount} (${it.location ?? "냉장"}, ${fmtLeft(it.daysLeft)})`);
+  }
+  return lines.join("\n");
+}

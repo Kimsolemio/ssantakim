@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { FamilyProfile } from "@cook/shared";
+import { FamilyProfile, StorageLocation } from "@cook/shared";
 import { verifyFirebaseIdToken, AuthError, type Verified } from "./auth";
 import { selectProvider, describeAi, GenerationError, type AiEnv } from "./ai";
 import { generateRecipe } from "./recipe";
 import { scanReceipt } from "./receipt";
 import { normalizeNames } from "./normalize";
 import { importFromUrl, importFromText } from "./import";
+import { suggestMenus } from "./suggest";
 import { checkAllowed, chargeUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
 
 export interface Env extends AiEnv, GuardEnv {
@@ -97,6 +98,25 @@ const ImportTextRequest = z.object({
   url: z.string().max(2000).nullable().optional(),
 }).refine((b) => (b.text?.trim().length ?? 0) > 0 || (b.images?.length ?? 0) > 0, "글이나 사진이 필요합니다");
 
+const Name = z.string().trim().min(1).max(60);
+const SuggestRequest = z.object({
+  items: z.array(z.object({
+    name: Name,
+    qty: z.number().nonnegative().nullable().optional(),
+    unit: z.string().max(10).optional(),
+    daysLeft: z.number().int().min(-3650).max(3650).nullable().optional(),
+    location: StorageLocation.optional(),
+  })).max(200, "냉장고 품목은 200개까지 보낼 수 있습니다"),
+  mustUse: z.array(Name).max(10).default([]),
+  exclude: z.array(Name).max(30).default([]),
+  mood: z.string().trim().max(100).nullable().optional(),
+  servings: z.number().int().positive().max(20).default(2),
+  profile: FamilyProfile.nullable().optional(),
+  recent: z.array(z.string().trim().max(100)).max(30).default([]),
+  avoid: z.array(z.string().trim().max(100)).max(30).default([]),
+  count: z.number().int().min(1).max(8).default(5),
+});
+
 const NormalizeRequest = z.object({
   names: z.array(z.string().trim().min(1).max(60)).min(1).max(40, "한 번에 40개까지 정리할 수 있습니다"),
 });
@@ -109,7 +129,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 5, features: ["recipe", "pantry/receipt", "normalize", "import/url", "import/text"],
+        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "normalize", "import/url", "import/text", "suggest"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
         ai: describeAi(env),
         guard: { allowList: allowList(env).includes("*") ? "everyone" : allowList(env).length, perMinute: !!env.AI_LIMIT, daily: !!env.USAGE },
@@ -156,7 +176,13 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json(r, 200, cors);
     }
 
-    // 6단계: /suggest
+    if (url.pathname === "/suggest" && request.method === "POST") {
+      const { user, body } = await begin(request, env, "/suggest", SuggestRequest);
+      const r = await suggestMenus(selectProvider(env), body);
+      console.log(JSON.stringify({ route: "suggest", uid: user.uid, items: body.items.length, got: r.suggestions.length, dropped: r.dropped, provider: r.provider, model: r.model, usage: r.usage }));
+      return json(r, 200, cors);
+    }
+
     throw new HttpError(404, "not found");
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, cors);

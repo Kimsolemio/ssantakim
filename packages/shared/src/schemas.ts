@@ -184,3 +184,20 @@ export const ImportResult = z.object({
   recipe: RecipeDraft.nullable(),
 });
 export type ImportResult = z.infer<typeof ImportResult>;
+
+/** "오늘 뭐 먹지" 메뉴 추천 한 개 */
+export const MenuSuggestion = z.object({
+  title: z.string().min(1),          // 요리 이름 (예: "두부 김치찌개")
+  reason: z.string(),                // 왜 추천하는지 한 문장 (예: "내일까지인 두부와 김치를 함께 써요")
+  uses: z.array(z.string()),         // 냉장고에서 쓰는 품목 (보낸 이름 그대로)
+  missing: z.array(z.string()),      // 더 사야 하는 재료 (늘 있는 양념 제외)
+  timeMinutes: z.number().int().positive().nullable(),
+  difficulty: z.enum(["쉬움", "보통", "어려움"]),
+  tags: z.array(z.string()),
+});
+export type MenuSuggestion = z.infer<typeof MenuSuggestion>;
+
+export const SuggestResult = z.object({
+  suggestions: z.array(MenuSuggestion),
+});
+export type SuggestResult = z.infer<typeof SuggestResult>;
