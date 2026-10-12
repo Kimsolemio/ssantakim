@@ -1,17 +1,24 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useBackButton } from "../lib/useBackButton";
+import { BackBar } from "./ui/Bars";
 
 type Props = {
-  title: string;
+  title: ReactNode;
   onClose: () => void;
+  /** 머리 오른쪽 아이콘 버튼 (2개까지) */
   right?: ReactNode;
   children: ReactNode;
+  /** 하단 고정 행동 (저장·요리 시작 등 주 행동은 여기에) */
+  footer?: ReactNode;
   /** 있으면 닫기 전에 이 문구로 한 번 묻는다 (저장 안 한 내용이 있을 때) */
   confirmClose?: string | null;
+  /** 설정 화면처럼 회색 바탕 위에 카드를 놓을 때 */
+  canvas?: boolean;
 };
 
-/** 하단 탭 위를 덮는 전체화면 레이어 (상세, 편집) */
-export function FullScreen({ title, onClose, right, children, confirmClose }: Props) {
+/** 하단 탭 위를 덮는 전체화면 레이어 (상세, 편집). 흰 바탕 */
+export function FullScreen({ title, onClose, right, children, footer, confirmClose, canvas }: Props) {
+  const [scrolled, setScrolled] = useState(false);
   const tryClose = () => {
     if (confirmClose && !window.confirm(confirmClose)) return false;
     onClose();
@@ -19,16 +26,17 @@ export function FullScreen({ title, onClose, right, children, confirmClose }: Pr
   };
   useBackButton(true, tryClose);
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-[#FFF8F0]">
-      <header className="flex items-center gap-2 border-b border-orange-100 bg-white/95 px-2 backdrop-blur"
-        style={{ paddingTop: "var(--safe-top)" }}>
-        <button onClick={tryClose} aria-label="뒤로" className="px-3 py-3 text-2xl leading-none text-gray-600">‹</button>
-        <h1 className="min-w-0 flex-1 truncate py-3 text-lg font-bold">{title}</h1>
-        {right && <div className="flex items-center gap-1 pr-2">{right}</div>}
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto" style={{ paddingBottom: "calc(var(--safe-bottom) + 16px)" }}>
+    <div className={`fixed inset-0 z-40 flex flex-col text-ink ${canvas ? "bg-canvas" : "bg-surface"}`}>
+      <BackBar title={title} onBack={tryClose} right={right} scrolled={scrolled} canvas={canvas} />
+      <div className="min-h-0 flex-1 overflow-y-auto" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
+        style={{ paddingBottom: footer ? 24 : "calc(var(--safe-bottom) + 24px)" }}>
         {children}
       </div>
+      {footer && (
+        <div className="shrink-0 border-t border-line bg-surface px-5 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
+          {footer}
+        </div>
+      )}
     </div>
   );
 }

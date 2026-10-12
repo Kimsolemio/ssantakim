@@ -7,30 +7,22 @@ import { RecipesTab } from "./features/recipes/RecipesTab";
 import { ShoppingTab } from "./features/shopping/ShoppingTab";
 import { NavProvider, useNav } from "./lib/nav";
 import { takePendingShare } from "./lib/share";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { ToastProvider, useToast } from "./components/ui/Toast";
 import { FamilySetup } from "./features/family/FamilySetup";
-import { FamilyMenu } from "./features/family/FamilyBar";
 import { TodayTab } from "./features/today/TodayTab";
 import { SetupScreen } from "./pages/SetupScreen";
 import { SignInScreen } from "./pages/SignInScreen";
 
 /** 잠깐 기다렸다 넘어간 저장이 나중에 실패하면 알린다 (lib/write.ts) */
 function WriteFailureToast() {
-  const [msg, setMsg] = useState<string | null>(null);
+  const toast = useToast();
   useEffect(() => {
-    let t: ReturnType<typeof setTimeout> | undefined;
-    const on = (e: Event) => {
-      setMsg(`저장하지 못한 내용이 있어요: ${(e as CustomEvent<string>).detail}`);
-      clearTimeout(t); t = setTimeout(() => setMsg(null), 6000);
-    };
+    const on = (e: Event) => toast.show(`저장하지 못한 내용이 있어요: ${(e as CustomEvent<string>).detail}`, { kind: "error" });
     window.addEventListener("cook:write-failed", on);
-    return () => { window.removeEventListener("cook:write-failed", on); clearTimeout(t); };
-  }, []);
-  if (!msg) return null;
-  return (
-    <div role="alert" className="fixed inset-x-0 top-0 z-[60] mx-auto mt-2 w-fit max-w-[92%] rounded-2xl bg-red-600 px-4 py-2 text-sm text-white shadow-lg"
-      style={{ marginTop: "calc(var(--safe-top) + 8px)" }} onClick={() => setMsg(null)}>{msg}</div>
-  );
+    return () => window.removeEventListener("cook:write-failed", on);
+  }, [toast]);
+  return null;
 }
 
 function Tabs() {
@@ -41,8 +33,7 @@ function Tabs() {
     if (shared) openImport(shared);
   }, [openImport]);
   return (
-    <div className="relative mx-auto max-w-lg" style={{ paddingTop: "var(--safe-top)" }}>
-      <FamilyMenu />
+    <div className="relative mx-auto min-h-dvh max-w-lg">
       <WriteFailureToast />
       {tab === "fridge" && <FridgeTab />}
       {tab === "recipes" && <RecipesTab />}
@@ -58,7 +49,7 @@ function Shell() {
   const { familyId, loading: famLoading } = useFamily();
 
   if (loading || (user && famLoading)) {
-    return <div className="flex min-h-dvh items-center justify-center text-gray-500">불러오는 중…</div>;
+    return <div className="flex min-h-dvh items-center justify-center text-callout text-ink-3" role="status">불러오는 중…</div>;
   }
   if (!user) return <SignInScreen />;
   if (!familyId) return <FamilySetup />;
@@ -71,7 +62,9 @@ export default function App() {
   return (
     <AuthProvider>
       <FamilyProvider>
-        <Shell />
+        <ToastProvider>
+          <Shell />
+        </ToastProvider>
       </FamilyProvider>
     </AuthProvider>
   );

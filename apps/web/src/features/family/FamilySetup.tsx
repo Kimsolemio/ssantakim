@@ -1,6 +1,11 @@
 import { useState } from "react";
+import { ChevronLeft } from "lucide-react";
 import { useFamily } from "../../lib/family";
 import { useAuth } from "../../lib/auth";
+import { Button } from "../../components/ui/Button";
+import { IconButton } from "../../components/ui/IconButton";
+import { TextField, inputBase } from "../../components/ui/Field";
+import { Banner } from "../../components/ui/Banner";
 
 export function FamilySetup() {
   const { createFamily, joinFamily } = useFamily();
@@ -14,35 +19,45 @@ export function FamilySetup() {
     setBusy(true); setErr(null);
     try { await fn(); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   };
-
-  const field = "w-full rounded-xl border border-orange-200 bg-white px-3 py-3 text-base outline-none focus:border-orange-400";
+  const back = () => { setMode("pick"); setValue(""); setErr(null); };
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center gap-4 p-6">
-      <h1 className="text-2xl font-bold">안녕하세요, {user?.displayName ?? "가족"}님</h1>
-      <p className="text-gray-600">가족을 새로 만들거나 초대 코드로 참여하세요.</p>
-      {mode === "pick" && (
-        <div className="flex flex-col gap-2">
-          <button onClick={() => setMode("create")} className="rounded-xl bg-orange-500 py-3 font-semibold text-white">새 가족 만들기</button>
-          <button onClick={() => setMode("join")} className="rounded-xl border border-orange-300 bg-white py-3 font-semibold">초대 코드로 참여</button>
-        </div>
-      )}
-      {mode === "create" && (
-        <div className="flex flex-col gap-2">
-          <input className={field} placeholder="가족 이름 (예: 김씨네)" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
-          <button disabled={busy} onClick={() => run(() => createFamily(value))} className="rounded-xl bg-orange-500 py-3 font-semibold text-white disabled:opacity-50">만들기</button>
-          <button onClick={() => setMode("pick")} className="py-2 text-sm text-gray-500">뒤로</button>
-        </div>
-      )}
-      {mode === "join" && (
-        <div className="flex flex-col gap-2">
-          <input className={`${field} uppercase tracking-widest`} placeholder="초대 코드 6자리" maxLength={6} value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
-          <button disabled={busy} onClick={() => run(() => joinFamily(value))} className="rounded-xl bg-orange-500 py-3 font-semibold text-white disabled:opacity-50">참여하기</button>
-          <button onClick={() => setMode("pick")} className="py-2 text-sm text-gray-500">뒤로</button>
-        </div>
-      )}
-      {err && <p className="text-sm text-red-600">{err}</p>}
-      <button onClick={signOut} className="mt-6 text-sm text-gray-400">로그아웃</button>
+    <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-canvas px-6" style={{ paddingTop: "var(--safe-top)" }}>
+      <div className="-mx-4 h-12">{mode !== "pick" && <IconButton aria-label="뒤로" onClick={back}><ChevronLeft size={26} /></IconButton>}</div>
+      <div className="flex flex-1 flex-col justify-center">
+        {mode === "pick" && (
+          <div className="text-center">
+            <img src="/icon.svg" alt="" className="mx-auto size-[72px] rounded-[18px] shadow-raised" />
+            <h1 className="mt-6 text-title1 text-ink">안녕하세요, {user?.displayName ?? "가족"}님</h1>
+            <p className="mt-2 text-body text-ink-2">가족을 새로 만들거나 초대 코드로 참여하세요</p>
+          </div>
+        )}
+        {mode === "create" && (
+          <form onSubmit={(e) => { e.preventDefault(); void run(() => createFamily(value)); }} className="flex flex-col gap-4">
+            <h1 className="text-title1 text-ink">가족 이름</h1>
+            <TextField big onCanvas aria-label="가족 이름" placeholder="가족 이름 (예: 김씨네)" value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
+            <Button type="submit" block loading={busy} disabled={!value.trim()}>만들기</Button>
+          </form>
+        )}
+        {mode === "join" && (
+          <form onSubmit={(e) => { e.preventDefault(); void run(() => joinFamily(value)); }} className="flex flex-col gap-4">
+            <h1 className="text-title1 text-ink">초대 코드</h1>
+            <input aria-label="초대 코드" className={`${inputBase} h-16 bg-surface text-center text-title1 uppercase tracking-[0.3em] placeholder:text-callout placeholder:tracking-normal`}
+              placeholder="초대 코드 6자리" maxLength={6} value={value} onChange={(e) => setValue(e.target.value)} autoFocus autoCapitalize="characters" autoComplete="off" />
+            <Button type="submit" block loading={busy} disabled={value.trim().length < 6}>참여하기</Button>
+          </form>
+        )}
+        {err && <Banner kind="danger" className="mt-4">{err}</Banner>}
+      </div>
+      <div className="flex flex-col gap-2" style={{ paddingBottom: "calc(var(--safe-bottom) + 24px)" }}>
+        {mode === "pick" && (
+          <>
+            <Button block onClick={() => setMode("create")}>새 가족 만들기</Button>
+            <Button block variant="secondary" onClick={() => setMode("join")}>초대 코드로 참여</Button>
+          </>
+        )}
+        <Button block variant="ghost" size="md" onClick={signOut}>로그아웃</Button>
+      </div>
     </div>
   );
 }
