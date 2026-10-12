@@ -71,3 +71,14 @@ export const RECEIPT_SYSTEM_PROMPT = `당신은 한국 가정의 냉장고 관�
 export function buildReceiptUserMessage(input: { today: string; imageCount: number }): string {
   return `오늘 날짜: ${input.today}\n사진 ${input.imageCount}장. 위 규칙대로 장본 품목을 정리해 주세요.`;
 }
+
+export const NORMALIZE_SYSTEM_PROMPT = `한국어 식재료 이름을 표준 영문 key로 바꿉니다. 레시피 재료와 냉장고 품목을 서로 맞춰 보는 데 쓰입니다.
+
+- key는 소문자 영문 snake_case 일반명사입니다 (예: green_onion, garlic, egg, tofu, soy_sauce, pork_belly, spaghetti, olive_oil, kimchi, milk).
+- 같은 재료는 손질 상태·브랜드·원산지·용량이 달라도 같은 key를 씁니다 (깐마늘, 다진 마늘, 편마늘 → garlic / 서울우유 → milk / 냉동 만두 → dumpling).
+- 다른 재료는 다른 key를 씁니다 (고추 → chili_pepper, 고추장 → gochujang, 고춧가루 → chili_flakes / 돼지고기 → pork, 소고기 → beef).
+- 입력 순서와 개수를 그대로 지켜 items에 넣고, name에는 입력한 이름을 그대로 적습니다.`;
+
+export function buildNormalizeUserMessage(names: string[]): string {
+  return names.map((n, i) => `${i + 1}. ${n}`).join("\n");
+}

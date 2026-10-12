@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RecipeDraft, ReceiptScan } from "./schemas";
+import { RecipeDraft, ReceiptScan, NormalizedNames } from "./schemas";
 
 /**
  * AI 구조화 출력(Gemini responseJsonSchema 등)용 JSON 스키마.
@@ -34,4 +34,8 @@ export function recipeDraftJsonSchema(): Record<string, unknown> {
 
 export function receiptScanJsonSchema(): Record<string, unknown> {
   return sanitizeSchemaForAi(z.toJSONSchema(ReceiptScan)) as Record<string, unknown>;
+}
+
+export function normalizedNamesJsonSchema(): Record<string, unknown> {
+  return sanitizeSchemaForAi(z.toJSONSchema(NormalizedNames)) as Record<string, unknown>;
 }

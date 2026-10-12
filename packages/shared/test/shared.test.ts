@@ -93,3 +93,56 @@ describe("virtual fridge helpers", () => {
     expect(FI.safeParse({ name: "대파", key: "대파", qty: 1, unit: "개", location: "냉장", expiresAt: null, addedBy: "u", addedAt: "x" }).success).toBe(true);
   });
 });
+
+import { convertQty, sameFood, matchIngredient, planDeductions, isAlwaysAvailable, defaultLocation, normalizedNamesJsonSchema, type Ingredient } from "../src";
+
+const ing = (o: Partial<Ingredient> & { name: string; key: string }): Ingredient => ({ qty: null, unit: "개", scalable: true, optional: false, group: "주재료", ...o });
+const fr = (o: { id: string; name: string; key: string; qty: number | null; unit: any; expiresAt?: string | null }) => ({ expiresAt: null, ...o });
+
+describe("matching", () => {
+  it("converts only compatible units", () => {
+    expect(convertQty(1.5, "kg", "g")).toBe(1500);
+    expect(convertQty(2, "큰술", "ml")).toBe(30);
+    expect(convertQty(1, "L", "컵")).toBe(5);
+    expect(convertQty(1, "개", "g")).toBeNull();
+  });
+  it("treats processed forms as the same food but not prefixes", () => {
+    expect(sameFood({ key: "", name: "다진 마늘" }, { key: "깐마늘", name: "깐마늘" })).toBe(true);
+    expect(sameFood({ key: "soy_sauce", name: "간장" }, { key: "진간장", name: "진간장" })).toBe(true);
+    expect(sameFood({ key: "gochujang", name: "고추장" }, { key: "고추", name: "고추" })).toBe(false);
+    expect(sameFood({ key: "spaghetti", name: "스파게티면" }, { key: "spaghetti", name: "파스타면" })).toBe(true);
+    expect(sameFood({ key: "x", name: "파" }, { key: "y", name: "대파" })).toBe(false); // 한 글자는 끝부분 일치로 보지 않는다
+    expect(isAlwaysAvailable({ key: "water", name: "물" })).toBe(true);
+    expect(sameFood({ key: "", name: "냉동 만두" }, { key: "", name: "만두" })).toBe(true);
+    expect(sameFood({ key: "", name: "생강" }, { key: "", name: "강" })).toBe(false);
+    expect(sameFood({ key: "", name: "돼지고기" }, { key: "", name: "소고기" })).toBe(false);
+  });
+  it("classifies enough / short / unknown / missing", () => {
+    const fridge = [fr({ id: "a", name: "스파게티면", key: "spaghetti", qty: 500, unit: "g" }), fr({ id: "b", name: "깐마늘", key: "garlic", qty: 200, unit: "g" }),
+      fr({ id: "c", name: "올리브유", key: "olive_oil", qty: 2, unit: "큰술" })];
+    expect(matchIngredient(ing({ name: "스파게티면", key: "spaghetti", qty: 300, unit: "g" }), fridge).status).toBe("enough");
+    expect(matchIngredient(ing({ name: "스파게티면", key: "spaghetti", qty: 0.6, unit: "kg" }), fridge)).toMatchObject({ status: "short", shortBy: 0.1 });
+    expect(matchIngredient(ing({ name: "마늘", key: "garlic", qty: 8, unit: "쪽" }), fridge).status).toBe("unknown_amount");
+    expect(matchIngredient(ing({ name: "올리브오일", key: "olive_oil", qty: 60, unit: "ml" }), fridge)).toMatchObject({ status: "short", have: 30, shortBy: 30 });
+    expect(matchIngredient(ing({ name: "소금", key: "salt", unit: "기타" }), fridge).status).toBe("missing");
+    expect(matchIngredient(ing({ name: "물", key: "water", qty: 2, unit: "L" }), fridge).status).toBe("always");
+  });
+  it("deducts from the soonest-expiring item first", () => {
+    const fridge = [
+      fr({ id: "late", name: "대파", key: "green_onion", qty: 2, unit: "개", expiresAt: "2099-01-10" }),
+      fr({ id: "soon", name: "대파", key: "green_onion", qty: 1, unit: "개", expiresAt: "2099-01-02" }),
+    ];
+    const m = matchIngredient(ing({ name: "대파", key: "green_onion", qty: 2, unit: "개" }), fridge);
+    expect(planDeductions(m).map((d) => [d.item.id, d.use])).toEqual([["soon", 1], ["late", 1]]);
+    const g = matchIngredient(ing({ name: "마늘", key: "garlic", qty: 8, unit: "쪽" }), [fr({ id: "g", name: "깐마늘", key: "garlic", qty: 200, unit: "g" })]);
+    expect(planDeductions(g)).toEqual([{ item: expect.objectContaining({ id: "g" }), use: null }]);
+    const salt = matchIngredient(ing({ name: "소금", key: "salt", unit: "기타" }), [fr({ id: "s", name: "소금", key: "salt", qty: 500, unit: "g" })]);
+    expect(planDeductions(salt)[0].use).toBe(0);
+  });
+  it("defaults and schema", () => {
+    expect(defaultLocation("냉동식품")).toBe("냉동");
+    expect(defaultLocation("곡물·면")).toBe("실온");
+    expect(defaultLocation("채소")).toBe("냉장");
+    expect(JSON.stringify(normalizedNamesJsonSchema())).not.toContain('"minLength"');
+  });
+});

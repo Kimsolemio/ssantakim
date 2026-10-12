@@ -125,8 +125,19 @@ export const ShoppingItem = z.object({
   checked: z.boolean().default(false),
   addedBy: z.string(),
   addedAt: z.string(),
+  // 4단계에서 추가 (선택)
+  recipeTitle: z.string().optional(),
+  category: FoodCategory.optional(),
+  emoji: z.string().optional(),
+  memo: z.string().optional(),
 });
 export type ShoppingItem = z.infer<typeof ShoppingItem>;
+
+/** 재료 이름 → 표준 영문 key (AI 정리 결과) */
+export const NormalizedNames = z.object({
+  items: z.array(z.object({ name: z.string(), key: z.string().min(1) })),
+});
+export type NormalizedNames = z.infer<typeof NormalizedNames>;
 
 export const FamilyProfile = z.object({
   members: z.number().int().positive().default(2),

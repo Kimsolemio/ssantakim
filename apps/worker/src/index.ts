@@ -4,6 +4,7 @@ import { verifyFirebaseIdToken, AuthError, type Verified } from "./auth";
 import { selectProvider, describeAi, GenerationError, type AiEnv } from "./ai";
 import { generateRecipe } from "./recipe";
 import { scanReceipt } from "./receipt";
+import { normalizeNames } from "./normalize";
 
 export interface Env extends AiEnv {
   FIREBASE_PROJECT_ID: string;
@@ -81,6 +82,10 @@ const ReceiptRequest = z.object({
   today: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
+const NormalizeRequest = z.object({
+  names: z.array(z.string().trim().min(1).max(60)).min(1).max(40, "한 번에 40개까지 정리할 수 있습니다"),
+});
+
 async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const cors = corsHeaders(env, request);
@@ -89,7 +94,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 3, features: ["recipe", "pantry/receipt"],
+        ok: true, stage: 4, features: ["recipe", "pantry/receipt", "normalize"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
         ai: describeAi(env),
       }, 200, cors);
@@ -111,7 +116,15 @@ async function handle(request: Request, env: Env): Promise<Response> {
       return json(result, 200, cors);
     }
 
-    // 4단계: /normalize, 5단계: /import/*, 6단계: /suggest
+    if (url.pathname === "/normalize" && request.method === "POST") {
+      const user = await authenticate(request, env);
+      const body = await readJson(request, NormalizeRequest);
+      const result = await normalizeNames(selectProvider(env), body.names);
+      console.log(JSON.stringify({ route: "normalize", uid: user.uid, count: body.names.length, provider: result.provider, model: result.model }));
+      return json(result, 200, cors);
+    }
+
+    // 5단계: /import/*, 6단계: /suggest
     throw new HttpError(404, "not found");
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status, cors);
