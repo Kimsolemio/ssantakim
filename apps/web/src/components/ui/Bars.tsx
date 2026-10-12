@@ -37,13 +37,13 @@ export function FamilyAvatar({ name, onClick }: { name: string; onClick: () => v
 }
 
 /** 전체화면 머리: 뒤로 + 제목 + 오른쪽 아이콘 버튼 2개까지 */
-export function BackBar({ title, onBack, right, scrolled, canvas }: { title: ReactNode; onBack: () => void; right?: ReactNode; scrolled?: boolean; canvas?: boolean }) {
+export function BackBar({ title, onBack, right, scrolled, canvas, titleHidden }: { title: ReactNode; onBack: () => void; right?: ReactNode; scrolled?: boolean; canvas?: boolean; /** 본문에 큰 제목이 보이는 동안 눈에서만 숨긴다 (화면 읽기는 그대로) */ titleHidden?: boolean }) {
   return (
     <header data-scrolled={scrolled} className={`sticky top-0 z-10 shrink-0 ${canvas ? "bg-canvas/85" : "bg-surface/90"} backdrop-blur-xl data-[scrolled=true]:border-b data-[scrolled=true]:border-line`}
       style={{ paddingTop: "var(--safe-top)" }}>
       <div className="flex h-14 items-center gap-1 px-1">
         <IconButton aria-label="뒤로" onClick={onBack}><ChevronLeft size={26} /></IconButton>
-        <h1 className="min-w-0 flex-1 truncate text-headline text-ink">{title}</h1>
+        <h1 className={`min-w-0 flex-1 truncate text-headline text-ink transition-opacity duration-150 ${titleHidden ? "opacity-0" : "opacity-100"}`}>{title}</h1>
         {right && <div className="flex shrink-0 items-center">{right}</div>}
       </div>
     </header>

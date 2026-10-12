@@ -14,10 +14,12 @@ type Props = {
   confirmClose?: string | null;
   /** 설정 화면처럼 회색 바탕 위에 카드를 놓을 때 */
   canvas?: boolean;
+  /** 본문 큰 제목이 보이는 동안 머리 제목을 숨길 때 */
+  titleHidden?: boolean;
 };
 
 /** 하단 탭 위를 덮는 전체화면 레이어 (상세, 편집). 흰 바탕 */
-export function FullScreen({ title, onClose, right, children, footer, confirmClose, canvas }: Props) {
+export function FullScreen({ title, onClose, right, children, footer, confirmClose, canvas, titleHidden }: Props) {
   const [scrolled, setScrolled] = useState(false);
   const tryClose = () => {
     if (confirmClose && !window.confirm(confirmClose)) return false;
@@ -27,7 +29,7 @@ export function FullScreen({ title, onClose, right, children, footer, confirmClo
   useBackButton(true, tryClose);
   return (
     <div className={`fixed inset-0 z-40 flex flex-col text-ink ${canvas ? "bg-canvas" : "bg-surface"}`}>
-      <BackBar title={title} onBack={tryClose} right={right} scrolled={scrolled} canvas={canvas} />
+      <BackBar title={title} onBack={tryClose} right={right} scrolled={scrolled} canvas={canvas} titleHidden={titleHidden} />
       <div className="min-h-0 flex-1 overflow-y-auto" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
         style={{ paddingBottom: footer ? 24 : "calc(var(--safe-bottom) + 24px)" }}>
         {children}

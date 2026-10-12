@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { BookOpen, ChevronRight, FolderPlus, Link as LinkIcon, Sparkles, Star } from "lucide-react";
 import type { RecipeDraft } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
@@ -10,6 +11,16 @@ import type { SharedPayload } from "../../lib/share";
 import { RecipeEditor } from "./RecipeEditor";
 import { RecipeDetail, SOURCE_LABEL } from "./RecipeDetail";
 import { Sheet } from "../../components/Sheet";
+import { Banner } from "../../components/ui/Banner";
+import { Button } from "../../components/ui/Button";
+import { FilterChip } from "../../components/ui/Chip";
+import { EmptyState, Skeleton } from "../../components/ui/EmptyState";
+import { SearchField, TextField } from "../../components/ui/Field";
+import { IconButton } from "../../components/ui/IconButton";
+import { IconThumb } from "../../components/ui/FoodThumb";
+import { Card, rowLine } from "../../components/ui/Section";
+import { ExtendedFab } from "../../components/ui/Bars";
+import { TabHeader } from "../family/FamilyScreen";
 import { fixRecipeKeysInBackground } from "../../lib/normalize";
 import { loadPending, savePending, clearPending } from "../../lib/drafts";
 
@@ -18,10 +29,33 @@ const MAX_DRAFTS = 5;
 
 type Filter = { kind: "all" } | { kind: "fav" } | { kind: "folder"; id: string };
 
+/** 목록 보조 줄: "20분 · 3인분 · 유튜브" (태그는 빼고, 출처는 AI 생성이 아닐 때만) */
+function metaLine(r: RecipeDoc): string {
+  return [r.timeMinutes != null ? `${r.timeMinutes}분` : null, `${r.servingsBase}인분`, r.source.type === "generated" ? null : SOURCE_LABEL[r.source.type]]
+    .filter(Boolean).join(" · ");
+}
+
+/** 추가 시트의 한 줄 (아이콘 접시 + 제목 + 보조) */
+function AddRow({ icon, title, sub, onClick, testId }: { icon: ReactNode; title: string; sub: string; onClick: () => void; testId?: string }) {
+  return (
+    <li className={`${rowLine} before:left-[72px]`}>
+      <button type="button" onClick={onClick} data-testid={testId} className="flex min-h-[72px] w-full items-center gap-3 px-5 py-3 text-left transition-colors active:bg-surface-2">
+        <IconThumb>{icon}</IconThumb>
+        <span className="min-w-0 flex-1">
+          <span className="block text-body text-ink">{title}</span>
+          <span className="mt-0.5 block text-caption text-ink-3">{sub}</span>
+        </span>
+        <ChevronRight size={20} aria-hidden className="shrink-0 text-ink-3" />
+      </button>
+    </li>
+  );
+}
+
 export function RecipesTab() {
   const { user } = useAuth();
   const { familyId, family } = useFamily();
   const { recipes, loading, error } = useRecipes(familyId);
+  const [adding, setAdding] = useState(false);
   const folders = useFolders(familyId);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>({ kind: "all" });
@@ -84,69 +118,85 @@ export function RecipesTab() {
 
   if (!familyId || !user) return null;
 
-  const chip = (active: boolean) => `shrink-0 rounded-full px-3 py-1.5 text-sm ${active ? "bg-orange-500 text-white" : "bg-white text-gray-700"}`;
+  const empty = !loading && recipes.length === 0;
+  const startGenerate = () => { setAdding(false); setGenerating({}); };
+  const startImport = () => { setAdding(false); setImporting({ initial: null }); };
 
   return (
-    <div className="flex flex-col gap-3 p-4 pb-28">
-      <header>
-        <h1 className="text-2xl font-bold">레시피</h1>
-        <p className="text-sm text-gray-500">{family?.name ?? ""} · {recipes.length}개</p>
-      </header>
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => setGenerating({})} className="rounded-xl bg-orange-500 py-3 font-semibold text-white shadow">✨ 음식 이름으로</button>
-        <button onClick={() => setImporting({ initial: null })} data-testid="open-import" className="rounded-xl bg-white py-3 font-semibold text-gray-800 shadow">🔗 링크·사진으로</button>
-      </div>
-      <input className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 outline-none focus:border-orange-400"
-        placeholder="요리 이름, 재료, 태그 검색" value={search} onChange={(e) => setSearch(e.target.value)} />
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        <button className={chip(filter.kind === "all")} onClick={() => setFilter({ kind: "all" })}>전체</button>
-        <button className={chip(filter.kind === "fav")} onClick={() => setFilter({ kind: "fav" })}>★ 즐겨찾기</button>
-        {folders.map((f) => (
-          <button key={f.id} className={chip(filter.kind === "folder" && filter.id === f.id)} onClick={() => setFilter({ kind: "folder", id: f.id })}>{f.name}</button>
-        ))}
-        <button className="shrink-0 rounded-full border border-dashed border-orange-300 px-3 py-1.5 text-sm text-orange-700" onClick={() => setFolderMenu(true)}>폴더 관리</button>
-      </div>
-
-      {!draft && stored.map((p) => (
-        <div key={p.id} className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-900" data-testid="pending-draft">
-          <span className="min-w-0 flex-1">📝 저장하지 않은 초안: <b>{p.draft.title}</b></span>
-          <button type="button" className="shrink-0 rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white"
-            onClick={() => { setDraftNote(p.note); setDraftId(p.id); setDraftState(p.draft); }}>이어서</button>
-          <button type="button" className="shrink-0 px-1 text-amber-700 underline" onClick={() => { if (confirm(`"${p.draft.title}" 초안을 버릴까요?`)) removeStored(p.id); }}>버리기</button>
-        </div>
-      ))}
-      {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {loading && <p className="text-sm text-gray-500">불러오는 중…</p>}
-      {!loading && recipes.length === 0 && (
-        <div className="rounded-2xl bg-white p-6 text-center text-gray-500">
-          아직 레시피가 없어요.<br />음식 이름을 넣거나, 유튜브·블로그 링크나 인스타 캡션을 가져와 보세요.
-        </div>
+    <div className="pb-[calc(var(--safe-bottom)+56px+96px)]">
+      <TabHeader title="레시피" />
+      {!empty && (
+        <>
+          <SearchField onCanvas className="mx-5" value={search} onChange={setSearch} placeholder="요리 이름이나 재료로 찾기" label="레시피 검색" />
+          <div className="flex items-center gap-2 overflow-x-auto px-5 pt-3 [scrollbar-width:none]">
+            <FilterChip on={filter.kind === "all"} onClick={() => setFilter({ kind: "all" })}>전체</FilterChip>
+            <FilterChip on={filter.kind === "fav"} onClick={() => setFilter({ kind: "fav" })}>즐겨찾기</FilterChip>
+            {folders.map((f) => (
+              <FilterChip key={f.id} on={filter.kind === "folder" && filter.id === f.id} onClick={() => setFilter({ kind: "folder", id: f.id })}>{f.name}</FilterChip>
+            ))}
+            <IconButton tone="filled" aria-label="폴더 관리" onClick={() => setFolderMenu(true)}><FolderPlus size={20} /></IconButton>
+          </div>
+        </>
       )}
-      {!loading && recipes.length > 0 && filtered.length === 0 && <p className="text-center text-sm text-gray-500">조건에 맞는 레시피가 없어요.</p>}
 
-      <ul className="flex flex-col gap-2">
-        {filtered.map((r) => (
-          <li key={r.id}>
-            <button onClick={() => setOpenId(r.id)} className="flex w-full items-center gap-3 rounded-2xl bg-white px-4 py-3 text-left active:bg-orange-50">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-semibold">{r.title}</span>
-                  {r.favorite && <span className="text-orange-500">★</span>}
-                </div>
-                <p className="truncate text-xs text-gray-500">
-                  {SOURCE_LABEL[r.source.type]}{r.timeMinutes != null ? ` · ${r.timeMinutes}분` : ""} · {r.servingsBase}인분{r.tags.length ? ` · ${r.tags.slice(0, 3).map((t) => `#${t}`).join(" ")}` : ""}
-                </p>
-              </div>
-              <span className="text-gray-300">›</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {error && <Banner kind="danger" className="mx-5 mt-4" title="레시피를 불러오지 못했어요">{error}</Banner>}
+      {/* 저장하지 않은 AI 초안 (이 기기에 최대 5개) */}
+      {!draft && stored.length > 0 && (
+        <Banner kind="info" onCanvas className="mx-5 mt-4" title="저장 안 한 초안">
+          <ul className="-mr-2 mt-1">
+            {stored.map((p) => (
+              <li key={p.id} data-testid="pending-draft" className="flex items-center gap-1">
+                <span className="min-w-0 flex-1 truncate text-callout text-ink">{p.draft.title}</span>
+                <button type="button" className="h-11 shrink-0 px-2 text-callout font-semibold text-accent active:opacity-60"
+                  onClick={() => { setDraftNote(p.note); setDraftId(p.id); setDraftState(p.draft); }}>이어서</button>
+                <button type="button" className="h-11 shrink-0 px-2 text-callout text-ink-3 active:opacity-60"
+                  onClick={() => { if (confirm(`"${p.draft.title}" 초안을 버릴까요?`)) removeStored(p.id); }}>버리기</button>
+              </li>
+            ))}
+          </ul>
+        </Banner>
+      )}
 
-      <button onClick={() => setGenerating({})} aria-label="AI 레시피 만들기"
-        className="fixed right-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-orange-500 text-2xl text-white shadow-lg active:scale-95"
-        style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>✨</button>
+      {loading ? <Skeleton rows={4} className="mx-5 mt-4" />
+        : empty ? (
+          <EmptyState icon={<BookOpen size={28} />} title="아직 레시피가 없어요" body="음식 이름만 적으면 AI가 써 줘요">
+            <Button size="md" onClick={startGenerate} data-testid="open-generate">음식 이름으로 만들기</Button>
+            <Button size="md" variant="secondary" onClick={startImport} data-testid="open-import">링크·사진에서 가져오기</Button>
+          </EmptyState>
+        ) : filtered.length === 0 ? (
+          <p className="px-5 py-12 text-center text-caption text-ink-3">조건에 맞는 레시피가 없어요.</p>
+        ) : (
+          <Card className="mx-5 mt-4 overflow-hidden">
+            <ul>
+              {filtered.map((r) => (
+                <li key={r.id} data-favorite={r.favorite || undefined} className={`${rowLine} before:left-[76px]`}>
+                  <button type="button" onClick={() => setOpenId(r.id)} className="flex min-h-[72px] w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-surface-2">
+                    <span aria-hidden className="grid size-12 shrink-0 place-items-center rounded-control bg-surface-2 text-title2 text-ink-2">{[...r.title.trim()][0] ?? ""}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1">
+                        <span className="truncate text-headline text-ink">{r.title}</span>
+                        {r.favorite && <><Star size={14} fill="currentColor" aria-hidden className="shrink-0 text-ink-2" /><span className="sr-only">즐겨찾기</span></>}
+                      </span>
+                      <span className="mt-0.5 block truncate text-caption text-ink-3 tabular-nums">{metaLine(r)}</span>
+                    </span>
+                    <ChevronRight size={20} aria-hidden className="shrink-0 text-ink-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
 
+      {!loading && !empty && <ExtendedFab onClick={() => setAdding(true)}>레시피 추가</ExtendedFab>}
+
+      {adding && (
+        <Sheet title="레시피 추가" onClose={() => setAdding(false)} flush>
+          <ul>
+            <AddRow icon={<Sparkles size={20} strokeWidth={2} />} title="음식 이름으로 만들기" sub="가족 취향에 맞춰 AI가 써 줘요" onClick={startGenerate} testId="open-generate" />
+            <AddRow icon={<LinkIcon size={20} />} title="링크·사진에서 가져오기" sub="유튜브, 블로그, 인스타 캡션, 요리책 사진" onClick={startImport} testId="open-import" />
+          </ul>
+        </Sheet>
+      )}
       {generating && (
         <GenerateSheet profile={family?.profile ?? null} initialDish={generating.dish} initialNotes={generating.notes} initialServings={generating.servings} autoStart={generating.auto}
           onClose={() => setGenerating(false)}
@@ -200,24 +250,27 @@ export function RecipesTab() {
 function FolderSheet({ familyId, folders, onClose, onDeleted }: { familyId: string; folders: { id: string; name: string }[]; onClose: () => void; onDeleted: (id: string) => void }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const add = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!name.trim() || busy) return;
+    setBusy(true); try { await createFolder(familyId, name); setName(""); } finally { setBusy(false); }
+  };
   return (
-    <Sheet title="폴더 관리" onClose={onClose}>
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          <input className="min-w-0 flex-1 rounded-xl border border-orange-200 bg-white px-3 py-2.5 outline-none focus:border-orange-400" placeholder="새 폴더 이름 (예: 평일 저녁)" value={name} onChange={(e) => setName(e.target.value)} />
-          <button disabled={busy || !name.trim()} className="rounded-xl bg-orange-500 px-4 font-semibold text-white disabled:opacity-50"
-            onClick={async () => { setBusy(true); try { await createFolder(familyId, name); setName(""); } finally { setBusy(false); } }}>추가</button>
-        </div>
-        <ul className="overflow-hidden rounded-2xl bg-white divide-y divide-orange-50">
-          {folders.length === 0 && <li className="p-3 text-sm text-gray-500">폴더가 없어요.</li>}
-          {folders.map((f) => (
-            <li key={f.id} className="flex items-center justify-between px-4 py-2.5">
-              <span>{f.name}</span>
-              <button className="text-sm text-red-500" onClick={async () => { if (confirm(`"${f.name}" 폴더를 삭제할까요? (레시피는 남습니다)`)) { await deleteFolder(familyId, f.id); onDeleted(f.id); } }}>삭제</button>
-            </li>
-          ))}
-        </ul>
-      </div>
+    <Sheet title="폴더 관리" onClose={onClose} flush>
+      <form onSubmit={add} className="flex items-start gap-2 px-5">
+        <TextField wrapClass="min-w-0 flex-1" placeholder="새 폴더 이름" aria-label="새 폴더 이름" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} />
+        <Button type="submit" size="md" disabled={!name.trim()} loading={busy}>추가</Button>
+      </form>
+      <ul className="pt-3">
+        {folders.length === 0 && <li className="px-5 py-6 text-center text-caption text-ink-3">아직 폴더가 없어요</li>}
+        {folders.map((f) => (
+          <li key={f.id} className={`${rowLine} before:left-5 flex min-h-14 items-center gap-3 pl-5 pr-2`}>
+            <span className="min-w-0 flex-1 truncate text-body text-ink">{f.name}</span>
+            <button type="button" className="h-11 shrink-0 rounded-control px-3 text-callout font-semibold text-danger active:bg-danger-soft"
+              onClick={async () => { if (confirm(`"${f.name}" 폴더를 삭제할까요? (레시피는 남습니다)`)) { await deleteFolder(familyId, f.id); onDeleted(f.id); } }}>삭제</button>
+          </li>
+        ))}
+      </ul>
     </Sheet>
   );
 }

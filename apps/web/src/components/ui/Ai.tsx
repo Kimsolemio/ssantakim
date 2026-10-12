@@ -1,7 +1,7 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { ArrowUpRight, Globe, LoaderCircle, Sparkles } from "lucide-react";
 import { Button } from "./Button";
-import { rowLineInset } from "./Section";
+import { rowLine } from "./Section";
 
 /** AI 입구 여러 개를 한 줄로. 반짝이는 줄 앞 라벨에 한 번만 */
 export function AiToolbar({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -69,7 +69,7 @@ export function SourceList({ refs, limit }: { refs: { url: string; title: string
     <>
       <ul data-testid="recipe-refs">
         {shown.map((r) => (
-          <li key={r.url} className={rowLineInset}>
+          <li key={r.url} className={`${rowLine} before:left-[72px]`}>
             <a href={r.url} target="_blank" rel="noreferrer" className="flex min-h-14 items-center gap-3 px-5 py-3 transition-colors active:bg-surface-2">
               <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2"><Globe size={20} /></span>
               <span className="min-w-0 flex-1">

@@ -9,12 +9,13 @@ const styles = {
 };
 
 /** 정보·경고·위험 알림 상자. 한 화면에 하나, 1~2줄 */
-export function Banner({ kind = "info", title, children, action, onClose, className = "", testId }: {
+export function Banner({ kind = "info", title, children, action, onClose, className = "", testId, onCanvas }: {
   kind?: keyof typeof styles; title?: ReactNode; children?: ReactNode; action?: { label: string; onClick: () => void }; onClose?: () => void; className?: string; testId?: string;
+  /** 회색 바탕(탭 화면) 위: 정보 상자를 흰색으로 */ onCanvas?: boolean;
 }) {
   const Icon = kind === "success" ? CircleCheckBig : kind === "info" ? Info : TriangleAlert;
   return (
-    <div role={kind === "danger" ? "alert" : "status"} data-testid={testId} className={`flex items-start gap-3 rounded-card py-3 pl-4 ${action || onClose ? "pr-2" : "pr-4"} ${styles[kind]} ${className}`}>
+    <div role={kind === "danger" ? "alert" : "status"} data-testid={testId} className={`flex items-start gap-3 rounded-card py-3 pl-4 ${action || onClose ? "pr-2" : "pr-4"} ${onCanvas && (kind === "info" || kind === "success") ? "bg-surface text-ink-2" : styles[kind]} ${className}`}>
       <Icon size={20} aria-hidden className={`mt-0.5 shrink-0 ${kind === "success" ? "text-success" : ""}`} />
       <div className="min-w-0 flex-1">
         {title && <p className="text-callout font-semibold">{title}</p>}
