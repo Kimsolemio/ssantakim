@@ -33,7 +33,7 @@ export function useFridge(familyId: string | null) {
 
 export type FridgeInput = Omit<FridgeItem, "key" | "addedBy" | "addedAt" | "photoUrl">;
 
-export async function addFridgeItem(familyId: string, uid: string, input: FridgeInput) {
+export async function addFridgeItem(familyId: string, uid: string, input: FridgeInput): Promise<string> {
   const item: FridgeItem = FridgeItem.parse({
     ...input,
     key: provisionalKey(input.name),
@@ -41,7 +41,21 @@ export async function addFridgeItem(familyId: string, uid: string, input: Fridge
     addedAt: new Date().toISOString(),
     photoUrl: null,
   });
-  await addDoc(collection(getDb(), "families", familyId, "fridge_items"), item);
+  const ref = await addDoc(collection(getDb(), "families", familyId, "fridge_items"), item);
+  return ref.id;
+}
+
+/** 요리 후 차감: 남은 양을 고치거나 다 쓴 것은 지운다 */
+export async function applyFridgeUpdates(familyId: string, updates: { id: string; qty?: number | null; remove?: boolean }[]) {
+  if (updates.length === 0) return;
+  const db = getDb();
+  const batch = writeBatch(db);
+  for (const u of updates) {
+    const ref = doc(db, "families", familyId, "fridge_items", u.id);
+    if (u.remove) batch.delete(ref);
+    else if (u.qty !== undefined) batch.update(ref, { qty: u.qty });
+  }
+  await batch.commit();
 }
 
 export async function updateFridgeItem(familyId: string, id: string, input: Partial<FridgeInput>) {
@@ -81,4 +95,9 @@ export async function addFridgeItems(
   onIds?.(ids);
   for (const b of batches) await b.commit();
   return ids;
+}
+
+/** 냉장고 품목의 key 를 바꾼다 (레시피 재료와 직접 연결할 때) */
+export async function setFridgeItemKey(familyId: string, id: string, key: string) {
+  await updateDoc(doc(getDb(), "families", familyId, "fridge_items", id), { key });
 }

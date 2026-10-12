@@ -1,13 +1,22 @@
 import { useState } from "react";
-import type { Recipe } from "@cook/shared";
+import type { IngredientMatch, Recipe } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { Sheet } from "../../components/Sheet";
 import { IngredientList } from "./IngredientList";
 import { CookMode } from "../cook/CookMode";
+import { UseUpSheet, type UseUpResult } from "../cook/UseUpSheet";
+import { useFamily } from "../../lib/family";
+import { useAuth } from "../../lib/auth";
+import { useFridge, applyFridgeUpdates, setFridgeItemKey, type FridgeDoc } from "../fridge/useFridge";
+import { useShopping, addShoppingItems } from "../shopping/useShopping";
+import { normalizeKeysInBackground } from "../../lib/normalize";
+import { useRecipeMatches, statusLabel, FridgeSummary, AddToShoppingSheet, LinkSheet } from "./FridgeCheck";
 import type { FolderDoc } from "./useRecipes";
 
 type Props = {
   recipe: Recipe;
+  /** 저장된 레시피 id (장보기 품목에 출처로 남긴다) */
+  recipeId?: string;
   folders: FolderDoc[];
   onClose: () => void;
   onEdit: () => void;
@@ -32,11 +41,35 @@ export function ServingsStepper({ value, onChange }: { value: number; onChange: 
   );
 }
 
-export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorite, onMoveFolder, onDelete, onCooked }: Props) {
+export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onToggleFavorite, onMoveFolder, onDelete, onCooked }: Props) {
   const [servings, setServings] = useState(recipe.servingsBase);
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cooking, setCooking] = useState(false);
+  const [useUp, setUseUp] = useState<IngredientMatch<FridgeDoc>[] | null>(null);
+  const [shopSheet, setShopSheet] = useState(false);
+  const [linking, setLinking] = useState<IngredientMatch<FridgeDoc> | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const { familyId } = useFamily();
+  const { user } = useAuth();
+  const { items: fridge } = useFridge(familyId);
+  const { items: shopping } = useShopping(familyId);
+  const matches = useRecipeMatches(recipe, servings, fridge);
+
+  const say = (msg: string) => { setNotice(msg); setTimeout(() => setNotice((m) => (m === msg ? null : m)), 3500); };
+  const addToShopping = async (items: { name: string; key: string; qty: number | null; unit: FridgeDoc["unit"] }[], fromRecipe: boolean) => {
+    if (!familyId || !user) return;
+    const res = await addShoppingItems(familyId, user.uid, items.map((i) => ({ ...i, fromRecipeId: fromRecipe ? recipeId ?? null : null, recipeTitle: fromRecipe ? recipe.title : undefined })), shopping);
+    void normalizeKeysInBackground(familyId, "shopping_items", res.added);
+    say(`🛒 장보기에 ${res.added.length + res.merged}개 담았어요${res.merged ? ` (${res.merged}개는 이미 있어서 양만 더함)` : ""}`);
+  };
+  const applyUseUp = async (r: UseUpResult) => {
+    if (!familyId) return;
+    await applyFridgeUpdates(familyId, r.updates);
+    if (r.addUsedUpToShopping && r.usedUp.length) await addToShopping(r.usedUp.map((f) => ({ name: f.name, key: f.key, qty: null, unit: f.unit })), false);
+    await onCooked(servings);
+    if (r.updates.length) say(`🧊 냉장고에서 ${r.updates.length}개를 정리했어요`);
+  };
 
   const run = async (fn: () => Promise<void>) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
 
@@ -63,7 +96,10 @@ export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorit
             <ServingsStepper value={servings} onChange={setServings} />
           </div>
           {servings !== recipe.servingsBase && <p className="mb-2 text-xs text-gray-500">기준 {recipe.servingsBase}인분에서 자동 환산했어요. "약간"은 그대로 둡니다.</p>}
-          <IngredientList ingredients={recipe.ingredients} servingsBase={recipe.servingsBase} servings={servings} />
+          <div className="mb-2"><FridgeSummary matches={matches} onAddToShopping={() => setShopSheet(true)} /></div>
+          <IngredientList ingredients={recipe.ingredients} servingsBase={recipe.servingsBase} servings={servings}
+            statuses={matches.map((m) => ({ status: m.status, label: statusLabel(m) }))}
+            onStatusClick={(i) => { if (matches[i].status !== "always") setLinking(matches[i]); }} />
         </section>
 
         <section>
@@ -98,7 +134,21 @@ export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorit
         className="fixed inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl bg-orange-500 py-3.5 text-center text-lg font-bold text-white shadow-lg active:scale-[0.99]"
         style={{ bottom: "calc(var(--safe-bottom) + 16px)" }}>🍳 요리 시작</button>
       {cooking && (
-        <CookMode recipe={recipe} servings={servings} onClose={() => setCooking(false)} onComplete={() => onCooked(servings)} />
+        <CookMode recipe={recipe} servings={servings} onClose={() => setCooking(false)} onComplete={() => setUseUp(matches)} />
+      )}
+      {useUp && (
+        <UseUpSheet matches={useUp} servings={servings} onClose={() => setUseUp(null)} onApply={applyUseUp} onSkip={() => onCooked(servings)} />
+      )}
+      {shopSheet && (
+        <AddToShoppingSheet matches={matches} recipeTitle={recipe.title} onClose={() => setShopSheet(false)} onConfirm={(items) => addToShopping(items, true)} />
+      )}
+      {linking && familyId && (
+        <LinkSheet match={linking} fridge={fridge} onClose={() => setLinking(null)}
+          onLink={async (f) => { await setFridgeItemKey(familyId, f.id, linking.ingredient.key); say(`🔗 ${f.name}을(를) ${linking.ingredient.name}(으)로 연결했어요`); }} />
+      )}
+      {notice && (
+        <div role="status" className="fixed inset-x-0 z-50 mx-auto w-fit max-w-[90%] rounded-full bg-slate-900/90 px-4 py-2 text-sm text-white shadow-lg"
+          style={{ bottom: "calc(var(--safe-bottom) + 84px)" }}>{notice}</div>
       )}
 
       {menu && (
@@ -121,3 +171,4 @@ export function RecipeDetail({ recipe, folders, onClose, onEdit, onToggleFavorit
     </FullScreen>
   );
 }
+

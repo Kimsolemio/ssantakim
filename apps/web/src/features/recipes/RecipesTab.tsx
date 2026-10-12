@@ -7,6 +7,7 @@ import { GenerateSheet } from "./GenerateSheet";
 import { RecipeEditor } from "./RecipeEditor";
 import { RecipeDetail, SOURCE_LABEL } from "./RecipeDetail";
 import { Sheet } from "../../components/Sheet";
+import { normalizeIngredientKeys } from "../../lib/normalize";
 
 type Filter = { kind: "all" } | { kind: "fav" } | { kind: "folder"; id: string };
 
@@ -94,10 +95,14 @@ export function RecipesTab() {
       )}
       {draft && (
         <RecipeEditor title="레시피 확인·수정" initial={draft} onClose={() => setDraft(null)}
-          onSave={async (d) => { const id = await createRecipe(familyId, user.uid, d, filter.kind === "folder" ? filter.id : null); setDraft(null); setOpenId(id); }} />
+          onSave={async (d) => {
+            const id = await createRecipe(familyId, user.uid, d, filter.kind === "folder" ? filter.id : null);
+            setDraft(null); setOpenId(id);
+            void normalizeIngredientKeys(d.ingredients).then((next) => next && updateRecipe(familyId, id, { ingredients: next }));
+          }} />
       )}
       {open && (
-        <RecipeDetail recipe={open} folders={folders} onClose={() => setOpenId(null)}
+        <RecipeDetail recipe={open} recipeId={open.id} folders={folders} onClose={() => setOpenId(null)}
           onEdit={() => setEditing(open)}
           onToggleFavorite={() => updateRecipe(familyId, open.id, { favorite: !open.favorite })}
           onMoveFolder={(fid) => updateRecipe(familyId, open.id, { folderId: fid })}
@@ -106,7 +111,11 @@ export function RecipesTab() {
       )}
       {editing && (
         <RecipeEditor title="레시피 수정" initial={editing} onClose={() => setEditing(null)}
-          onSave={async (d) => { await updateRecipe(familyId, editing.id, d); setEditing(null); }} />
+          onSave={async (d) => {
+            const id = editing.id;
+            await updateRecipe(familyId, id, d); setEditing(null);
+            void normalizeIngredientKeys(d.ingredients).then((next) => next && updateRecipe(familyId, id, { ingredients: next }));
+          }} />
       )}
       {folderMenu && (
         <FolderSheet familyId={familyId} folders={folders} onClose={() => setFolderMenu(false)}

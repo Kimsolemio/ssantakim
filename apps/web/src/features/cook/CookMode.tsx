@@ -124,9 +124,8 @@ export function CookMode({ recipe, servings, onClose, onComplete }: Props) {
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
             <p className="text-5xl">🍽️</p>
             <p className="text-2xl font-bold">요리 완료!</p>
-            <p className="text-gray-300">맛있게 드세요. 완료를 누르면 요리 기록이 남아요.</p>
+            <p className="text-gray-300">맛있게 드세요. 완료를 누르면 쓴 재료를 냉장고에서 빼고 요리 기록을 남겨요.</p>
             <button disabled={busy} onClick={finish} className="rounded-xl bg-orange-500 px-6 py-3 text-lg font-semibold disabled:opacity-50">{busy ? "저장 중…" : "요리 완료"}</button>
-            <p className="text-xs text-gray-400">냉장고 재료 자동 차감은 4단계에서 추가됩니다</p>
           </div>
         )}
       </main>

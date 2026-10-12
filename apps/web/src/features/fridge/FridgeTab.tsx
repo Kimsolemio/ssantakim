@@ -5,6 +5,10 @@ import { useFamily } from "../../lib/family";
 import { useFridge, addFridgeItem, addFridgeItems, updateFridgeItem, deleteFridgeItem, type FridgeDoc } from "./useFridge";
 import { FridgeVisual, itemLook } from "./FridgeVisual";
 import { ReceiptImport } from "./ReceiptImport";
+import { useNav } from "../../lib/nav";
+import { normalizeKeysInBackground } from "../../lib/normalize";
+import { useShopping, deleteShoppingItems } from "../shopping/useShopping";
+import { sameFood } from "@cook/shared";
 import { FridgeItemForm } from "./FridgeItemForm";
 
 function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
@@ -33,7 +37,22 @@ export function FridgeTab() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
+  const { fridgeDrop, consumeFridgeDrop, pendingReceipt, consumeReceipt } = useNav();
+  const { items: shopping } = useShopping(familyId);
+
   useEffect(() => { localStorageSet("fridge-view", view); }, [view]);
+  // 다른 탭(장보기)에서 넣은 품목도 떨어지는 애니메이션으로 보여 준다
+  useEffect(() => {
+    if (!fridgeDrop) return;
+    consumeFridgeDrop();
+    setSearch(""); setView("visual"); setRecent(new Set(fridgeDrop.ids)); setOpenSignal((n) => n + 1);
+    if (fridgeDrop.message) showToast(fridgeDrop.message);
+  }, [fridgeDrop]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingReceipt) return;
+    consumeReceipt();
+    setImporting(true);
+  }, [pendingReceipt]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (recent.size === 0) return;
     const t = setTimeout(() => setRecent(new Set()), 7000);
@@ -136,14 +155,17 @@ export function FridgeTab() {
         <ReceiptImport onClose={() => setImporting(false)}
           onConfirm={async (inputs) => {
             try {
+              // 장보기 목록에서 이번에 산 것은 지운다
+              const bought = shopping.filter((sh) => inputs.some((i) => sameFood(sh, { key: i.key, name: i.name })));
               await addFridgeItems(familyId, user.uid, inputs, (ids) => {
                 setSearch("");
                 setView("visual");
                 setRecent(new Set(ids));
                 setOpenSignal((n) => n + 1);
                 setImporting(false);
-                showToast(`🎉 ${ids.length}개를 냉장고에 넣었어요`);
+                showToast(`🎉 ${ids.length}개를 냉장고에 넣었어요${bought.length ? ` · 장보기 ${bought.length}개 완료` : ""}`);
               });
+              await deleteShoppingItems(familyId, bought.map((b) => b.id));
             } catch (e) {
               setRecent(new Set());
               showToast(`저장하지 못했어요: ${e instanceof Error ? e.message : String(e)}`);
@@ -156,11 +178,18 @@ export function FridgeTab() {
       )}
       {adding && (
         <FridgeItemForm title="재료 추가" onClose={() => setAdding(false)}
-          onSubmit={(v) => addFridgeItem(familyId, user.uid, v)} />
+          onSubmit={async (v) => {
+            const id = await addFridgeItem(familyId, user.uid, v);
+            void normalizeKeysInBackground(familyId, "fridge_items", [{ id, name: v.name }]);
+          }} />
       )}
       {editing && (
         <FridgeItemForm title="재료 수정" initial={editing} onClose={() => setEditing(null)}
-          onSubmit={(v) => updateFridgeItem(familyId, editing.id, v)}
+          onSubmit={async (v) => {
+            const renamed = v.name !== editing.name;
+            await updateFridgeItem(familyId, editing.id, v);
+            if (renamed) void normalizeKeysInBackground(familyId, "fridge_items", [{ id: editing.id, name: v.name }]);
+          }}
           onDelete={() => deleteFridgeItem(familyId, editing.id)} />
       )}
     </div>
