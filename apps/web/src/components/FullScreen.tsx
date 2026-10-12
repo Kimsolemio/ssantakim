@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useBackButton } from "../lib/useBackButton";
 import { BackBar } from "./ui/Bars";
 
@@ -27,7 +28,9 @@ export function FullScreen({ title, onClose, right, children, footer, confirmClo
     return true;
   };
   useBackButton(true, tryClose);
-  return (
+  // body 에 바로 띄운다: 흐림 효과(backdrop-filter)가 있는 머리 줄 안에서 열려도 그 안에 갇히지 않게.
+  // 겹침 순서는 연 순서대로 (나중에 연 것이 위)
+  return createPortal(
     <div className={`fixed inset-0 z-40 flex flex-col text-ink ${canvas ? "bg-canvas" : "bg-surface"}`}>
       <BackBar title={title} onBack={tryClose} right={right} scrolled={scrolled} canvas={canvas} titleHidden={titleHidden} />
       <div className="min-h-0 flex-1 overflow-y-auto" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
@@ -35,10 +38,11 @@ export function FullScreen({ title, onClose, right, children, footer, confirmClo
         {children}
       </div>
       {footer && (
-        <div className="shrink-0 border-t border-line bg-surface px-5 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
+        <div data-toast-anchor className="shrink-0 border-t border-line bg-surface px-5 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
           {footer}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

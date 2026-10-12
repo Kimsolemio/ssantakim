@@ -155,7 +155,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
         )}
       </main>
 
-      <footer className="flex shrink-0 flex-col gap-3 px-4 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
+      <footer data-toast-anchor className="flex shrink-0 flex-col gap-3 px-4 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
         {step && (
           <AiPill onClick={() => setAsking(true)} aria-label="AI 셰프에게 묻기" className="inline-flex items-center gap-2 self-center">
             <Sparkles size={18} strokeWidth={2} aria-hidden />AI 셰프에게 묻기

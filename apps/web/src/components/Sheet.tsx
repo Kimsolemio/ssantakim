@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useBackButton } from "../lib/useBackButton";
 import { IconButton } from "./ui/IconButton";
@@ -29,8 +30,9 @@ export function Sheet({ title, onClose, children, confirmClose, top, footer, tal
     return true;
   };
   useBackButton(true, tryClose);
-  return (
-    <div className={`fixed inset-0 ${top ? "z-[70]" : "z-30"} flex items-end justify-center`}>
+  // body 에 바로 띄운다 (FullScreen 과 같은 층, 나중에 연 것이 위). top 은 요리 모드 위
+  return createPortal(
+    <div className={`fixed inset-0 ${top ? "z-[70]" : "z-40"} flex items-end justify-center`}>
       <div aria-hidden className="absolute inset-0 bg-scrim animate-fade-in" onClick={tryClose} />
       <section role="dialog" aria-modal="true" aria-labelledby={titleId} data-testid={testId}
         className={`relative flex w-full max-w-lg flex-col rounded-t-sheet bg-surface text-ink shadow-overlay animate-sheet-in ${tall ? "h-[85dvh]" : "max-h-[92dvh]"}`}>
@@ -44,11 +46,12 @@ export function Sheet({ title, onClose, children, confirmClose, top, footer, tal
           {children}
         </div>
         {footer && (
-          <footer className="shrink-0 border-t border-line px-5 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
+          <footer data-toast-anchor className="shrink-0 border-t border-line px-5 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
             {footer}
           </footer>
         )}
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }

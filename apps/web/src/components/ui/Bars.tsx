@@ -54,13 +54,13 @@ export function BackBar({ title, onBack, right, scrolled, canvas, titleHidden }:
 export function BottomBar({ children, aboveTabs, className = "", inline }: { children: ReactNode; aboveTabs?: boolean; className?: string; /** 전체화면 flex 안에서 흐름대로 놓을 때 */ inline?: boolean }) {
   if (inline) {
     return (
-      <div className={`shrink-0 border-t border-line bg-surface px-5 pt-3 ${className}`} style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
+      <div data-toast-anchor className={`shrink-0 border-t border-line bg-surface px-5 pt-3 ${className}`} style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
         {children}
       </div>
     );
   }
   return (
-    <div className={`fixed inset-x-0 z-20 mx-auto max-w-lg border-t border-line bg-surface/90 px-5 pt-3 backdrop-blur-xl ${className}`}
+    <div data-toast-anchor className={`fixed inset-x-0 z-20 mx-auto max-w-lg border-t border-line bg-surface/90 px-5 pt-3 backdrop-blur-xl ${className}`}
       style={aboveTabs ? { bottom: "calc(var(--safe-bottom) + 56px)", paddingBottom: 12 } : { bottom: 0, paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
       {children}
     </div>
@@ -71,7 +71,7 @@ export function BottomBar({ children, aboveTabs, className = "", inline }: { chi
 export function ExtendedFab({ children, onClick, label }: { children: ReactNode; onClick: () => void; label?: string }) {
   return (
     <div data-fab className="pointer-events-none fixed inset-x-0 z-20 mx-auto flex max-w-lg justify-end px-5" style={{ bottom: "calc(var(--safe-bottom) + 56px + 16px)" }}>
-      <button type="button" onClick={onClick} aria-label={label}
+      <button type="button" onClick={onClick} aria-label={label} data-toast-anchor
         className="pointer-events-auto flex h-14 items-center gap-2 rounded-full bg-accent pl-4 pr-5 text-headline text-on-accent shadow-overlay transition-colors active:bg-accent-pressed">
         <Plus size={22} strokeWidth={2.25} aria-hidden />{children}
       </button>
