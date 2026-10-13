@@ -87,7 +87,7 @@ jobs:
           mkdir -p "$XDG_CONFIG_HOME/configstore"
           printf '{"apiEnablementCache":{"%s":{"firestore.googleapis.com":true}}}' "$PROJECT" > "$XDG_CONFIG_HOME/configstore/firebase-tools.json"
           GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" pnpm exec firebase deploy --only hosting,firestore:rules --project "$PROJECT" --non-interactive || {
-            echo "::error title=Firebase 올리기 실패::권한 오류(403)면 Google Cloud 콘솔 > IAM 에서 firebase-adminsdk 서비스 계정에 'Firebase 호스팅 관리자', 'Firebase 규칙 관리자', '서비스 사용량 소비자' 역할을 더한 뒤 다시 실행하세요"
+            echo "::error title=Firebase 올리기 실패::권한 오류(403)면 https://console.cloud.google.com/iam-admin/iam?project=$PROJECT 에서 firebase-adminsdk-… 서비스 계정 줄의 연필 → 다른 역할 추가 → 'Firebase Admin'(Firebase 관리자) → 저장한 뒤 Re-run 하세요"
             exit 1
           }
       - name: 주소 알리기

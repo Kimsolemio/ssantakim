@@ -43,6 +43,7 @@ scripts/        아이콘 생성기 등
    4. 빌드 → **Hosting** → 시작하기 → 끝까지 다음 (명령어 안내는 따라 하지 않아도 된다)
    5. 톱니 → 프로젝트 설정 → 일반 → 내 앱 → 웹(`</>`) → 닉네임 "요리" → 앱 등록 → 나오는 `const firebaseConfig = { … };` 부분을 복사 → 아래 4번의 변수 `FIREBASE_WEB_CONFIG`
    6. 프로젝트 설정 → **서비스 계정** → 새 비공개 키 생성 → 내려받은 JSON 파일 내용 전체 → 아래 4번의 비밀값 `FIREBASE_SERVICE_ACCOUNT`
+   7. 같은 화면의 서비스 계정 이메일(`firebase-adminsdk-…`)에 권한 주기: Google Cloud 콘솔(console.cloud.google.com) → 이 프로젝트 → IAM 및 관리자 → IAM → 그 줄의 연필 → 다른 역할 추가 → **Firebase Admin** → 저장 (없으면 배포가 403으로 멈춘다)
 2. **Claude** (console.anthropic.com): API Keys → Create Key → 비밀값 `ANTHROPIC_API_KEY`. Billing에서 크레딧 충전, Limits에서 **월 지출 한도** 설정
 3. **Cloudflare** (dash.cloudflare.com, 무료 가입)
    1. 왼쪽 **Workers & Pages**를 한 번 열어 `workers.dev` 하위 도메인을 정한다 (처음 한 번)
@@ -56,7 +57,7 @@ scripts/        아이콘 생성기 등
 
 - 값이 하나라도 없으면 Deploy는 아무것도 하지 않고 "건너뜀" 안내만 남긴다. AI 키 3개 없이 Firebase 값 2개만 넣으면 AI를 뺀 앱만 올라간다.
 - 자동 배포는 하루 한도(KV)를 만들지 않는다. 1분 한도(사람당 12회)와 Anthropic **월 지출 한도**가 상한이다. 하루 한도까지 쓰려면 아래 "설정 순서" 4번.
-- 배포가 권한 오류로 멈추면: Google Cloud 콘솔 → IAM → 그 서비스 계정(firebase-adminsdk-…)에 "Firebase 호스팅 관리자", "Firebase 규칙 관리자", "서비스 사용량 소비자" 역할을 더한다.
+- 배포가 권한 오류(403)로 멈추면: Google Cloud 콘솔 → IAM 및 관리자 → IAM → `firebase-adminsdk-…` 서비스 계정 줄의 연필 → 다른 역할 추가 → **Firebase Admin**(Firebase 관리자) → 저장 → Deploy 다시 실행. 콘솔에서 받은 서비스 계정 키는 처음엔 보안 규칙·호스팅을 올릴 권한이 없다.
 
 ## 한눈에 보는 설치 순서 (컴퓨터에서 직접)
 
