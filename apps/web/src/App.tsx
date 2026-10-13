@@ -12,6 +12,7 @@ import { ToastProvider, useToast } from "./components/ui/Toast";
 import { FamilySetup } from "./features/family/FamilySetup";
 import { TodayTab } from "./features/today/TodayTab";
 import { PlanScreen } from "./features/plan/PlanScreen";
+import { TrendingAside } from "./features/trending/Trending";
 import { SetupScreen } from "./pages/SetupScreen";
 import { SignInScreen } from "./pages/SignInScreen";
 
@@ -41,6 +42,8 @@ function Tabs() {
       {tab === "shopping" && <ShoppingTab />}
       {tab === "today" && <TodayTab />}
       <TabBar active={tab} onChange={setTab} />
+      {/* PC처럼 넓은 화면: 양옆 빈 곳에 오늘의 인기 레시피 */}
+      <TrendingAside />
       {planStart != null && <PlanScreen initialStart={planStart || undefined} onClose={closePlan} />}
     </div>
   );

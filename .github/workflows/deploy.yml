@@ -60,11 +60,18 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
           set -o pipefail
           pnpm exec wrangler deploy 2>&1 | tee "$RUNNER_TEMP/worker.log"
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/worker.log" | head -1 || true)
           printf '%s' "$ANTHROPIC_API_KEY" | pnpm exec wrangler secret put ANTHROPIC_API_KEY
+          # 선택: 유튜브 링크 가져오기 + 오늘의 인기 레시피
+          if [ -n "$YOUTUBE_API_KEY" ]; then
+            printf '%s' "$YOUTUBE_API_KEY" | pnpm exec wrangler secret put YOUTUBE_API_KEY
+          else
+            echo "::notice title=인기 레시피 꺼짐::비밀값 YOUTUBE_API_KEY 를 넣으면 '오늘의 인기 레시피'가 켜집니다"
+          fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: 앱 만들기
         if: steps.check.outputs.web == '1'

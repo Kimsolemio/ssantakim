@@ -7,6 +7,7 @@ import { Sheet } from "../../components/Sheet";
 import { AiProgress } from "../../components/ui/Ai";
 import { Badge } from "../../components/ui/Badge";
 import { PlanSection } from "../plan/PlanScreen";
+import { TrendingSection } from "../trending/Trending";
 import { Banner } from "../../components/ui/Banner";
 import { Button } from "../../components/ui/Button";
 import { ChoiceChip, InputChip, LockedChip } from "../../components/ui/Chip";
@@ -146,6 +147,7 @@ export function TodayTab() {
             </>
           )}
         </section>
+        <TrendingSection />
         <PlanSection />
         {sheets}
       </div>
@@ -235,6 +237,7 @@ export function TodayTab() {
         </section>
       )}
 
+      <TrendingSection />
       <PlanSection where="bottom" />
 
       {!busy && hasResults && (

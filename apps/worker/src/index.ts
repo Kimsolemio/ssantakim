@@ -9,6 +9,7 @@ import { importFromUrl, importFromText, precheckImportUrl } from "./import";
 import { suggestMenus } from "./suggest";
 import { adaptRecipe, askChef, suggestSubstitutes } from "./assist";
 import { checkAllowed, chargeUsage, refundUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
+import { trendingRecipes, TrendingError } from "./trending";
 
 export interface Env extends AiEnv, GuardEnv {
   FIREBASE_PROJECT_ID: string;
@@ -199,8 +200,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "pantry/photo", "normalize", "import/url", "import/text", "suggest", "ask", "adapt", "substitute"],
-        configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY },
+        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "pantry/photo", "normalize", "import/url", "import/text", "suggest", "ask", "adapt", "substitute", "trending"],
+        configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY, youtube: !!env.YOUTUBE_API_KEY },
         ai: describeAi(env),
         guard: { allowList: allowList(env).includes("*") ? "everyone" : allowList(env).length, perMinute: !!env.AI_LIMIT, daily: !!env.USAGE },
       }, 200, cors);
@@ -209,6 +210,14 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (url.pathname === "/usage" && request.method === "GET") {
       const user = await authenticate(request, env);
       return json({ today: await usageToday(env, user.uid) }, 200, cors);
+    }
+
+    // 오늘의 인기 레시피 (유튜브). AI를 쓰지 않아 하루 사용량에서 빼지 않는다. ing = 냉장고에서 고른 재료 하나
+    if (url.pathname === "/trending" && request.method === "GET") {
+      const user = await authenticate(request, env);
+      const r = await trendingRecipes(env, url.searchParams.get("ing"));
+      console.log(JSON.stringify({ route: "trending", uid: user.uid, videos: r.videos.length }));
+      return json(r, 200, cors);
     }
 
     if (url.pathname === "/recipe" && request.method === "POST") {
@@ -285,6 +294,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (e instanceof HttpError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     if (e instanceof GuardError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     if (e instanceof GenerationError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
+    if (e instanceof TrendingError) return json({ error: e.message, ...(e.code ? { code: e.code } : {}) }, e.status, cors);
     console.error(e);
     return json({ error: "서버 오류" }, 500, cors);
   }

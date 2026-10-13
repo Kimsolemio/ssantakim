@@ -37,7 +37,7 @@ describe("basics", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("Access-Control-Allow-Origin")).toBe("https://cook.example.com");
     const j = await r.json() as any;
-    expect(j.configured).toEqual({ firebase: true, claude: true, gemini: true });
+    expect(j.configured).toEqual({ firebase: true, claude: true, gemini: true, youtube: false });
     expect(j.ai).toEqual({ provider: "claude", model: "claude-opus-5-5", fastModel: "claude-haiku-5-5", webSearch: true });
     expect(JSON.stringify(j)).not.toContain('"k"');
   });
