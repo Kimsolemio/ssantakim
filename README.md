@@ -28,7 +28,37 @@ scripts/        아이콘 생성기 등
 | 7 | 이번 주 식단·오프라인 열람·임박 배지·마무리 | ✅ 완료 |
 | UI | 전면 개편(솔잎색·Pretendard·공통 부품·다크 모드) | ✅ 완료 |
 
-## 한눈에 보는 설치 순서
+## 체험판 (계정 없이 둘러보기)
+
+`pnpm --filter @cook/web build:demo` → `apps/web/dist-demo/page.html`(+ 글꼴 파일). Firebase·AI 서버 없이 예시 데이터로 돌고, 고친 것은 그 기기에만 저장된다. AI는 미리 준비한 예시로 답한다.
+
+## 컴퓨터 없이 배포하기 (자동 배포, 권장)
+
+브라우저에서 계정 3개를 만들고 값 6개를 GitHub 설정에 넣으면, GitHub Actions(`.github/workflows/deploy.yml`)가 앱과 AI 서버를 올린다. **키는 채팅·메신저에 붙여 넣지 말고 GitHub 설정에만 넣는다.**
+
+1. **Firebase** (console.firebase.google.com)
+   1. 프로젝트 추가 → 이름(예: `ssantakim-cook`) → 애널리틱스는 꺼도 된다 → 만들기
+   2. 빌드 → **Authentication** → 시작하기 → 로그인 방법 → **Google** → 사용 설정 → 저장
+   3. 빌드 → **Firestore Database** → 데이터베이스 만들기 → 위치 `asia-northeast3`(서울) → 프로덕션 모드
+   4. 빌드 → **Hosting** → 시작하기 → 끝까지 다음 (명령어 안내는 따라 하지 않아도 된다)
+   5. 톱니 → 프로젝트 설정 → 일반 → 내 앱 → 웹(`</>`) → 닉네임 "요리" → 앱 등록 → 나오는 `const firebaseConfig = { … };` 부분을 복사 → 아래 4번의 변수 `FIREBASE_WEB_CONFIG`
+   6. 프로젝트 설정 → **서비스 계정** → 새 비공개 키 생성 → 내려받은 JSON 파일 내용 전체 → 아래 4번의 비밀값 `FIREBASE_SERVICE_ACCOUNT`
+2. **Claude** (console.anthropic.com): API Keys → Create Key → 비밀값 `ANTHROPIC_API_KEY`. Billing에서 크레딧 충전, Limits에서 **월 지출 한도** 설정
+3. **Cloudflare** (dash.cloudflare.com, 무료 가입)
+   1. 왼쪽 **Workers & Pages**를 한 번 열어 `workers.dev` 하위 도메인을 정한다 (처음 한 번)
+   2. 같은 화면의 **Account ID** → 비밀값 `CLOUDFLARE_ACCOUNT_ID`
+   3. 오른쪽 위 사람 아이콘 → My Profile → API Tokens → Create Token → **Edit Cloudflare Workers** 템플릿 → 만들기 → 비밀값 `CLOUDFLARE_API_TOKEN`
+4. **GitHub** 저장소 → Settings → Secrets and variables → **Actions**
+   - Secrets 탭 → New repository secret: `FIREBASE_SERVICE_ACCOUNT`, `ANTHROPIC_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+   - Variables 탭 → New repository variable: `FIREBASE_WEB_CONFIG`(5번 덩어리 그대로), `ALLOWED_EMAILS`(AI를 쓸 가족 구글 이메일, 쉼표로)
+5. **Actions** 탭 → 왼쪽 **Deploy** → 가장 최근 실행 → **Re-run all jobs** (이후에는 올릴 때마다 자동). 3~5분 뒤 실행 요약에 `https://<프로젝트>.web.app`이 나온다
+6. 폰에서 그 주소 → 홈 화면에 추가 → Google로 시작하기 → 한 사람이 가족을 만들고 나머지는 초대 코드로
+
+- 값이 하나라도 없으면 Deploy는 아무것도 하지 않고 "건너뜀" 안내만 남긴다. AI 키 3개 없이 Firebase 값 2개만 넣으면 AI를 뺀 앱만 올라간다.
+- 자동 배포는 하루 한도(KV)를 만들지 않는다. 1분 한도(사람당 12회)와 Anthropic **월 지출 한도**가 상한이다. 하루 한도까지 쓰려면 아래 "설정 순서" 4번.
+- 배포가 권한 오류로 멈추면: Google Cloud 콘솔 → IAM → 그 서비스 계정에 "Firebase 호스팅 관리자", "Firebase 규칙 관리자" 역할을 더한다.
+
+## 한눈에 보는 설치 순서 (컴퓨터에서 직접)
 
 1. Firebase 프로젝트 만들기 → `apps/web/.env` 채우기 ([처음 설정](#처음-설정-1회)). 아이폰을 쓰면 **처음부터** `VITE_FIREBASE_AUTH_DOMAIN`을 앱을 올릴 주소(`<프로젝트>.web.app`)로 적는다 ([아이폰 로그인](#아이폰-로그인-중요))
 2. Claude API 키 발급 + **월 지출 한도** → Worker 설정·배포 ([AI 서버 설정](#ai-서버worker-설정--2단계부터))
