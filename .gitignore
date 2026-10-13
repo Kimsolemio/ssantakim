@@ -9,3 +9,4 @@ dev-dist/
 .dev.vars
 e2e/shots/
 dist-demo/
+*.tsbuildinfo
