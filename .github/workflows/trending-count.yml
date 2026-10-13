@@ -1,0 +1,26 @@
+name: 인기 레시피 개수 세기
+# 오늘의 인기 레시피가 하루에 몇 개 모이는지 실제 유튜브로 한 번 센다 (apps/worker/test/trending-count.test.ts).
+# 유튜브 무료 한도를 조금 써서, 이 파일이나 테스트를 고쳐 올릴 때와 손으로 누를 때만 돈다.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/cooking-app-planning-9zxk62]
+    paths: [.github/workflows/trending-count.yml, apps/worker/test/trending-count.test.ts]
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 세기
+        working-directory: apps/worker
+        env:
+          COOK_YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          COOK_TRENDING: "1"
+        run: pnpm exec vitest run trending-count
