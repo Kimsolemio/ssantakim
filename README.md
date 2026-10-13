@@ -112,8 +112,8 @@ AI 호출은 Cloudflare Worker(`apps/worker`)가 대신 한다. API 키는 Worke
 
 | 기능 | 모델 | 쓰는 Claude 기능 |
 |---|---|---|
-| 음식 이름 → 레시피, 링크·사진 가져오기, 레시피 바꾸기, 메뉴 추천, 영수증·식재료 사진 | `CLAUDE_MODEL` (기본 `claude-opus-5-5`) | 구조화 출력(JSON 스키마), 사진 이해 |
-| 이름 정리, AI 셰프에게 묻기, 대체 재료 | `CLAUDE_FAST_MODEL` (기본 `claude-haiku-5-5`, 아주 쌈) | 구조화 출력, 프롬프트 캐시 |
+| 음식 이름 → 레시피, 사진 가져오기, 레시피 바꾸기, 메뉴 추천, 영수증·식재료 사진 | `CLAUDE_MODEL` (이 배포는 `claude-sonnet-5-5`) | 구조화 출력(JSON 스키마), 사진 이해 |
+| 이름 정리, AI 셰프에게 묻기, 대체 재료, 글로 된 레시피 가져오기(유튜브 설명란·웹 페이지·붙여 넣은 글) | `CLAUDE_FAST_MODEL` (기본 `claude-haiku-5-5`, 아주 쌈) | 구조화 출력, 프롬프트 캐시 |
 | 음식 이름으로 만들기의 "인기 레시피 찾아서 참고" | 기본 모델 | 웹 검색(1회 약 14원) → 메모 → JSON 정리 두 단계, 참고한 글은 레시피에 남김 |
 | 링크를 Worker가 못 읽을 때 | 기본 모델 | 웹 읽기(web_fetch)로 Claude가 직접 페이지를 읽음 |
 | 물어보기·다른 메뉴로·이름 정리처럼 연달아 부르는 것 | | 프롬프트 캐시(같은 지시문은 5분간 입력비 1/20) |
@@ -130,7 +130,7 @@ AI 호출은 Cloudflare Worker(`apps/worker`)가 대신 한다. API 키는 Worke
 | 키 이름 | `ANTHROPIC_API_KEY` | `GEMINI_API_KEY` |
 
 둘 중 하나만 넣으면 된다. 기본값 `AI_PROVIDER = "auto"`는 Claude 키가 있으면 Claude, 없으면 Gemini를 쓴다. 강제로 고르려면 `claude` 또는 `gemini`.
-Claude 모델 기본값은 `claude-opus-5-5`. 비용을 줄이고 싶으면 `CLAUDE_MODEL = "claude-sonnet-5-5"`(대략 절반 가격)로 바꿀 수 있다.
+코드의 Claude 모델 기본값은 `claude-opus-5-5`지만, 이 배포는 `wrangler.toml`에서 비용을 줄이려고 `CLAUDE_MODEL = "claude-sonnet-5-5"`(대략 절반 가격)로 둔다. 더 꼼꼼한 결과가 필요하면 Opus로 되돌린다.
 Claude가 안전 정책으로 거절하면 같은 호출 안에서 알맞은 대체 모델로 자동 재시도하도록 켜 두었다.
 
 > Claude Max/Pro 구독은 API 사용을 포함하지 않는다. API는 [console.anthropic.com](https://console.anthropic.com)에서 크레딧을 따로 충전해 쓴다.

@@ -16,7 +16,7 @@ ALLOWED_EMAILS = ""
 DAILY_LIMIT_PER_USER = "40"   # 하루 한 사람 (레시피·추천·링크·바꾸기 1, 웹 검색 레시피·영수증·사진 2, 물어보기·대체 재료 0.5. 이름 정리는 세지 않음)
 DAILY_LIMIT_TOTAL = "150"     # 하루 가족 전체
 AI_PROVIDER = "auto"
-CLAUDE_MODEL = "claude-opus-5-5"          # 레시피·가져오기·바꾸기·추천·사진
+CLAUDE_MODEL = "claude-sonnet-5-5"        # 레시피·사진 가져오기·바꾸기·추천·영수증 (Opus보다 싸고 빠름. 더 꼼꼼히 하려면 claude-opus-5-5)
 CLAUDE_FAST_MODEL = "claude-haiku-5-5"     # 이름 정리·물어보기·대체 재료 (빠르고 쌈)
 GEMINI_MODEL = "gemini-2.5-flash"
 

@@ -1,12 +1,14 @@
 // 배포 때 AI 키로 아주 짧은 요청 몇 개를 보내, 어떤 기능이 막혀 있는지 결과(상태 코드·오류 문구)만 적는다.
 // 키 값은 어디에도 찍지 않는다. 실패해도 배포는 그대로 진행된다 (deploy.yml 에서 continue-on-error).
-// 쓰는 값: ANTHROPIC_API_KEY (비밀값), CLAUDE_MODEL·CLAUDE_FAST_MODEL (없으면 기본값)
-import { appendFileSync } from "node:fs";
+// 쓰는 값: ANTHROPIC_API_KEY (비밀값), CLAUDE_MODEL·CLAUDE_FAST_MODEL (없으면 wrangler.toml 값, 그것도 없으면 기본값)
+import { appendFileSync, readFileSync } from "node:fs";
 
 const key = process.env.ANTHROPIC_API_KEY ?? "";
 if (!key) { console.log("ANTHROPIC_API_KEY 없음: 건너뜀"); process.exit(0); }
-const model = process.env.CLAUDE_MODEL || "claude-opus-5-5";
-const fast = process.env.CLAUDE_FAST_MODEL || "claude-haiku-5-5";
+const toml = readFileSync(new URL("../apps/worker/wrangler.toml", import.meta.url), "utf8");
+const tomlVar = (k) => toml.match(new RegExp(`^${k} = "(.*?)"`, "m"))?.[1];
+const model = process.env.CLAUDE_MODEL || tomlVar("CLAUDE_MODEL") || "claude-opus-5-5";
+const fast = process.env.CLAUDE_FAST_MODEL || tomlVar("CLAUDE_FAST_MODEL") || "claude-haiku-5-5";
 const API = "https://api.anthropic.com/v1";
 const headers = (beta) => ({
   "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json",
