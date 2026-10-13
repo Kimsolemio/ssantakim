@@ -1,8 +1,14 @@
-import { ArrowUpRight, Heart, Play } from "lucide-react";
+import { useState } from "react";
+import { ArrowUpRight, ChevronRight, Heart, Play } from "lucide-react";
 import { Banner } from "../../components/ui/Banner";
+import { Button } from "../../components/ui/Button";
 import { SectionHeader } from "../../components/ui/Section";
 import { useNav } from "../../lib/nav";
 import { PICK_COUNT, useTrending, useWide, type TrendingPick, type TrendingState } from "./useTrending";
+
+/** 처음에 보일 수, "더 보기"를 누를 때마다 늘어나는 수 (휴대폰 가로 줄 / PC 오른쪽 칸) */
+const ROW_STEP = 10;
+const GRID_STEP = 12;
 
 /** 12,345 → 1.2만, 1,234,567 → 123만 */
 export function likesText(n: number): string {
@@ -68,11 +74,13 @@ export function TrendingSection() {
 
 function TrendingRow() {
   const s = useTrending();
+  const [shown, setShown] = useState(ROW_STEP);
   // 키를 아직 안 넣었으면 휴대폰에서는 조용히 숨긴다 (설치한 사람은 PC 화면·README에서 안내를 본다)
   if (s.status === "off" || (s.status === "error" && s.code === "youtube_not_configured")) return null;
+  const more = s.status === "ready" ? s.picks.length - shown : 0;
   return (
     <section data-testid="trending" aria-busy={s.status === "loading"}>
-      <SectionHeader title="오늘의 인기 레시피" />
+      <SectionHeader title="오늘의 인기 레시피" count={s.status === "ready" && s.picks.length > 0 ? s.picks.length : undefined} />
       <p className="-mt-2 px-5 pb-3 text-caption text-ink-3">{SUBTITLE} · 누르면 레시피로 가져와요</p>
       {s.status === "loading" && (
         <div className="flex gap-3 overflow-hidden px-5">
@@ -84,14 +92,24 @@ function TrendingRow() {
         ? <p className="px-5 text-callout text-ink-3">오늘은 조건에 맞는 영상이 없어요. 내일 다시 볼게요</p>
         : (
           <ul className="flex gap-3 overflow-x-auto px-5 [scrollbar-width:none]">
-            {s.picks.map((v) => <TrendingCard key={v.id} v={v} size="sm" />)}
+            {s.picks.slice(0, shown).map((v) => <TrendingCard key={v.id} v={v} size="sm" />)}
+            {more > 0 && (
+              <li className="w-[148px] shrink-0">
+                <button type="button" onClick={() => setShown((x) => x + ROW_STEP)}
+                  className="flex aspect-[9/16] w-full flex-col items-center justify-center gap-1 rounded-card bg-surface text-accent active:bg-surface-2">
+                  <ChevronRight size={28} aria-hidden />
+                  <span className="text-callout font-semibold">더 보기</span>
+                  <span className="text-caption text-ink-3 tabular-nums">{more}개 더 있어요</span>
+                </button>
+              </li>
+            )}
           </ul>
         ))}
     </section>
   );
 }
 
-/** PC: 가운데 앱 양옆 빈 곳에 큰 카드 (왼쪽 첫 번째 추천, 오른쪽 나머지 넷) */
+/** PC: 가운데 앱 양옆 빈 곳에 큰 카드 (왼쪽 첫 번째 추천, 오른쪽 나머지를 "더 보기"로 이어서) */
 export function TrendingAside() {
   const wide = useWide();
   return wide ? <Asides /> : null;
@@ -103,8 +121,10 @@ const sideClass = "fixed z-10 overflow-y-auto px-8 pb-10 pt-12 [scrollbar-width:
 
 function Asides() {
   const s = useTrending();
+  const [shown, setShown] = useState(GRID_STEP);
   if (s.status === "off") return null;
   const [first, ...rest] = s.status === "ready" ? s.picks : [];
+  const more = rest.length - shown;
   return (
     <>
       <aside aria-label="오늘의 인기 레시피" data-testid="trending-aside" className={`${sideClass} left-0`} style={{ ...side, right: "calc(50% + 256px + 16px)" }}>
@@ -123,12 +143,17 @@ function Asides() {
       {(s.status === "loading" || rest.length > 0) && (
         <aside aria-label="인기 레시피 더 보기" className={`${sideClass} right-0`} style={{ ...side, left: "calc(50% + 256px + 16px)" }}>
           <div className="w-full max-w-[440px]">
-            <h2 className="text-title2 text-ink">이것도 인기예요</h2>
+            <h2 className="text-title2 text-ink">이것도 인기예요{rest.length > 0 && <span className="ml-1.5 text-callout font-medium text-ink-3 tabular-nums">{rest.length}</span>}</h2>
             <ul className="mt-6 grid grid-cols-2 gap-x-4 gap-y-2">
               {s.status === "loading"
                 ? Array.from({ length: PICK_COUNT - 1 }, (_, i) => <li key={i}><Skeleton className="aspect-[9/16] w-full" /></li>)
-                : rest.map((v) => <TrendingCard key={v.id} v={v} size="md" />)}
+                : rest.slice(0, shown).map((v) => <TrendingCard key={v.id} v={v} size="md" />)}
             </ul>
+            {more > 0 && (
+              <Button variant="secondary" size="md" block className="mt-4" onClick={() => setShown((x) => x + GRID_STEP)}>
+                더 보기 ({more}개 더)
+              </Button>
+            )}
           </div>
         </aside>
       )}

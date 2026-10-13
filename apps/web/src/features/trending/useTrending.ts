@@ -101,18 +101,8 @@ export function pickIngredient(items: Pick<FridgeItem, "name" | "expiresAt">[], 
   return names[n % names.length];
 }
 
-/** 다섯 개 고르기: 냉장고 재료가 나오는 것 먼저 (많이 겹칠수록), 그다음 좋아요 순. 나라가 섞이게 한국은 셋, 다른 나라는 둘까지 */
-export function pickFive(videos: TrendingVideo[], terms: Term[], n = PICK_COUNT): TrendingPick[] {
-  const scored: TrendingPick[] = videos.map((v) => {
-    const matched = terms.filter((t) => t.re.test(v.title)).map((t) => t.label);
-    if (v.ing && !matched.includes(v.ing)) matched.unshift(v.ing);
-    return { ...v, matched };
-  });
-  scored.sort((a, b) =>
-    Math.min(b.matched.length, 1) - Math.min(a.matched.length, 1)
-    || b.matched.length - a.matched.length
-    || Number(a.vertical === false) - Number(b.vertical === false)
-    || b.likes - a.likes);
+/** 다섯 개 고르기: 앞에서부터 나라가 섞이게 한국은 셋, 다른 나라는 둘까지 */
+function pickRound(scored: TrendingPick[], n: number): TrendingPick[] {
   const out: TrendingPick[] = [];
   const count = new Map<string, number>();
   for (const v of scored) {
@@ -126,6 +116,28 @@ export function pickFive(videos: TrendingVideo[], terms: Term[], n = PICK_COUNT)
   for (const v of scored) {
     if (out.length >= n) break;
     if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
+/** 받아 온 영상 전부를 보여 줄 순서로: 냉장고 재료가 나오는 것 먼저 (많이 겹칠수록), 그다음 좋아요 순.
+ *  다섯 개씩 끊어 고르므로 어디까지 넘겨 봐도 나라가 섞인다 */
+export function orderPicks(videos: TrendingVideo[], terms: Term[], n = PICK_COUNT): TrendingPick[] {
+  let left: TrendingPick[] = videos.map((v) => {
+    const matched = terms.filter((t) => t.re.test(v.title)).map((t) => t.label);
+    if (v.ing && !matched.includes(v.ing)) matched.unshift(v.ing);
+    return { ...v, matched };
+  });
+  left.sort((a, b) =>
+    Math.min(b.matched.length, 1) - Math.min(a.matched.length, 1)
+    || b.matched.length - a.matched.length
+    || Number(a.vertical === false) - Number(b.vertical === false)
+    || b.likes - a.likes);
+  const out: TrendingPick[] = [];
+  while (left.length) {
+    const round = pickRound(left, n);
+    out.push(...round);
+    left = left.filter((v) => !round.includes(v));
   }
   return out;
 }
@@ -160,7 +172,7 @@ export function useTrending(): TrendingState {
   }, [off, fridgeLoading, day, ing, attempt]);
 
   const terms = useMemo(() => fridgeTerms(fridge, staples), [fridge, staples]);
-  const picks = useMemo(() => (data ? pickFive(data.videos, terms) : null), [data, terms]);
+  const picks = useMemo(() => (data ? orderPicks(data.videos, terms) : null), [data, terms]);
 
   if (off) return { status: "off" };
   if (error) return { status: "error", message: error.message, code: error.code, retry: () => setAttempt((x) => x + 1) };
