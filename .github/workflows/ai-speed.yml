@@ -1,0 +1,26 @@
+name: AI 속도 재기
+# 레시피 가져오기에 AI가 몇 초 걸리는지 모델·생각 깊이별로 한 번 잰다 (apps/worker/test/speed.test.ts).
+# 실제 요금이 조금 들어서, 이 파일이나 speed.test.ts 를 고쳐 올릴 때와 손으로 누를 때만 돈다.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/cooking-app-planning-9zxk62]
+    paths: [.github/workflows/ai-speed.yml, apps/worker/test/speed.test.ts]
+jobs:
+  speed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 재기
+        working-directory: apps/worker
+        env:
+          COOK_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COOK_SPEED: "1"
+        run: pnpm exec vitest run speed
