@@ -86,7 +86,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
 
   return (
     <div className="theme-dark fixed inset-0 z-50 flex flex-col bg-canvas text-ink" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      <header className="shrink-0" style={{ paddingTop: "var(--safe-top)" }}>
+      <header className="mx-auto w-full max-w-2xl shrink-0" style={{ paddingTop: "var(--safe-top)" }}>
         <div className="flex h-14 items-center gap-1 px-1">
           <IconButton tone="dark" onClick={tryClose} aria-label="쿡 모드 닫기"><X size={26} /></IconButton>
           <p className="min-w-0 flex-1 truncate px-1 text-caption text-ink-2">{recipe.title} · {servings}인분</p>
@@ -105,7 +105,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
       </header>
 
       {step && otherTimers.length > 0 && (
-        <div className="flex shrink-0 gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]" data-testid="timer-bar">
+        <div className="mx-auto flex w-full max-w-2xl shrink-0 gap-2 overflow-x-auto px-4 pt-3 [scrollbar-width:none]" data-testid="timer-bar">
           {otherTimers.map((t) => (
             <div key={t.id} className={`flex h-11 shrink-0 items-center gap-1 rounded-full pl-4 text-callout ${t.done ? "bg-danger text-white motion-safe:animate-pulse" : "bg-surface-2 text-ink"}`}>
               <span className="font-semibold tabular-nums">{t.label} {t.done ? "끝" : formatRemaining(t.endsAt - Date.now())}</span>
@@ -115,7 +115,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
         </div>
       )}
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-6 pt-6">
+      <main className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-y-auto px-5 pb-6 pt-6">
         {step ? (
           <>
             <p className="text-caption font-semibold text-ink-3 tabular-nums">{step.order} / {steps.length} 단계</p>
@@ -158,7 +158,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
         )}
       </main>
 
-      <footer data-toast-anchor className="flex shrink-0 flex-col gap-3 px-4 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
+      <footer data-toast-anchor className="mx-auto flex w-full max-w-2xl shrink-0 flex-col gap-3 px-4 pt-3" style={{ paddingBottom: "calc(var(--safe-bottom) + 12px)" }}>
         {step && (
           <AiPill onClick={() => setAsking(true)} aria-label="AI 셰프에게 묻기" className="inline-flex items-center gap-2 self-center">
             <Sparkles size={18} strokeWidth={2} aria-hidden />AI 셰프에게 묻기

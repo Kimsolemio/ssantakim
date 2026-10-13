@@ -33,7 +33,9 @@ export function FullScreen({ title, onClose, right, children, footer, confirmClo
   // body 에 바로 띄운다: 흐림 효과(backdrop-filter)가 있는 머리 줄 안에서 열려도 그 안에 갇히지 않게.
   // 겹침 순서는 연 순서대로 (나중에 연 것이 위)
   return createPortal(
-    <div className={`fixed inset-0 z-40 flex flex-col text-ink ${canvas ? "bg-canvas" : "bg-surface"} ${theme}`}>
+    <div className={`fixed inset-0 z-40 flex justify-center bg-canvas text-ink ${theme}`}>
+      {/* 넓은 화면(PC·태블릿)에서도 탭 화면과 같은 폭의 가운데 기둥으로 */}
+      <div className={`flex h-full w-full max-w-lg flex-col sm:border-x sm:border-line ${canvas ? "bg-canvas" : "bg-surface"}`}>
       <BackBar title={title} onBack={tryClose} right={right} scrolled={scrolled} canvas={canvas} titleHidden={titleHidden} />
       <div className="min-h-0 flex-1 overflow-y-auto" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
         style={{ paddingBottom: footer ? 24 : "calc(var(--safe-bottom) + 24px)" }}>
@@ -44,6 +46,7 @@ export function FullScreen({ title, onClose, right, children, footer, confirmClo
           {footer}
         </div>
       )}
+      </div>
     </div>,
     document.body,
   );
