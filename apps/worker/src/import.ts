@@ -15,8 +15,17 @@ export type ImportEnv = AiEnv & { YOUTUBE_API_KEY?: string };
 export type ImportVia = "youtube_description" | "youtube_video" | "jsonld" | "page" | "caption" | "photo";
 export type ImportResponse = { result: ImportResult; via: ImportVia; provider: ProviderName; model: string };
 
+/** 글뿐인지 (사진·영상이 섞이면 읽기가 어려워 기본 모델로 깊게 본다) */
+const textOnly = (parts: AiPart[]) => parts.every((p) => p.type === "text");
+
+/**
+ * 글에 적힌 레시피를 옮겨 적는 일은 빠른 모델로 충분하다.
+ * 속도 시험(test/speed.test.ts, 유튜브 설명란): Opus medium 18.7초, Opus low 13.2초, Haiku low 6.2초. 재료 13개는 모두 똑같이 찾았다
+ */
+const importAi = (env: AiEnv, parts: AiPart[]): AiProvider => selectProvider(env, undefined, textOnly(parts) ? "fast" : "main");
+
 async function runImport(ai: AiProvider, parts: AiPart[], source: RecipeSource, via: ImportVia): Promise<ImportResponse> {
-  const out = await ai.generateJson({ system: IMPORT_SYSTEM_PROMPT, parts, schema: SCHEMA, effort: "medium", maxTokens: 16000 });
+  const out = await ai.generateJson({ system: IMPORT_SYSTEM_PROMPT, parts, schema: SCHEMA, effort: textOnly(parts) ? "low" : "medium", maxTokens: 16000 });
   // source 는 앱이 원본 정보로 바꾼다. AI가 이상한 주소를 적어도 검증에서 떨어지지 않게 미리 비운다
   const r = parseAiJson(out.text, ImportResult, (raw) => {
     const o = raw as { recipe?: { source?: unknown } | null } | null;
@@ -94,7 +103,8 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
     const header = `유튜브 영상\n제목: ${info.title ?? "(알 수 없음)"}\n채널: ${info.channel ?? "(알 수 없음)"}`;
     let first: ImportResponse | null = null;
     if (info.description && info.description.trim().length >= 20) {
-      first = await runImport(selectProvider(env), [{ type: "text", text: `${header}\n\n설명란:\n${info.description.slice(0, 12000)}` }], source, "youtube_description");
+      const parts: AiPart[] = [{ type: "text", text: `${header}\n\n설명란:\n${info.description.slice(0, 12000)}` }];
+      first = await runImport(importAi(env, parts), parts, source, "youtube_description");
       if (first.result.hasRecipe) return first;
     }
     // 설명란에 레시피가 없으면 영상 자체를 본다 (Gemini 키가 있을 때만)
@@ -123,7 +133,7 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
 
   // 블로그·레시피 사이트
   const target = kind === "naver_blog" ? naverBlogMobileUrl(url) ?? url : url;
-  const ai = selectProvider(env);
+  const ai = selectProvider(env);   // 웹 읽기 도구는 기본 모델로
   /** Worker가 못 읽은 페이지는 Claude가 직접 읽게 한다 (Claude 웹 읽기 도구). Gemini면 그냥 실패를 알린다 */
   const viaClaude = async (why: GenerationError): Promise<ImportResponse> => {
     if (!ai.research) throw why;
@@ -139,7 +149,8 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
       throw why;
     }
     if (r.text.replace(/\s/g, "").length < 40 || /^레시피 없음/.test(r.text.trim())) throw why;
-    return runImport(ai, [{ type: "text", text: `웹 페이지 (AI가 직접 읽음)\n주소: ${url}\n\n${r.text.slice(0, 15000)}` }], { type: "web", url }, "page");
+    const parts: AiPart[] = [{ type: "text", text: `웹 페이지 (AI가 직접 읽음)\n주소: ${url}\n\n${r.text.slice(0, 15000)}` }];
+    return runImport(importAi(env, parts), parts, { type: "web", url }, "page");
   };
   let res: Response;
   try {
@@ -160,7 +171,8 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
   if (!ld && text.replace(/\s/g, "").length < 60) {
     return viaClaude(new GenerationError("페이지에서 글을 찾지 못했어요. 본문을 복사해 붙여넣거나 스크린샷을 올려 주세요.", 422, "empty_page"));
   }
-  return runImport(ai, [{ type: "text", text: `웹 페이지\n제목: ${title ?? "(없음)"}\n주소: ${url}\n\n${ld ? "구조화된 레시피 정보:\n" : "본문:\n"}${text}` }], source, ld ? "jsonld" : "page");
+  const parts: AiPart[] = [{ type: "text", text: `웹 페이지\n제목: ${title ?? "(없음)"}\n주소: ${url}\n\n${ld ? "구조화된 레시피 정보:\n" : "본문:\n"}${text}` }];
+  return runImport(importAi(env, parts), parts, source, ld ? "jsonld" : "page");
 }
 
 export async function importFromText(env: ImportEnv, input: { text?: string | null; images?: { mediaType: ImageMediaType; data: string }[]; url?: string | null }): Promise<ImportResponse> {
@@ -175,5 +187,5 @@ export async function importFromText(env: ImportEnv, input: { text?: string | nu
     ...images.map((im) => ({ type: "image" as const, mediaType: im.mediaType, data: im.data })),
     { type: "text", text: [isInsta ? "인스타그램 게시물" : images.length && !text ? "레시피 사진" : "붙여넣은 글", text ? `\n${text.slice(0, 8000)}` : `\n사진 ${images.length}장`].join("") },
   ];
-  return runImport(selectProvider(env), parts, source, images.length && !text ? "photo" : "caption");
+  return runImport(importAi(env, parts), parts, source, images.length && !text ? "photo" : "caption");
 }
