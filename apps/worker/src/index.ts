@@ -204,6 +204,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY, youtube: !!env.YOUTUBE_API_KEY },
         ai: describeAi(env),
         guard: { allowList: allowList(env).includes("*") ? "everyone" : allowList(env).length, perMinute: !!env.AI_LIMIT, daily: !!env.USAGE },
+        // 요청이 들어온 Cloudflare 위치 (HKG 등이면 AI 업체가 막는 지역이라 placement 로 미국에서 돌린다)
+        colo: (request as { cf?: { colo?: string } }).cf?.colo ?? null,
       }, 200, cors);
     }
 
