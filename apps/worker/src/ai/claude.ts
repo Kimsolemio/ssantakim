@@ -18,11 +18,14 @@ function toClaudeContent(part: AiPart): Anthropic.Beta.BetaContentBlockParam {
   return { type: "image", source: { type: "base64", media_type: part.mediaType, data: part.data } };
 }
 
+/** API가 알려 준 실제 이유 (무엇이 막혔는지 화면에서 바로 알 수 있게) */
+const detail = (e: InstanceType<typeof Anthropic.APIError>) => (e.message ? `: ${e.message.slice(0, 200)}` : "");
+
 function mapError(e: unknown): GenerationError {
   if (e instanceof GenerationError) return e;
   if (e instanceof Anthropic.AuthenticationError) return new GenerationError("AI API 키가 올바르지 않습니다 (Worker 설정 확인)", 502);
-  if (e instanceof Anthropic.PermissionDeniedError) return new GenerationError("이 API 키로는 해당 모델을 쓸 수 없습니다 (CLAUDE_MODEL 확인)", 502);
-  if (e instanceof Anthropic.NotFoundError) return new GenerationError("AI 모델을 찾을 수 없습니다 (CLAUDE_MODEL 확인)", 502);
+  if (e instanceof Anthropic.PermissionDeniedError) return new GenerationError(`이 API 키로는 이 기능을 쓸 수 없습니다${detail(e)}`, 502);
+  if (e instanceof Anthropic.NotFoundError) return new GenerationError(`AI 모델을 찾을 수 없습니다 (CLAUDE_MODEL 확인)${detail(e)}`, 502);
   if (e instanceof Anthropic.RateLimitError) return new GenerationError("AI 요청이 너무 많습니다. 잠시 후 다시 시도하세요", 429);
   if (e instanceof Anthropic.BadRequestError) return new GenerationError(`AI 요청이 거부되었습니다: ${e.message}`, 502);
   if (e instanceof Anthropic.InternalServerError) return new GenerationError("AI 서버가 바쁩니다. 잠시 후 다시 시도하세요", 503);
@@ -61,8 +64,9 @@ export function claudeProvider(opts: { apiKey: string; model?: string; fetch?: t
           ? await client.beta.messages.create({ ...base, betas: [FALLBACK_BETA], fallbacks: "default" })
           : await client.beta.messages.create(base);
       } catch (e) {
-        if (!(e instanceof Anthropic.BadRequestError) || !supportsFallbacks(model)) throw mapError(e);
-        // 대체 모델 기능(베타)이 거부되는 경우를 대비해 한 번은 일반 요청으로 다시 시도한다
+        const rejected = e instanceof Anthropic.BadRequestError || e instanceof Anthropic.PermissionDeniedError;
+        if (!rejected || !supportsFallbacks(model)) throw mapError(e);
+        // 대체 모델 기능(베타)이 거부되는 경우(400, 이 키에 안 열린 경우 403)를 대비해 한 번은 일반 요청으로 다시 시도한다
         console.warn(JSON.stringify({ ai: "claude", retryWithoutFallbacks: true, reason: e.message }));
         try { msg = await client.beta.messages.create(base); } catch (e2) { throw mapError(e2); }
       }

@@ -73,6 +73,13 @@ jobs:
             echo "::notice title=인기 레시피 꺼짐::비밀값 YOUTUBE_API_KEY 를 넣으면 '오늘의 인기 레시피'가 켜집니다"
           fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: AI 연결 점검 (키로 짧게 물어보고 결과만 적기)
+        if: steps.check.outputs.web == '1' && steps.check.outputs.worker == '1'
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/ci-ai-check.mjs
       - name: 앱 만들기
         if: steps.check.outputs.web == '1'
         env:

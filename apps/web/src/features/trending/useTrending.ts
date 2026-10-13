@@ -15,7 +15,7 @@ export type TrendingVideo = {
   thumbnail: string;
   publishedAt: string;
   seconds: number;
-  region: "kr" | "global";
+  region: "kr" | "us" | "es" | "jp";
   vertical: boolean | null;
   ing?: string;
 };
@@ -25,13 +25,14 @@ type TrendingResponse = { day: string; minLikes: number; videos: TrendingVideo[]
 export type TrendingPick = TrendingVideo & { matched: string[] };
 
 export const PICK_COUNT = 5;
-const PER_REGION = 3;
+/** 한 나라에서 고를 수 있는 수: 한국은 셋, 다른 나라는 둘까지 */
+const perRegion = (region: string) => (region === "kr" ? 3 : 2);
 
 /** 서버와 같은 한국 날짜로 하루를 나눈다 */
 const kstDay = (now = Date.now()) => new Date(now + 9 * 3600_000).toISOString().slice(0, 10);
 
 // ---------- 하루 동안 기억 (유튜브 무료 한도를 아끼려고 기기마다 하루 한 번만 묻는다) ----------
-const STORE = "trending:v1";
+const STORE = "trending:v2";
 type Saved = { day: string; data: TrendingResponse };
 let mem: Saved | null = null;
 let inflight: { day: string; p: Promise<TrendingResponse> } | null = null;
@@ -100,7 +101,7 @@ export function pickIngredient(items: Pick<FridgeItem, "name" | "expiresAt">[], 
   return names[n % names.length];
 }
 
-/** 다섯 개 고르기: 냉장고 재료가 나오는 것 먼저 (많이 겹칠수록), 그다음 좋아요 순. 국내·해외가 섞이게 한쪽은 세 개까지 */
+/** 다섯 개 고르기: 냉장고 재료가 나오는 것 먼저 (많이 겹칠수록), 그다음 좋아요 순. 나라가 섞이게 한국은 셋, 다른 나라는 둘까지 */
 export function pickFive(videos: TrendingVideo[], terms: Term[], n = PICK_COUNT): TrendingPick[] {
   const scored: TrendingPick[] = videos.map((v) => {
     const matched = terms.filter((t) => t.re.test(v.title)).map((t) => t.label);
@@ -113,14 +114,15 @@ export function pickFive(videos: TrendingVideo[], terms: Term[], n = PICK_COUNT)
     || Number(a.vertical === false) - Number(b.vertical === false)
     || b.likes - a.likes);
   const out: TrendingPick[] = [];
-  const count = { kr: 0, global: 0 };
+  const count = new Map<string, number>();
   for (const v of scored) {
     if (out.length >= n) break;
-    if (count[v.region] >= PER_REGION) continue;
+    const c = count.get(v.region) ?? 0;
+    if (c >= perRegion(v.region)) continue;
     out.push(v);
-    count[v.region]++;
+    count.set(v.region, c + 1);
   }
-  // 한쪽이 모자라면 나머지로 채운다
+  // 어느 나라가 모자라면 나머지로 채운다
   for (const v of scored) {
     if (out.length >= n) break;
     if (!out.includes(v)) out.push(v);

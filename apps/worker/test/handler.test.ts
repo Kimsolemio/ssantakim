@@ -142,6 +142,24 @@ describe("/recipe with Claude", () => {
     expect(calls[1].headers.get("anthropic-beta") ?? "").not.toContain("server-side-fallback");
   });
 
+  it("also retries without the fallback beta when the key is not allowed to use it (403)", async () => {
+    let n = 0;
+    const calls = stubFetch(() => (++n === 1
+      ? jsonResponse({ type: "error", error: { type: "permission_error", message: "fallbacks are not enabled for this organization" } }, 403)
+      : jsonResponse(claudeMessage(JSON.stringify(SAMPLE_RECIPE)))));
+    const r = await recipeReq(env);
+    expect(r.status).toBe(200);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].body.fallbacks).toBeUndefined();
+  });
+
+  it("shows the API's own reason when the key is not allowed", async () => {
+    stubFetch(() => jsonResponse({ type: "error", error: { type: "permission_error", message: "model not allowed in this workspace" } }, 403));
+    const r = await recipeReq(env);
+    expect(r.status).toBe(502);
+    expect((await r.json() as any).error).toMatch(/이 기능을 쓸 수 없습니다.*model not allowed in this workspace/);
+  });
+
   it("maps refusal, truncation, bad JSON and auth errors to friendly messages", async () => {
     const cases: [() => Response, number, RegExp][] = [
       [() => jsonResponse(claudeMessage("", { stop_reason: "refusal", content: [] })), 422, /응답할 수 없다/],

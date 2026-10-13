@@ -12,7 +12,8 @@ export function likesText(n: number): string {
   return n.toLocaleString("ko-KR");
 }
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-const SUBTITLE = "유튜브 쇼츠 · 좋아요 1만 개 넘는 요리 · 국내와 해외";
+const SUBTITLE = "유튜브 쇼츠 · 좋아요 1만 개 넘는 요리 · 한국·미국·스페인·일본";
+const REGION: Record<string, string> = { kr: "한국", us: "미국", es: "스페인", jp: "일본" };
 
 type Size = "sm" | "md" | "lg";
 
@@ -20,7 +21,7 @@ type Size = "sm" | "md" | "lg";
 function TrendingCard({ v, size }: { v: TrendingPick; size: Size }) {
   const { openImport } = useNav();
   const likes = likesText(v.likes);
-  const region = v.region === "kr" ? "국내" : "해외";
+  const region = REGION[v.region] ?? "해외";
   return (
     <li data-testid="trending-card" className={size === "sm" ? "w-[148px] shrink-0" : "min-w-0"}>
       <button type="button" onClick={() => openImport({ url: v.url, text: null, title: v.title })}
