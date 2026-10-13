@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui,
+    "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+
+  --text-display: 28px;  --text-display--line-height: 36px;  --text-display--letter-spacing: -0.025em; --text-display--font-weight: 700;
+  --text-title1: 22px;   --text-title1--line-height: 30px;   --text-title1--letter-spacing: -0.02em;   --text-title1--font-weight: 700;
+  --text-title2: 19px;   --text-title2--line-height: 26px;   --text-title2--letter-spacing: -0.015em;  --text-title2--font-weight: 600;
+  --text-headline: 17px; --text-headline--line-height: 24px; --text-headline--letter-spacing: -0.01em; --text-headline--font-weight: 600;
+  --text-body: 17px;     --text-body--line-height: 26px;     --text-body--letter-spacing: -0.01em;
+  --text-callout: 15px;  --text-callout--line-height: 22px;  --text-callout--letter-spacing: -0.005em;
+  --text-caption: 13px;  --text-caption--line-height: 18px;
+  --text-micro: 12px;    --text-micro--line-height: 16px;    --text-micro--font-weight: 600;
+  --text-cook: 28px;     --text-cook--line-height: 40px;     --text-cook--letter-spacing: -0.02em;     --text-cook--font-weight: 600;
+  --text-timer: 56px;    --text-timer--line-height: 60px;    --text-timer--letter-spacing: -0.02em;    --text-timer--font-weight: 600;
+
+  /* 기본 팔레트(orange-500 등)를 지워 토큰만 쓰게 한다 */
+  --color-*: initial;
+  --color-white: #FFFFFF;
+  --color-black: #000000;
+
+  --color-canvas: #F3F2EE;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F0EEEA;
+  --color-fill-pressed: #E7E4DF;
+  --color-thumb: #FFFFFF;
+  --color-line: #E8E5E0;
+  --color-line-strong: #D9D5CF;
+  --color-ink: #1C1A17;
+  --color-ink-2: #5E5850;
+  --color-ink-3: #6F6962;
+  --color-ink-disabled: #A8A29A;
+  --color-accent: #1F6B4F;
+  --color-accent-pressed: #17543E;
+  --color-accent-soft: #E6F1EB;
+  --color-accent-strong: #17573F;
+  --color-on-accent: #FFFFFF;
+  --color-success: #1F6B4F;
+  --color-success-soft: #E6F1EB;
+  --color-warning: #8A5300;
+  --color-warning-soft: #FFF4D9;
+  --color-danger: #B42318;
+  --color-danger-soft: #FDEDEB;
+  --color-toast: #2B2926;
+  --color-toast-action: #9EE0C0;
+  --color-scrim: rgb(20 19 17 / 0.45);
+
+  --radius-badge: 6px;
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-sheet: 24px;
+
+  --shadow-raised: 0 1px 2px rgb(28 26 23 / 0.06), 0 2px 8px rgb(28 26 23 / 0.05);
+  --shadow-overlay: 0 8px 28px rgb(28 26 23 / 0.16), 0 1px 3px rgb(28 26 23 / 0.08);
+
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-sheet-in: sheet-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: fade-in 200ms ease-out;
+  --animate-toast-in: toast-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  @keyframes sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+  @keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}
+
+:root {
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+  color-scheme: light;
+}
+
+/* 다크 토큰: 쿡 모드 루트에 class="theme-dark". OS 다크 연동은 8단계(6.1)에서
+   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { …같은 값… } } 로 복제 */
+.theme-dark, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: #141311; --color-surface: #1D1B19; --color-surface-2: #2A2825; --color-fill-pressed: #34312D;
+  --color-thumb: #3A3733; --color-line: #2E2B28; --color-line-strong: #45413C;
+  --color-ink: #F4F2EE; --color-ink-2: #BDB7AE; --color-ink-3: #9A948B; --color-ink-disabled: #625D57;
+  --color-accent: #6CBF9A; --color-accent-pressed: #5BAE89; --color-accent-soft: #1B3328; --color-accent-strong: #86D4B1;
+  --color-on-accent: #0C1F17; --color-success: #6CBF9A; --color-success-soft: #1B3328;
+  --color-warning: #F2C46B; --color-warning-soft: #362B14; --color-danger: #FF8F84; --color-danger-soft: #3A1C19;
+  --color-toast: #3A3733; --color-toast-action: #86D4B1; --color-scrim: rgb(0 0 0 / 0.6);
+}
+
+
+/* 가상 냉장고는 흰 가전이라 다크 모드에서도 밝은 토큰을 쓴다 */
+.theme-light {
+  color-scheme: light;
+  --color-canvas: #F3F2EE; --color-surface: #FFFFFF; --color-surface-2: #F0EEEA; --color-fill-pressed: #E7E4DF;
+  --color-thumb: #FFFFFF; --color-line: #E8E5E0; --color-line-strong: #D9D5CF;
+  --color-ink: #1C1A17; --color-ink-2: #5E5850; --color-ink-3: #6F6962; --color-ink-disabled: #A8A29A;
+  --color-accent: #1F6B4F; --color-accent-pressed: #17543E; --color-accent-soft: #E6F1EB; --color-accent-strong: #17573F;
+  --color-on-accent: #FFFFFF; --color-success: #1F6B4F; --color-success-soft: #E6F1EB;
+  --color-warning: #8A5300; --color-warning-soft: #FFF4D9; --color-danger: #B42318; --color-danger-soft: #FDEDEB;
+}
+
+/* 다크 모드에서는 흰 냉장고·실온장을 조금 어둡게 (밤에 눈부시지 않게) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) :is(.fridge, .pantry) { filter: brightness(.8) saturate(.92); }
+}
+:root[data-theme="dark"] :is(.fridge, .pantry) { filter: brightness(.8) saturate(.92); }
+
+/* OS가 다크 모드면 앱도 어둡게 (설정에서 data-theme="light"로 끌 수 있게 해 둠) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --color-canvas: #141311; --color-surface: #1D1B19; --color-surface-2: #2A2825; --color-fill-pressed: #34312D;
+  --color-thumb: #3A3733; --color-line: #2E2B28; --color-line-strong: #45413C;
+  --color-ink: #F4F2EE; --color-ink-2: #BDB7AE; --color-ink-3: #9A948B; --color-ink-disabled: #625D57;
+  --color-accent: #6CBF9A; --color-accent-pressed: #5BAE89; --color-accent-soft: #1B3328; --color-accent-strong: #86D4B1;
+  --color-on-accent: #0C1F17; --color-success: #6CBF9A; --color-success-soft: #1B3328;
+  --color-warning: #F2C46B; --color-warning-soft: #362B14; --color-danger: #FF8F84; --color-danger-soft: #3A1C19;
+  --color-toast: #3A3733; --color-toast-action: #86D4B1; --color-scrim: rgb(0 0 0 / 0.6);
+}
+}
+
+@layer base {
+  html, body { height: 100%; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 17px; line-height: 26px; letter-spacing: -0.01em;
+    word-break: keep-all; overflow-wrap: anywhere;
+    -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+  input, select, textarea, button { font: inherit; letter-spacing: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+  .food-emoji { font-family: var(--font-emoji); line-height: 1; }
+}
+@media (pointer: coarse) { input, select, textarea { font-size: max(16px, 1em); } }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-in, .animate-toast-in { animation: fade-in 200ms ease-out; }
+}
+
+/* ---------- 가상 냉장고 ---------- */
+.fridge-section { perspective: 1400px; }
+.fridge-door {
+  transform-origin: right center;
+  transition: transform .75s cubic-bezier(.3,.7,.2,1), opacity .75s ease;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+.fridge[data-open="true"] .fridge-door { transform: rotateY(-108deg); opacity: 0; pointer-events: none; }
+.fridge-door-inner {
+  transform-origin: left center;
+  transform: perspective(700px) rotateY(-90deg);
+  opacity: 0;
+  transition: transform .55s .35s cubic-bezier(.2,.8,.2,1), opacity .3s .35s;
+}
+.fridge[data-open="true"] .fridge-door-inner { transform: perspective(700px) rotateY(-12deg); opacity: 1; }
+.fridge-light { opacity: 0; transition: opacity .6s .3s; }
+.fridge[data-open="true"] .fridge-light { opacity: 1; }
+
+@keyframes item-drop {
+  0%   { transform: translateY(-170px) scale(.3) rotate(-25deg); opacity: 0; }
+  55%  { transform: translateY(10px) scale(1.15) rotate(6deg); opacity: 1; }
+  75%  { transform: translateY(-4px) scale(.95) rotate(-2deg); }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes item-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(31, 107, 79, 0); }
+  50%      { box-shadow: 0 0 0 4px rgba(31, 107, 79, .45); }
+}
+.item-new {
+  animation: item-drop .75s cubic-bezier(.2,.8,.3,1.2) both, item-glow 1.2s ease-in-out 2;
+  animation-delay: var(--delay, 0ms), calc(var(--delay, 0ms) + .75s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fridge-door, .fridge-door-inner, .fridge-light { transition: none; }
+  .item-new { animation: item-glow 1.2s ease-in-out 2; }
+}

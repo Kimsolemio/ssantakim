@@ -1,0 +1,118 @@
+name: Deploy
+# 저장소 Settings > Secrets and variables > Actions 에 값을 넣어 두면 앱(Firebase Hosting)과
+# AI 서버(Cloudflare Worker)를 자동으로 올린다. 넣을 것은 README "컴퓨터 없이 배포하기".
+# 값이 없으면 아무것도 하지 않고 끝난다 (실패로 보이지 않게).
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/cooking-app-planning-9zxk62]
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 설정 확인
+        id: check
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          CONFIG: ${{ vars.FIREBASE_WEB_CONFIG }}
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$SA" ] || [ -z "$CONFIG" ]; then
+            echo "web=0" >> "$GITHUB_OUTPUT"
+            echo "::notice title=배포 건너뜀::비밀값 FIREBASE_SERVICE_ACCOUNT 와 변수 FIREBASE_WEB_CONFIG 를 넣으면 앱을 올립니다 (README '컴퓨터 없이 배포하기')"
+          else
+            echo "web=1" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$CF" ] && [ -n "$CF_ACCOUNT" ] && [ -n "$ANTHROPIC" ]; then
+            echo "worker=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "worker=0" >> "$GITHUB_OUTPUT"
+            echo "::notice title=AI 서버 건너뜀::비밀값 CLOUDFLARE_API_TOKEN · CLOUDFLARE_ACCOUNT_ID · ANTHROPIC_API_KEY 를 넣으면 AI 서버도 올립니다"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.web == '1'
+      - uses: pnpm/action-setup@v4
+        if: steps.check.outputs.web == '1'
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.web == '1'
+        with:
+          node-version: 22
+          cache: pnpm
+      - if: steps.check.outputs.web == '1'
+        run: pnpm install --frozen-lockfile
+      - name: 설정값 채우기
+        id: cfg
+        if: steps.check.outputs.web == '1'
+        env:
+          FIREBASE_WEB_CONFIG: ${{ vars.FIREBASE_WEB_CONFIG }}
+          ALLOWED_EMAILS: ${{ vars.ALLOWED_EMAILS }}
+        run: node scripts/ci-deploy-config.mjs
+      - name: AI 서버(Cloudflare Worker) 올리기
+        id: worker
+        if: steps.check.outputs.web == '1' && steps.check.outputs.worker == '1'
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          set -o pipefail
+          pnpm exec wrangler deploy 2>&1 | tee "$RUNNER_TEMP/worker.log"
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/worker.log" | head -1 || true)
+          printf '%s' "$ANTHROPIC_API_KEY" | pnpm exec wrangler secret put ANTHROPIC_API_KEY
+          # 선택: 유튜브 링크 가져오기 + 오늘의 인기 레시피
+          if [ -n "$YOUTUBE_API_KEY" ]; then
+            printf '%s' "$YOUTUBE_API_KEY" | pnpm exec wrangler secret put YOUTUBE_API_KEY
+          else
+            echo "::notice title=인기 레시피 꺼짐::비밀값 YOUTUBE_API_KEY 를 넣으면 '오늘의 인기 레시피'가 켜집니다"
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: AI 연결 점검 (키로 짧게 물어보고 결과만 적기)
+        if: steps.check.outputs.web == '1' && steps.check.outputs.worker == '1'
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/ci-ai-check.mjs
+      - name: 앱 만들기
+        if: steps.check.outputs.web == '1'
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.url || vars.WORKER_URL }}
+        run: |
+          node scripts/ci-deploy-config.mjs --worker-url "$WORKER_URL"
+          pnpm --filter @cook/web build
+      - name: 앱(Firebase Hosting)과 보안 규칙 올리기
+        if: steps.check.outputs.web == '1'
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PROJECT: ${{ steps.cfg.outputs.project_id }}
+        run: |
+          trap 'rm -f "$RUNNER_TEMP/sa.json"' EXIT
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          # 콘솔에서 받은 서비스 계정(Admin SDK)에는 "API가 켜져 있나" 확인(serviceusage) 권한이 없어 403이 난다.
+          # Firestore는 콘솔에서 데이터베이스를 만들 때 이미 켜졌으므로, firebase-tools 의 확인 캐시에 적어 건너뛴다.
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/xdg"
+          mkdir -p "$XDG_CONFIG_HOME/configstore"
+          printf '{"apiEnablementCache":{"%s":{"firestore.googleapis.com":true}}}' "$PROJECT" > "$XDG_CONFIG_HOME/configstore/firebase-tools.json"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" pnpm exec firebase deploy --only hosting,firestore:rules --project "$PROJECT" --non-interactive || {
+            echo "::error title=Firebase 올리기 실패::권한 오류(403)면 https://console.cloud.google.com/iam-admin/iam?project=$PROJECT 에서 firebase-adminsdk-… 서비스 계정 줄의 연필 → 다른 역할 추가 → 'Firebase Admin'(Firebase 관리자) → 저장한 뒤 Re-run 하세요"
+            exit 1
+          }
+      - name: 주소 알리기
+        if: steps.check.outputs.web == '1'
+        env:
+          PROJECT: ${{ steps.cfg.outputs.project_id }}
+          WORKER_URL: ${{ steps.worker.outputs.url || vars.WORKER_URL }}
+        run: |
+          {
+            echo "### 앱 주소: https://$PROJECT.web.app"
+            echo ""
+            echo "폰에서 열고 '홈 화면에 추가'를 누르세요."
+            if [ -n "$WORKER_URL" ]; then echo "AI 서버: $WORKER_URL"; else echo "AI 서버는 아직 없어요 (AI 버튼은 '연결되지 않았어요'로 보입니다)."; fi
+          } >> "$GITHUB_STEP_SUMMARY"
