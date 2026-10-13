@@ -79,9 +79,17 @@ jobs:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           PROJECT: ${{ steps.cfg.outputs.project_id }}
         run: |
+          trap 'rm -f "$RUNNER_TEMP/sa.json"' EXIT
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
-          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" pnpm exec firebase deploy --only hosting,firestore:rules --project "$PROJECT" --non-interactive
-          rm -f "$RUNNER_TEMP/sa.json"
+          # 콘솔에서 받은 서비스 계정(Admin SDK)에는 "API가 켜져 있나" 확인(serviceusage) 권한이 없어 403이 난다.
+          # Firestore는 콘솔에서 데이터베이스를 만들 때 이미 켜졌으므로, firebase-tools 의 확인 캐시에 적어 건너뛴다.
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/xdg"
+          mkdir -p "$XDG_CONFIG_HOME/configstore"
+          printf '{"apiEnablementCache":{"%s":{"firestore.googleapis.com":true}}}' "$PROJECT" > "$XDG_CONFIG_HOME/configstore/firebase-tools.json"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" pnpm exec firebase deploy --only hosting,firestore:rules --project "$PROJECT" --non-interactive || {
+            echo "::error title=Firebase 올리기 실패::권한 오류(403)면 Google Cloud 콘솔 > IAM 에서 firebase-adminsdk 서비스 계정에 'Firebase 호스팅 관리자', 'Firebase 규칙 관리자', '서비스 사용량 소비자' 역할을 더한 뒤 다시 실행하세요"
+            exit 1
+          }
       - name: 주소 알리기
         if: steps.check.outputs.web == '1'
         env:
