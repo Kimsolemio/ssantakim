@@ -130,7 +130,7 @@ export function AddToShoppingSheet({ matches, onClose, onConfirm }: {
               onChange={(e) => set(i, { qty: e.target.value === "" ? null : Number(e.target.value) })}
               // inputBase의 w-full·px-4가 CSS에서 뒤에 나와 이기므로 ! 로 좁힌다 (안 그러면 칸이 줄을 다 차지해 이름이 한 글자씩 세로로 선다)
               className={`${inputBase} h-11 w-16! shrink-0 bg-surface-2 px-2! text-center tabular-nums`} />
-            <span className="w-8 shrink-0 text-callout text-ink-2">{m.ingredient.unit === "기타" ? "" : m.ingredient.unit}</span>
+            <span className="min-w-8 shrink-0 whitespace-nowrap text-callout text-ink-2">{m.ingredient.unit === "기타" ? "" : m.ingredient.unit}</span>
             <span className={`w-8 shrink-0 text-right text-caption ${m.status === "short" ? "text-warning" : "text-ink-3"}`}>{m.status === "short" ? "부족" : "없음"}</span>
           </li>
         ))}

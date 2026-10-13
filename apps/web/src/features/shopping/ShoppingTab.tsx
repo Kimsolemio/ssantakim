@@ -290,7 +290,7 @@ function EditShoppingSheet({ item, onClose, onSave }: { item: ShoppingDoc; onClo
         <TextField label="이름" value={name} onChange={(e) => setName(e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <TextField label="수량" type="number" inputMode="decimal" min={0} step="any" placeholder="수량" value={qty} onChange={(e) => setQty(e.target.value)} />
-          <Select label="단위" value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>{Unit.options.map((u) => <option key={u}>{u}</option>)}</Select>
+          <Select label="단위" value={unit} onChange={(e) => setUnit(e.target.value as Unit)}>{Unit.options.map((u) => <option key={u} value={u}>{u}</option>)}</Select>
         </div>
         <TextField label="메모" placeholder="브랜드, 가게 등" value={memo} onChange={(e) => setMemo(e.target.value)} />
       </div>

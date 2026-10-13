@@ -95,11 +95,11 @@
   --color-warning: #8A5300; --color-warning-soft: #FFF4D9; --color-danger: #B42318; --color-danger-soft: #FDEDEB;
 }
 
-/* 다크 모드에서는 흰 냉장고를 조금 어둡게 (밤에 눈부시지 않게) */
+/* 다크 모드에서는 흰 냉장고·실온장을 조금 어둡게 (밤에 눈부시지 않게) */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .fridge { filter: brightness(.8) saturate(.92); }
+  :root:not([data-theme="light"]) :is(.fridge, .pantry) { filter: brightness(.8) saturate(.92); }
 }
-:root[data-theme="dark"] .fridge { filter: brightness(.8) saturate(.92); }
+:root[data-theme="dark"] :is(.fridge, .pantry) { filter: brightness(.8) saturate(.92); }
 
 /* OS가 다크 모드면 앱도 어둡게 (설정에서 data-theme="light"로 끌 수 있게 해 둠) */
 @media (prefers-color-scheme: dark) {

@@ -221,8 +221,8 @@ export function FridgeVisual({ items, recentIds, dimmedIds, onItemClick, openSig
         <div className="flex justify-between px-6"><span className="h-2 w-6 rounded-b-md bg-[#BDBAB4]" /><span className="h-2 w-6 rounded-b-md bg-[#BDBAB4]" /></div>
       </div>
 
-      {/* 실온 보관장 */}
-      <div className="w-full max-w-[400px] rounded-[20px] bg-[linear-gradient(180deg,#EFE8DD,#E6DCCD)] p-1.5 shadow-[0_10px_20px_-14px_rgba(80,55,20,.45)]">
+      {/* 실온 보관장 (냉장고처럼 다크 모드에서도 밝은 색 토큰을 쓴다) */}
+      <div className="pantry theme-light w-full max-w-[400px] rounded-[20px] bg-[linear-gradient(180deg,#EFE8DD,#E6DCCD)] p-1.5 shadow-[0_10px_20px_-14px_rgba(80,55,20,.45)]">
         <p className="px-2 pb-1 text-micro text-ink-2">실온 <span className="tabular-nums">{byZone.pantry.length}</span></p>
         <div className="rounded-[14px] bg-[#F7F2EA]">
           <Shelf zone="pantry" items={byZone.pantry} ctx={ctx} emptyLabel={false} shelfClass={PANTRY_SHELF} />
