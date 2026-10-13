@@ -9,6 +9,9 @@ import { captureShareFromLocation } from "./lib/share";
 
 captureShareFromLocation();
 
+// 체험판은 링크로 여는 페이지라 확인 창(confirm)이 뜨지 않는다 → 묻는 곳은 '예'로 진행
+if (import.meta.env.VITE_DEMO === "1") window.confirm = () => true;
+
 registerSW({ immediate: true });
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

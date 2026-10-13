@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { workerConfigured, workerUrl } from "./api";
+import { isDemo, workerConfigured, workerUrl } from "./api";
 
 export type AiProviderName = "claude" | "gemini";
 export type AiInfo = {
@@ -16,6 +16,7 @@ const NONE: AiInfo = { provider: null, gemini: false, webSearch: false };
 
 /** Worker /health 로 지금 어떤 AI를 쓰는지 한 번만 물어본다 (로그인 없이 공개되는 정보) */
 function fetchInfo(): Promise<AiInfo> {
+  if (isDemo) return Promise.resolve({ provider: "claude", gemini: false, webSearch: true });
   if (!workerConfigured) return Promise.resolve(NONE);
   const p: Promise<AiInfo> = cached ?? fetch(`${workerUrl}/health`)
     .then((r) => (r.ok ? r.json() : null))

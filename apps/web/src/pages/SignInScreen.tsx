@@ -1,6 +1,7 @@
 import { useAuth } from "../lib/auth";
 import { authDomainMismatch } from "../lib/firebase";
 import { Banner } from "../components/ui/Banner";
+import { isDemo } from "../lib/api";
 
 function GoogleG() {
   return (
@@ -19,15 +20,16 @@ export function SignInScreen() {
   return (
     <div className="mx-auto flex min-h-dvh max-w-lg flex-col bg-canvas px-6" style={{ paddingTop: "var(--safe-top)" }}>
       <div className="flex flex-1 flex-col items-center justify-center text-center">
-        <img src="/icon.svg" alt="" className="size-[88px] rounded-[22px] shadow-raised" />
+        <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="size-[88px] rounded-[22px] shadow-raised" />
         <h1 className="mt-6 text-display text-ink">우리집 요리</h1>
         <p className="mt-2 text-body text-ink-2">레시피·냉장고·장보기를 가족과 함께</p>
+        {isDemo && <p className="mt-4 max-w-[300px] text-caption text-ink-3">체험판이에요. 예시 데이터가 들어 있고, 고친 것은 이 기기에만 저장돼요. AI는 미리 준비한 예시로 답해요.</p>}
       </div>
       <div style={{ paddingBottom: "calc(var(--safe-bottom) + 24px)" }}>
         {error && <Banner kind="danger" className="mb-3">{error}</Banner>}
         <button type="button" onClick={signIn}
           className="flex h-14 w-full items-center justify-center gap-3 rounded-control border border-line-strong bg-surface text-headline text-ink transition-colors active:bg-surface-2">
-          <GoogleG />Google로 시작하기
+          {isDemo ? "체험 시작하기" : <><GoogleG />Google로 시작하기</>}
         </button>
         {mismatch && (
           <p className="mt-3 text-caption text-warning" title={`이 주소(${location.host})와 로그인 주소(${mismatch})가 달라요`}>

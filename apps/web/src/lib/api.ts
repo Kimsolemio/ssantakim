@@ -3,6 +3,18 @@ import { isOffline } from "./online";
 
 export const workerUrl: string = (import.meta.env.VITE_WORKER_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 export const workerConfigured = workerUrl.length > 0;
+/** 체험판: AI 서버 대신 기기 안의 예시 답 (pnpm build:demo) */
+export const isDemo = import.meta.env.VITE_DEMO === "1";
+
+async function viaDemo<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const { demoWorker, DemoHttpError } = await import("../demo/worker");
+  try { return await demoWorker<T>(path, body as Record<string, unknown>, signal); }
+  catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw new ApiError("취소되었습니다", 0);
+    if (e instanceof DemoHttpError) throw new ApiError(e.message, e.status, e.code);
+    throw e;
+  }
+}
 
 export class ApiError extends Error {
   /** code: 서버가 알려 준 상황 (예: instagram → 캡션 입력으로 전환) */
@@ -11,6 +23,7 @@ export class ApiError extends Error {
 
 /** Worker 호출. Firebase ID 토큰을 Authorization 헤더로 보낸다. */
 export async function callWorker<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  if (isDemo) return viaDemo<T>(path, body, signal);
   if (!workerConfigured) throw new ApiError("AI 서버 주소(VITE_WORKER_URL)가 설정되지 않았습니다", 0);
   // 끊긴 채로 기다리게 하지 않는다 (저장한 레시피·냉장고는 오프라인에서도 볼 수 있다)
   if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요. 연결되면 다시 해 주세요", 0, "offline");
@@ -40,6 +53,7 @@ export async function callWorker<T>(path: string, body: unknown, signal?: AbortS
 
 /** 로그인한 GET 요청 (예: 오늘 남은 AI 사용량) */
 export async function getWorker<T>(path: string): Promise<T> {
+  if (isDemo) return viaDemo<T>(path, undefined);
   if (!workerConfigured) throw new ApiError("AI 서버가 연결되지 않았어요", 0);
   if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요", 0, "offline");
   const user = getAuthInstance().currentUser;

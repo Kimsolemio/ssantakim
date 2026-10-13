@@ -8,3 +8,4 @@ dev-dist/
 .DS_Store
 .dev.vars
 e2e/shots/
+dist-demo/

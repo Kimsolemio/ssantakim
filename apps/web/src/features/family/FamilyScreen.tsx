@@ -3,7 +3,7 @@ import { ArrowLeftRight, ChevronRight, Copy, LogOut, Share2, UserRound } from "l
 import { FamilyProfile } from "@cook/shared";
 import { useFamily } from "../../lib/family";
 import { useAuth } from "../../lib/auth";
-import { getWorker, workerConfigured } from "../../lib/api";
+import { getWorker, isDemo, workerConfigured } from "../../lib/api";
 import { settle, writeErrorMessage } from "../../lib/write";
 import { FullScreen } from "../../components/FullScreen";
 import { Sheet } from "../../components/Sheet";
@@ -159,7 +159,9 @@ export function FamilyScreen({ onClose }: { onClose: () => void }) {
             await leaveToSwitch();
             onClose();
           }} />
-          <Row icon={<LogOut size={20} />} title="로그아웃" danger onClick={signOut} />
+          {isDemo
+            ? <Row icon={<LogOut size={20} />} title="체험 데이터 처음으로" danger onClick={() => { void import("../../demo/auth").then((m) => m.resetDemo()); }} />
+            : <Row icon={<LogOut size={20} />} title="로그아웃" danger onClick={signOut} />}
         </ul>
       </Card>
 

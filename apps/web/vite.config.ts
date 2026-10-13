@@ -2,12 +2,29 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath } from "node:url";
 
-export default defineConfig({
+const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
+export default defineConfig(({ mode }) => {
+  // 체험판(--mode demo): Firebase·AI 서버 대신 기기 안 저장소와 예시 답을 쓴다. 한 페이지로 묶어 링크로 열어 볼 수 있게
+  const demo = mode === "demo";
+  return {
+  base: demo ? "./" : "/",
+  envDir: demo ? here("./demo-env") : undefined,
+  resolve: demo ? {
+    alias: {
+      "firebase/firestore": here("./src/demo/firestore.ts"),
+      "firebase/auth": here("./src/demo/auth.ts"),
+      "firebase/app": here("./src/demo/app.ts"),
+      "virtual:pwa-register": here("./src/demo/pwa.ts"),
+    },
+  } : undefined,
+  build: demo ? { outDir: "dist-demo", assetsInlineLimit: 0, rollupOptions: { output: { inlineDynamicImports: true } } } : undefined,
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
+    !demo && VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["apple-touch-icon.png", "icon.svg"],
       manifest: {
@@ -42,4 +59,5 @@ export default defineConfig({
     }),
   ],
   server: { port: 5173 },
+  };
 });

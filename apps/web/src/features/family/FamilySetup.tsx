@@ -27,7 +27,7 @@ export function FamilySetup() {
       <div className="flex flex-1 flex-col justify-center">
         {mode === "pick" && (
           <div className="text-center">
-            <img src="/icon.svg" alt="" className="mx-auto size-[72px] rounded-[18px] shadow-raised" />
+            <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="mx-auto size-[72px] rounded-[18px] shadow-raised" />
             <h1 className="mt-6 text-title1 text-ink">안녕하세요, {user?.displayName ?? "가족"}님</h1>
             <p className="mt-2 text-body text-ink-2">가족을 새로 만들거나 초대 코드로 참여하세요</p>
           </div>
