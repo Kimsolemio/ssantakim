@@ -25,6 +25,9 @@ describe("scaling", () => {
     expect(scaleQty(200, "g", 2, 3)).toBe(300);
     expect(scaleQty(1, "큰술", 4, 1)).toBe(0.25); // 1/4큰술까지는 살린다
     expect(scaleQty(1, "작은술", 2, 1)).toBe(0.5);
+    expect(scaleQty(0.3, "대", 2, 1)).toBe(0.25); // 줄였는데 2인분(0.3대)보다 많아지지 않게
+    expect(scaleQty(0.2, "대", 2, 1)).toBe(0.2);
+    expect(scaleQty(1, "개", 4, 1)).toBe(0.25);
     expect(scaleQty(0.25, "작은술", 2, 2)).toBe(0.25); // 인분이 그대로면 손대지 않는다
     expect(scaleQty(1, "모", 2, 1)).toBe(0.5);
     expect(scaleQty(null, "기타", 2, 4)).toBeNull();

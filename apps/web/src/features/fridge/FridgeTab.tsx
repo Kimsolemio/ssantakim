@@ -3,12 +3,13 @@ import { Camera, ChevronRight, Receipt, Refrigerator, Search, SquarePen } from "
 import { StorageLocation, daysUntil, formatAmount } from "@cook/shared";
 import { useAuth } from "../../lib/auth";
 import { useFamily } from "../../lib/family";
-import { useFridge, addFridgeItem, addFridgeItems, updateFridgeItem, deleteFridgeItem, type FridgeDoc } from "./useFridge";
+import { useFridge, addFridgeItem, addFridgeItems, updateFridgeItem, deleteFridgeItem, restoreFridgeItem, type FridgeDoc } from "./useFridge";
 import { FridgeVisual, expiryInfo, itemLook } from "./FridgeVisual";
 import { ReceiptImport, type ScanMode } from "./ReceiptImport";
 import { useNav } from "../../lib/nav";
 import { normalizeKeysInBackground } from "../../lib/normalize";
 import { useShopping, addShoppingItems } from "../shopping/useShopping";
+import { josa } from "../recipes/FridgeCheck";
 import { writeErrorMessage } from "../../lib/write";
 import { sameFood } from "@cook/shared";
 import { FridgeItemForm } from "./FridgeItemForm";
@@ -25,13 +26,6 @@ import { Badge } from "../../components/ui/Badge";
 import { FoodThumb, IconThumb } from "../../components/ui/FoodThumb";
 import { EmptyState, Skeleton } from "../../components/ui/EmptyState";
 import { Card, GroupLabel, rowLine, rowLineInset } from "../../components/ui/Section";
-
-/** "사과" → "사과를", "삼겹살" → "삼겹살을" (받침을 모르면 "을(를)") */
-function withObject(word: string): string {
-  const code = word.charCodeAt(word.length - 1) - 0xac00;
-  if (code < 0 || code >= 11172) return `${word}을(를)`;
-  return `${word}${code % 28 ? "을" : "를"}`;
-}
 
 type View = "visual" | "list";
 
@@ -135,7 +129,7 @@ export function FridgeTab() {
   );
 
   return (
-    <div className="pb-[calc(var(--safe-bottom)+56px+96px)]">
+    <div className="pb-[calc(var(--safe-bottom)+56px+120px)]">
       <TabHeader title="냉장고" />
 
       {/* 도구 줄: 보기 전환 + 검색 (검색을 누르면 같은 줄이 검색칸으로 바뀐다) */}
@@ -252,7 +246,7 @@ export function FridgeTab() {
             const item = editing;
             await deleteFridgeItem(familyId, item.id);
             // 다 먹으면 바로 빼고, 다시 살지는 토스트에서 고른다
-            toast.show(`${withObject(item.name)} 냉장고에서 뺐어요`, {
+            toast.show(`${josa(item.name, "을/를")} 냉장고에서 뺐어요`, {
               action: {
                 label: "장보기에 담기",
                 onClick: () => {
@@ -260,7 +254,7 @@ export function FridgeTab() {
                     try {
                       const res = await addShoppingItems(familyId, user.uid, [{ name: item.name, key: item.key, qty: null, unit: item.unit, category: item.category, emoji: item.emoji }], shoppingRef.current);
                       void normalizeKeysInBackground(familyId, "shopping_items", res.added);
-                      toast.show(`${withObject(item.name)} 장보기에 담았어요`, { kind: "done" });
+                      toast.show(`${josa(item.name, "을/를")} 장보기에 담았어요`, { kind: "done" });
                     } catch (e) {
                       toast.show(writeErrorMessage(e), { kind: "error" });
                     }
@@ -269,7 +263,16 @@ export function FridgeTab() {
               },
             });
           }}
-          onDelete={() => deleteFridgeItem(familyId, editing.id)} />
+          onDelete={async () => {
+            const item = editing;
+            await deleteFridgeItem(familyId, item.id);
+            toast.show(`${josa(item.name, "을/를")} 지웠어요`, {
+              action: {
+                label: "되돌리기",
+                onClick: () => { restoreFridgeItem(familyId, item).catch(() => toast.show("되돌리지 못했어요. 다시 넣어 주세요", { kind: "error" })); },
+              },
+            });
+          }} />
       )}
     </div>
   );

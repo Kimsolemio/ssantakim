@@ -97,6 +97,12 @@ export async function deleteFridgeItem(familyId: string, id: string) {
   await settle(deleteDoc(doc(getDb(), "families", familyId, "fridge_items", id)));
 }
 
+/** 지운 것 되돌리기: 같은 id 로 다시 쓴다 */
+export async function restoreFridgeItem(familyId: string, item: FridgeDoc) {
+  const { id, ...data } = item;
+  await settle(setDoc(doc(getDb(), "families", familyId, "fridge_items", id), data));
+}
+
 /** 영수증 등에서 여러 개를 한 번에 넣는다. 새 문서 id 목록을 돌려준다 (애니메이션용) */
 export async function addFridgeItems(
   familyId: string, uid: string, inputs: (FridgeInput & { key?: string })[],

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { BookOpen, ChevronRight, FolderPlus, Link as LinkIcon, Sparkles, Star } from "lucide-react";
+import { BookOpen, ChevronRight, FolderPlus, Link as LinkIcon, PencilLine, Sparkles, Star } from "lucide-react";
 import type { RecipeDraft } from "@cook/shared";
 import { recipeEmoji } from "./recipeLook";
 import { useAuth } from "../../lib/auth";
@@ -27,6 +27,9 @@ import { fixRecipeKeysInBackground } from "../../lib/normalize";
 import { loadPending, savePending, clearPending } from "../../lib/drafts";
 
 type PendingDraft = { id: string; draft: RecipeDraft; note: string | null };
+
+/** 출처가 빠진 초안(예전에 보관된 것 등)은 "AI 생성"으로 채운다. 없으면 편집 화면이 열리지 않는다 */
+const withSource = (d: RecipeDraft): RecipeDraft => (d.source ? d : { ...d, source: { type: "generated" } });
 const MAX_DRAFTS = 5;
 
 type Filter = { kind: "all" } | { kind: "fav" } | { kind: "folder"; id: string };
@@ -97,13 +100,15 @@ export function RecipesTab() {
   };
   const removeStored = (id: string) => writeStored((loadPending<PendingDraft[]>(pendingName) ?? []).filter((x) => x.id !== id));
   /** 새 AI 결과: 보관함에 넣고 편집기를 연다 */
-  const setDraft = (d: RecipeDraft, note: string | null = null) => {
+  const setDraft = (raw: RecipeDraft, note: string | null = null) => {
+    const d = withSource(raw);
     const id = crypto.randomUUID();
     upsertStored({ id, draft: d, note });
     setDraftId(id); setDraftState(d);
   };
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<RecipeDoc | null>(null);
+  const [manual, setManual] = useState<RecipeDraft | null>(null); // 직접 쓰는 새 레시피 (AI 초안 보관함과 별개)
   const [folderMenu, setFolderMenu] = useState(false);
 
   const open = openId ? recipes.find((r) => r.id === openId) ?? null : null;
@@ -123,6 +128,15 @@ export function RecipesTab() {
   const empty = !loading && recipes.length === 0;
   const startGenerate = () => { setAdding(false); setGenerating({}); };
   const startImport = () => { setAdding(false); setImporting({ initial: null }); };
+  // 빈 재료 한 줄·빈 단계 한 줄로 시작해 바로 적을 수 있게 한다 (비워 두면 저장할 때 편집기가 걸러 준다)
+  const startManual = () => {
+    setAdding(false);
+    setManual({
+      title: "", source: { type: "manual" }, servingsBase: family?.profile.defaultServings ?? 2, timeMinutes: null, difficulty: "보통", tags: [],
+      ingredients: [{ name: "", key: "", qty: null, unit: "개", scalable: true, optional: false, group: "주재료" }],
+      steps: [{ order: 1, text: "", minutes: null, ingredientKeys: [] }], tips: [],
+    });
+  };
 
   return (
     <div className="pb-[calc(var(--safe-bottom)+56px+96px)]">
@@ -150,7 +164,7 @@ export function RecipesTab() {
               <li key={p.id} data-testid="pending-draft" className="flex items-center gap-1">
                 <span className="min-w-0 flex-1 truncate text-callout text-ink">{p.draft.title}</span>
                 <button type="button" className="h-11 shrink-0 px-2 text-callout font-semibold text-accent active:opacity-60"
-                  onClick={() => { setDraftNote(p.note); setDraftId(p.id); setDraftState(p.draft); }}>이어서</button>
+                  onClick={() => { setDraftNote(p.note); setDraftId(p.id); setDraftState(withSource(p.draft)); }}>이어서</button>
                 <button type="button" className="h-11 shrink-0 px-2 text-callout text-ink-3 active:opacity-60"
                   onClick={() => { if (confirm(`"${p.draft.title}" 초안을 버릴까요?`)) removeStored(p.id); }}>버리기</button>
               </li>
@@ -164,6 +178,7 @@ export function RecipesTab() {
           <EmptyState icon={<BookOpen size={28} />} title="아직 레시피가 없어요" body="음식 이름만 적으면 AI가 써 줘요">
             <Button size="md" onClick={startGenerate} data-testid="open-generate">음식 이름으로 만들기</Button>
             <Button size="md" variant="secondary" onClick={startImport} data-testid="open-import">링크·사진에서 가져오기</Button>
+            <Button size="md" variant="ghost" onClick={startManual} data-testid="open-manual">직접 쓰기</Button>
           </EmptyState>
         ) : filtered.length === 0 ? (
           <p className="px-5 py-12 text-center text-caption text-ink-3">조건에 맞는 레시피가 없어요.</p>
@@ -198,6 +213,7 @@ export function RecipesTab() {
           <ul>
             <AddRow icon={<Sparkles size={20} strokeWidth={2} />} title="음식 이름으로 만들기" sub="가족 취향에 맞춰 AI가 써 줘요" onClick={startGenerate} testId="open-generate" />
             <AddRow icon={<LinkIcon size={20} />} title="링크·사진에서 가져오기" sub="유튜브, 블로그, 인스타 캡션, 요리책 사진" onClick={startImport} testId="open-import" />
+            <AddRow icon={<PencilLine size={20} />} title="직접 쓰기" sub="재료와 순서를 내가 적어요" onClick={startManual} testId="add-manual" />
           </ul>
         </Sheet>
       )}
@@ -229,6 +245,14 @@ export function RecipesTab() {
             const id = await createRecipe(familyId, user.uid, d, filter.kind === "folder" ? filter.id : null);
             if (draftId) removeStored(draftId);
             setDraftState(null); setDraftId(null); setOpenId(id);
+            void fixRecipeKeysInBackground(familyId, id, d);
+          }} />
+      )}
+      {manual && (
+        <RecipeEditor title="새 레시피 쓰기" initial={manual} onClose={() => setManual(null)}
+          onSave={async (d) => {
+            const id = await createRecipe(familyId, user.uid, d, filter.kind === "folder" ? filter.id : null);
+            setManual(null); setOpenId(id);
             void fixRecipeKeysInBackground(familyId, id, d);
           }} />
       )}

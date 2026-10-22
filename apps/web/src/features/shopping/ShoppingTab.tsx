@@ -20,7 +20,8 @@ import { useToast } from "../../components/ui/Toast";
 import { Checkbox } from "../../components/ui/Toggle";
 import { TabHeader } from "../family/FamilyScreen";
 import { FridgeItemForm } from "../fridge/FridgeItemForm";
-import { addFridgeItems, type FridgeInput } from "../fridge/useFridge";
+import { addFridgeItems, deleteFridgeItem, type FridgeInput } from "../fridge/useFridge";
+import { josa } from "../recipes/FridgeCheck";
 import {
   useShopping, addShoppingItems, setShoppingChecked, deleteShoppingItem, deleteShoppingItems, updateShoppingItem, restoreShoppingItem, type ShoppingDoc,
 } from "./useShopping";
@@ -125,7 +126,7 @@ export function ShoppingTab() {
           </span>
           {amount && <span className={`shrink-0 text-callout tabular-nums ${it.checked ? "text-ink-3" : "text-ink-2"}`}>{amount}</span>}
         </button>
-        <IconButton aria-label={`${it.name} 지우기`} onClick={() => removeWithUndo([it], `${it.name}을(를) 지웠어요`)}>
+        <IconButton aria-label={`${it.name} 지우기`} onClick={() => removeWithUndo([it], `${josa(it.name, "을/를")} 지웠어요`)}>
           <X size={18} aria-hidden className="text-ink-3" />
         </IconButton>
       </li>
@@ -184,7 +185,23 @@ export function ShoppingTab() {
         <MoveToFridgeSheet items={done} onClose={() => setMoving(false)}
           onConfirm={async (inputs, movedIds) => {
             // 냉장고에 넣기와 장보기에서 지우기를 한 묶음으로. 시트를 연 뒤 다른 가족이 새로 체크한 항목은 지우지 않는다
-            const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => dropIntoFridge(ids, `장본 것 ${ids.length}개를 냉장고에 넣었어요`), movedIds);
+            const moved = items.filter((i) => movedIds.includes(i.id));
+            // 토스트는 여기서 띄운다 (냉장고 탭으로 넘어가도 앱 토스트라 그대로 보이고, 되돌리기에 필요한 값을 이 안에서 쥐고 있다)
+            const ids = await addFridgeItems(familyId, user.uid, inputs, (ids) => {
+              dropIntoFridge(ids);
+              toast.show(`장본 것 ${ids.length}개를 냉장고에 넣었어요`, {
+                kind: "done",
+                action: {
+                  label: "되돌리기",
+                  // 장보기를 먼저 살린 뒤 냉장고에서 뺀다 (중간에 실패해도 사라지는 것이 없게)
+                  onClick: () => {
+                    Promise.all(moved.map((x) => restoreShoppingItem(familyId, x)))
+                      .then(() => Promise.all(ids.map((id) => deleteFridgeItem(familyId, id))))
+                      .catch(() => toast.show("되돌리지 못했어요. 냉장고와 장보기를 확인해 주세요", { kind: "error" }));
+                  },
+                },
+              });
+            }, movedIds);
             void normalizeKeysInBackground(familyId, "fridge_items", ids.map((id, i) => ({ id, name: inputs[i].name, key: inputs[i].key })));
           }} />
       )}

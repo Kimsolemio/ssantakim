@@ -7,12 +7,17 @@ const SPOON_UNITS: ReadonlySet<Unit> = new Set<Unit>(["컵", "큰술", "작은�
 export function scaleQty(qty: number | null, unit: Unit, base: number, target: number): number | null {
   if (qty == null) return null;
   if (base <= 0 || target <= 0 || base === target) return qty;
-  const raw = (qty * target) / base;
-  if (SPOON_UNITS.has(unit)) {
+  const r = roundQty((qty * target) / base, unit);
+  // 인분을 줄였는데 양이 늘거나, 늘렸는데 줄지 않게 (대파 0.3대 → 1인분 0.5대 X)
+  return target < base ? Math.min(r, qty) : Math.max(r, qty);
+}
+
+function roundQty(raw: number, unit: Unit): number {
+  // 숟가락·개수: 0.5 단위, 아주 적은 양은 1/4까지
+  if (SPOON_UNITS.has(unit) || COUNT_UNITS.has(unit)) {
     if (raw < 0.5) return Math.max(0.25, Math.round(raw * 4) / 4);
     return Math.round(raw * 2) / 2;
   }
-  if (COUNT_UNITS.has(unit)) return Math.max(0.5, Math.round(raw * 2) / 2);
   if (raw >= 100) return Math.round(raw);
   if (raw >= 10) return Math.round(raw * 2) / 2;
   return Math.round(raw * 10) / 10;

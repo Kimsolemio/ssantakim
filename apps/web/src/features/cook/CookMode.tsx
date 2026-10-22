@@ -10,6 +10,7 @@ import { DarkLayers } from "../../components/Sheet";
 import { AskSheet } from "../assist/AskSheet";
 import { IconButton } from "../../components/ui/IconButton";
 import { Button } from "../../components/ui/Button";
+import { Badge } from "../../components/ui/Badge";
 import { AiPill } from "../../components/ui/Ai";
 import { useToast } from "../../components/ui/Toast";
 
@@ -29,10 +30,11 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
   const { enabled: tts, setEnabled: setTts, speak, stop: stopSpeak } = useSpeak();
   const toast = useToast();
   const touch = useRef<{ x: number; y: number } | null>(null);
-  // 돌고 있는 타이머가 있으면 실수로 닫지 않게 묻는다
+  // 돌고 있는 타이머가 있거나 요리 중간(첫 단계도 완료 화면도 아님)이면 실수로 닫지 않게 묻는다. 타이머 안내가 우선
   const running = timers.filter((t) => !t.done).length;
   const tryClose = () => {
-    if (running > 0 && !window.confirm(`타이머 ${running}개가 돌고 있어요. 요리 모드를 닫을까요?`)) return false;
+    const ask = running > 0 ? `타이머 ${running}개가 돌고 있어요. 요리 모드를 닫을까요?` : idx > 0 && idx < steps.length ? `지금 ${idx + 1}단계예요. 요리 모드를 닫을까요?` : null;
+    if (ask && !window.confirm(ask)) return false;
     stopSpeak(); onClose();
     return true;
   };
@@ -142,7 +144,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
               <ul className="mt-6 rounded-card bg-surface p-4">
                 {stepIngredients.map((i) => (
                   <li key={i.key} className="flex justify-between gap-3 py-1.5 text-body">
-                    <span className="min-w-0 text-ink-2">{i.name}{i.note ? <span className="text-ink-3"> · {i.note}</span> : null}</span>
+                    <span className="min-w-0 text-ink-2">{i.name}{i.note ? <span className="text-ink-3"> · {i.note}</span> : null}{i.optional && <Badge className="ml-1.5 align-[1px]">선택</Badge>}</span>
                     <span className="shrink-0 font-semibold text-ink tabular-nums">{formatAmount(i) || "약간"}</span>
                   </li>
                 ))}

@@ -73,7 +73,9 @@ function ActionRow({ icon, title, value, onClick, danger, disabled }: { icon: Re
 }
 
 export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onToggleFavorite, onMoveFolder, onDelete, onCooked, onAdapted }: Props) {
-  const [servings, setServings] = useState(recipe.servingsBase);
+  const { familyId, family } = useFamily();
+  // 우리 집 기본 인분으로 연다 (레시피가 4인분이어도 2인 가족이면 2인분)
+  const [servings, setServings] = useState(() => family?.profile.defaultServings ?? recipe.servingsBase);
   const [menu, setMenu] = useState<false | "main" | "folder">(false);
   const [busy, setBusy] = useState(false);
   const [cooking, setCooking] = useState(false);
@@ -84,7 +86,6 @@ export function RecipeDetail({ recipe, recipeId, folders, onClose, onEdit, onTog
   const [asking, setAsking] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [adapting, setAdapting] = useState<false | { text?: string }>(false);
-  const { familyId, family } = useFamily();
   const { user } = useAuth();
   const toast = useToast();
   const { items: fridge, loading: fridgeLoading } = useFridge(familyId);

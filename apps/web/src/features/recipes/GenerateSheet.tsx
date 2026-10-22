@@ -77,7 +77,7 @@ export function GenerateSheet({ profile, onResult, onClose, initialDish, initial
   return (
     <>
       <Sheet title="음식 이름으로 만들기" onClose={() => { abort.current?.abort(); onClose(); }}
-        confirmClose={busy ? "레시피를 만드는 중이에요. 그만둘까요? (이미 쓴 AI 사용량은 돌아오지 않을 수 있어요)" : null}
+        confirmClose={busy ? "레시피를 만드는 중이에요. 그만둘까요? (이미 쓴 AI 사용량은 돌아오지 않을 수 있어요)" : dish.trim() || notes.trim() ? "적은 내용이 사라져요. 닫을까요?" : null}
         footer={busy ? undefined : <>
           <AiNotice what="요리 이름과 가족 취향" webSearch={searching} />
           <Button block ai className="mt-3" disabled={!workerConfigured} onClick={() => void submit()}>레시피 만들기</Button>

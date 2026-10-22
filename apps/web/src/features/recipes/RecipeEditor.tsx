@@ -13,6 +13,7 @@ import { SwitchRow } from "../../components/ui/Toggle";
 import { Band, SectionHeader, rowLine } from "../../components/ui/Section";
 import { SourceList } from "../../components/ui/Ai";
 import { remapStepKeys } from "../../lib/normalize";
+import { josa } from "./FridgeCheck";
 
 type Props = {
   title: string;
@@ -140,7 +141,8 @@ export function RecipeEditor({ title, initial, note, onSave, onClose, fresh, onC
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const where = issue?.path[0] === "ingredients" ? "재료" : issue?.path[0] === "steps" ? "조리 순서" : issue?.path[0] === "title" ? "제목" : String(issue?.path.join("."));
-      setErr(`${where}을(를) 확인하세요: ${issue?.message ?? ""}`);
+      // zod 영어 문구 대신 쉬운 말로. 비어 있는 경우가 대부분이다
+      setErr(issue?.code === "too_small" ? `${josa(where, "이/가")} 비어 있어요. 하나 이상 적어 주세요` : `${josa(where, "을/를")} 확인해 주세요`);
       return;
     }
     setBusy(true);

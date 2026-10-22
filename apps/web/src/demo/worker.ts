@@ -77,7 +77,7 @@ export async function demoWorker<T>(path: string, body: Body = {}, signal?: Abor
     }
     case "/adapt": {
       const base = body.recipe as RecipeDraft;
-      return reply(2000, { summary: `${body.instruction}에 맞게 양념을 조절했어요 (체험판 예시)`, recipe: { ...base, title: `${base.title} (${body.instruction})`, servingsBase: Number(body.servings ?? base.servingsBase) } });
+      return reply(2000, { summary: `${body.instruction}에 맞게 양념을 조절했어요 (체험판 예시)`, recipe: { ...base, title: `${base.title} (${body.instruction})`, source: { type: "generated" }, servingsBase: Number(body.servings ?? base.servingsBase) } });
     }
     case "/substitute": {
       const fridge = body.fridge ?? [];
