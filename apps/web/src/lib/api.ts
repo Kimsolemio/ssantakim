@@ -73,12 +73,13 @@ export async function getWorker<T>(path: string, timeoutMs?: number): Promise<T>
       ...(ctrl ? { signal: ctrl.signal } : {}),
     });
   } catch (e) {
+    clearTimeout(timer);
     if (ctrl?.signal.aborted) throw new ApiError("서버가 늦게 답해요. 잠시 뒤 다시 해 주세요", 0, "timeout");
     throw new ApiError("서버에 연결할 수 없어요. 인터넷 연결을 확인하세요", 0);
-  } finally {
-    clearTimeout(timer);
   }
-  const data = await res.json().catch(() => null) as { error?: string; code?: string } | null;
+  // 본문이 늦게 오는 것도 같은 시간 제한 안에서
+  const data = await res.json().catch(() => null).finally(() => clearTimeout(timer)) as { error?: string; code?: string } | null;
+  if (ctrl?.signal.aborted && data == null) throw new ApiError("서버가 늦게 답해요. 잠시 뒤 다시 해 주세요", 0, "timeout");
   if (!res.ok) throw new ApiError(friendly(res.status, data?.error), res.status, data?.code);
   return data as T;
 }

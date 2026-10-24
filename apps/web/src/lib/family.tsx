@@ -67,7 +67,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     void user.getIdTokenResult().then((r) => {
       const email = typeof r.claims.email === "string" ? r.claims.email : null;
-      if (cancelled || !email || r.claims.email_verified !== true || recorded === email) return;
+      if (cancelled || leaving.current === familyId || !email || r.claims.email_verified !== true || recorded === email) return;
       const key = `${user.uid}|${familyId}|${email}`;
       if (tried.current.has(key)) return;
       tried.current.add(key);
@@ -127,7 +127,8 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       await updateDoc(doc(getDb(), "families", familyId), { [`memberEmails.${user.uid}`]: deleteField() })
         .catch((e: unknown) => console.warn("memberEmails", e));
     }
-    await updateDoc(doc(getDb(), "users", user.uid), { familyId: null });
+    try { await updateDoc(doc(getDb(), "users", user.uid), { familyId: null }); }
+    catch (e) { leaving.current = null; throw e; } // 떠나기가 안 됐으면 다시 등록할 수 있게
     tried.current.clear();
   };
 
