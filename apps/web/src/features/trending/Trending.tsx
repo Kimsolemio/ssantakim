@@ -67,7 +67,8 @@ function Skeleton({ className }: { className: string }) {
 
 function Trouble({ s, className = "" }: { s: Extract<TrendingState, { status: "error" }>; className?: string }) {
   // 다시 눌러도 달라지지 않는 경우(한도·키·권한)에는 "다시"를 보이지 않는다
-  const canRetry = !["youtube_quota", "youtube_not_configured", "youtube_key", "not_allowed", "not_configured", "family_needs_daily_limit"].includes(s.code ?? "");
+  // (not_allowed 는 설치한 사람이 앱을 열면 풀리므로 "다시"를 남긴다)
+  const canRetry = !["youtube_quota", "youtube_not_configured", "youtube_key", "not_configured", "family_needs_daily_limit"].includes(s.code ?? "");
   return <Banner kind="info" onCanvas className={className} action={canRetry ? { label: "다시", onClick: s.retry } : undefined}>{s.message}</Banner>;
 }
 

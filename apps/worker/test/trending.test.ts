@@ -193,11 +193,11 @@ describe("trendingRecipes", () => {
     expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(6);
   });
 
-  it("shares one collection between two devices asking at the same time", async () => {
+  it("stops adding ingredient searches after many different ingredients in a day", async () => {
     const { f, calls } = youtubeStub({ kr: [id(1)], videos: [video(id(1), "계란말이", 40_000)] });
-    const [a, b] = await Promise.all([trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f), trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f)]);
-    expect(a).toBe(b);
-    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(4);
+    for (let i = 0; i < 35; i++) await trendingRecipes({ YOUTUBE_API_KEY: "yt" }, `재료${i}`, NOW, f);
+    // 나라 넷 + 재료 30개까지만
+    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(34);
   });
 
   it("remembers searches in KV across servers when it is there", async () => {

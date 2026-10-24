@@ -63,15 +63,20 @@ export async function getWorker<T>(path: string, timeoutMs?: number): Promise<T>
   if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요", 0, "offline");
   const user = getAuthInstance().currentUser;
   if (!user) throw new ApiError("로그인이 필요합니다", 401);
+  // AbortSignal.timeout 은 iOS 16 미만에 없어 직접 끊는다
+  const ctrl = timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : undefined;
   let res: Response;
   try {
     res = await fetch(`${workerUrl}${path}`, {
       headers: { Authorization: `Bearer ${await user.getIdToken()}`, ...familyHeader() },
-      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+      ...(ctrl ? { signal: ctrl.signal } : {}),
     });
   } catch (e) {
-    if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) throw new ApiError("서버가 늦게 답해요. 잠시 뒤 다시 해 주세요", 0, "timeout");
+    if (ctrl?.signal.aborted) throw new ApiError("서버가 늦게 답해요. 잠시 뒤 다시 해 주세요", 0, "timeout");
     throw new ApiError("서버에 연결할 수 없어요. 인터넷 연결을 확인하세요", 0);
+  } finally {
+    clearTimeout(timer);
   }
   const data = await res.json().catch(() => null) as { error?: string; code?: string } | null;
   if (!res.ok) throw new ApiError(friendly(res.status, data?.error), res.status, data?.code);

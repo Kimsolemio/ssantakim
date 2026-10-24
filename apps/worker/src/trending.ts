@@ -6,7 +6,7 @@
  *   좋아요·길이는 videos.list, 채널 나라는 channels.list(각 1 유닛)로 한꺼번에 확인한다 → 한 번 모으는 데 약 400~500 유닛
  * - 지역 검색(regionCode)은 "그 나라에서 볼 수 있는 영상"이라 다른 나라 영상도 섞여 나온다.
  *   그래서 채널에 적힌 나라(없으면 제목 글자·음성 언어)로 네 나라 영상인지 다시 확인한다
- * - 한국 날짜별로 기억해 두고 같은 날에는 다시 묻지 않는다 (메모리 + Cache API, 화면도 하루 동안 기억한다)
+ * - 한국 날짜별로 기억해 두고 같은 날에는 다시 묻지 않는다 (결과는 메모리 + Cache API, 검색은 검색어별로 메모리 + KV, 화면도 하루 동안 기억한다)
  * 검색어는 날마다 바뀌어 매일 다른 영상이 올라온다.
  */
 import { kstDay } from "./guard";
@@ -174,33 +174,45 @@ export function toVideo(v: VideoItem, ing?: string, channelCountry?: string | nu
 
 /** 같은 날·같은 재료는 다시 묻지 않는다 (이 서버 안에서) */
 const memory = new Map<string, TrendingResponse>();
-/** 같은 결과를 동시에 두 번 모으지 않는다 (가족 둘이 함께 열 때) */
-const inflight = new Map<string, Promise<TrendingResponse>>();
-/** 검색(100 유닛) 결과는 검색어별로 기억한다: 나라별 검색 넷은 그날 모두에게 같으므로 재료가 바뀌어도 다시 하지 않는다 */
-const searchMemo = new Map<string, Promise<string[]>>();
-export function resetTrendingCache() { memory.clear(); inflight.clear(); searchMemo.clear(); }
+/** 검색(100 유닛) 결과는 검색어별로 기억한다: 나라별 검색 넷은 그날 모두에게 같으므로 재료가 바뀌어도 다시 하지 않는다.
+ *  끝난 값만 나눠 쓴다 (Workers에서 다른 요청이 시작한 약속을 기다리면, 그 요청이 끊길 때 함께 멈출 수 있다) */
+const searchMemo = new Map<string, string[]>();
+/** 하루에 함께 찾아 줄 재료 수 (서버 하나에서). 넘으면 재료 검색 없이 나라별 결과만: 유튜브 하루 한도를 지킨다 */
+const MAX_ING_PER_DAY = 30;
+const ingSeen = new Map<string, Set<string>>();
+export function resetTrendingCache() { memory.clear(); searchMemo.clear(); ingSeen.clear(); }
 
 type TrendingEnv = { YOUTUBE_API_KEY?: string; USAGE?: KVNamespace };
 
 /** 검색 한 번: 이 서버 메모리 → (있으면) KV → 유튜브. workers.dev 에서는 Cache API가 남지 않아 KV가 서버 사이 기억이 된다 */
-function cachedSearch(env: TrendingEnv, f: typeof fetch, key: string, q: string, country: Country, lang: string, day: string): Promise<string[]> {
+async function cachedSearch(env: TrendingEnv, f: typeof fetch, key: string, q: string, country: Country, lang: string, day: string): Promise<string[]> {
   const k = `${day}|${country}|${q}`;
   const hit = searchMemo.get(k);
   if (hit) return hit;
   const kvKey = `yt:s:${day}:${country}:${encodeURIComponent(q)}`;
-  const p = (async () => {
-    try {
-      const saved = await env.USAGE?.get(kvKey);
-      if (saved) { const ids = JSON.parse(saved) as unknown; if (Array.isArray(ids)) return ids.filter((x): x is string => typeof x === "string"); }
-    } catch { /* KV 없이 진행 */ }
-    const ids = await search(f, key, q, country, lang, day);
-    try { await env.USAGE?.put(kvKey, JSON.stringify(ids), { expirationTtl: 60 * 60 * 36 }); } catch { /* 무시 */ }
+  const keep = (ids: string[]) => {
+    searchMemo.set(k, ids);
+    if (searchMemo.size > 200) searchMemo.delete(searchMemo.keys().next().value!);
     return ids;
-  })();
-  searchMemo.set(k, p);
-  p.catch(() => { if (searchMemo.get(k) === p) searchMemo.delete(k); });
-  if (searchMemo.size > 200) searchMemo.delete(searchMemo.keys().next().value!);
-  return p;
+  };
+  try {
+    const saved = await env.USAGE?.get(kvKey);
+    if (saved) { const ids = JSON.parse(saved) as unknown; if (Array.isArray(ids)) return keep(ids.filter((x): x is string => typeof x === "string")); }
+  } catch { /* KV 없이 진행 */ }
+  const ids = await search(f, key, q, country, lang, day);
+  try { await env.USAGE?.put(kvKey, JSON.stringify(ids), { expirationTtl: 60 * 60 * 36 }); } catch { /* 무시 */ }
+  return keep(ids);
+}
+
+/** 오늘 처음 보는 재료가 너무 많으면 재료 검색은 건너뛴다 */
+function allowIngredient(day: string, ing: string | null): string | null {
+  if (!ing) return null;
+  let seen = ingSeen.get(day);
+  if (!seen) { ingSeen.clear(); seen = new Set(); ingSeen.set(day, seen); }
+  if (seen.has(ing)) return ing;
+  if (seen.size >= MAX_ING_PER_DAY) return null;
+  seen.add(ing);
+  return ing;
 }
 
 const cacheUrl = (day: string, ing: string | null) => `https://trending.cache.internal/v2/${day}/${encodeURIComponent(ing ?? "-")}`;
@@ -211,15 +223,11 @@ export async function trendingRecipes(env: TrendingEnv, ingRaw?: string | null, 
   const key = env.YOUTUBE_API_KEY?.trim();
   if (!key) throw new TrendingError(503, "인기 레시피를 보려면 YouTube API 키가 필요해요. 앱을 설치한 사람에게 알려 주세요", "youtube_not_configured");
   const day = kstDay(now);
-  const ing = cleanIngredient(ingRaw);
+  const ing = allowIngredient(day, cleanIngredient(ingRaw));
   const memKey = `${day}|${ing ?? ""}`;
   const hit = memory.get(memKey);
   if (hit) return hit;
-  const running = inflight.get(memKey);
-  if (running) return running;
-  const p = collect(env, key, day, ing, memKey, f).finally(() => { if (inflight.get(memKey) === p) inflight.delete(memKey); });
-  inflight.set(memKey, p);
-  return p;
+  return collect(env, key, day, ing, memKey, f);
 }
 
 async function collect(env: TrendingEnv, key: string, day: string, ing: string | null, memKey: string, f: typeof fetch): Promise<TrendingResponse> {

@@ -54,6 +54,7 @@ jobs:
         run: node scripts/ci-deploy-config.mjs
       - name: 하루 AI 사용 한도 저장소(KV) 준비
         if: steps.check.outputs.web == '1' && steps.check.outputs.worker == '1'
+        timeout-minutes: 3
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

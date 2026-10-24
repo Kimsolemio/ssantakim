@@ -4,7 +4,7 @@
  * ② 이메일 인증이 끝난 계정만 허용 목록과 맞춰 본다
  * ②' 허용 목록에 없어도, 허용된 사람(설치한 사람)이 있는 가족에 초대 코드로 들어온 사람은 쓸 수 있다
  *     (Firestore 규칙이 가족 참여는 초대 코드로만, memberEmails 는 각자 자기 인증된 이메일로만 쓰게 막는다)
- * ③ 1분에 몇 번 (AI_LIMIT 바인딩, 설정 없이 동작) + 하루에 몇 번 (USAGE KV, 선택)
+ * ③ 1분에 몇 번 (AI_LIMIT 바인딩, 설정 없이 동작) + 하루에 몇 번 (USAGE KV. 자동 배포가 만든다. ②'는 이게 있어야만 열린다)
  */
 import type { Verified } from "./auth";
 
@@ -72,9 +72,11 @@ export async function familyAllowed(allowed: string[], user: Verified, proof: Fa
   const memoKey = `${user.uid}|${fid}`;
   if ((familyMemo.get(memoKey) ?? 0) > now) return true;
   if ((deniedUntil.get(user.uid) ?? 0) > now) return false;
-  const remember = (ok: boolean) => {
+  // 허용은 10분. 거절은 읽기부터 막힌 경우(가족 아님) 1분, 가족이지만 허용된 사람이 아직 없으면 15초
+  // (설치한 사람이 앱을 열어 이메일이 적히면 곧 풀리게)
+  const remember = (ok: boolean, denyMs = 60_000) => {
     const m = ok ? familyMemo : deniedUntil;
-    m.set(ok ? memoKey : user.uid, now + (ok ? 600_000 : 60_000));
+    m.set(ok ? memoKey : user.uid, now + (ok ? 600_000 : denyMs));
     if (m.size > 500) m.delete(m.keys().next().value!);
     return ok;
   };
@@ -83,9 +85,11 @@ export async function familyAllowed(allowed: string[], user: Verified, proof: Fa
   let res: Response;
   try { res = await (proof.fetch ?? fetch)(url, { headers: { Authorization: `Bearer ${proof.idToken}` }, signal: AbortSignal.timeout(5000) }); }
   catch { throw new FamilyCheckError("가족 확인 연결 실패"); } // 잠깐 연결이 안 되면 거절이 아니라 "다시 해 주세요"
-  if (res.status === 403 || res.status === 404) return remember(false);
-  if (!res.ok) throw new FamilyCheckError(`가족 확인 실패 ${res.status}`);
-  const doc = (await res.json().catch(() => null)) as { fields?: Record<string, FsValue> } | null;
+  if (res.status === 403 || res.status === 404) { void res.body?.cancel(); return remember(false); }
+  if (!res.ok) { void res.body?.cancel(); throw new FamilyCheckError(`가족 확인 실패 ${res.status}`); }
+  let doc: { fields?: Record<string, FsValue> } | null;
+  try { doc = (await res.json()) as typeof doc; }
+  catch { throw new FamilyCheckError("가족 확인 응답을 읽지 못함"); } // 늦은 본문을 '가족 아님'으로 보지 않는다
   const members = (doc?.fields?.members?.arrayValue?.values ?? []).map((v) => v.stringValue).filter((v): v is string => !!v);
   if (!members.includes(user.uid)) return remember(false);
   const emails = doc?.fields?.memberEmails?.mapValue?.fields ?? {};
@@ -93,7 +97,7 @@ export async function familyAllowed(allowed: string[], user: Verified, proof: Fa
     const e = emails[uid]?.stringValue?.trim().toLowerCase();
     return !!e && allowed.includes(e);
   });
-  return remember(ok);
+  return remember(ok, 15_000);
 }
 
 export async function checkAllowed(env: GuardEnv, user: Verified, proof?: FamilyProof): Promise<void> {

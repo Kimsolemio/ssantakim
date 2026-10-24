@@ -218,8 +218,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
     // 오늘의 인기 레시피 (유튜브). AI를 쓰지 않아 하루 사용량에서 빼지 않는다. ing = 냉장고에서 고른 재료 하나
     if (url.pathname === "/trending" && request.method === "GET") {
       const user = await authenticate(request, env);
-      // AI는 아니지만 유튜브 한도를 쓰므로 1분 한도는 함께 건다 (하루 사용량에서는 빼지 않는다)
-      if (env.AI_LIMIT && !(await env.AI_LIMIT.limit({ key: user.uid })).success) throw new HttpError(429, "너무 자주 요청했어요. 1분 뒤에 다시 해 주세요", "rate_limited");
+      // AI는 아니지만 유튜브 한도를 쓰므로 1분 한도를 따로 건다 (AI 몫과 섞지 않고, 하루 사용량에서도 빼지 않는다)
+      if (env.AI_LIMIT && !(await env.AI_LIMIT.limit({ key: `trending:${user.uid}` })).success) throw new HttpError(429, "너무 자주 요청했어요. 1분 뒤에 다시 해 주세요", "rate_limited");
       const r = await trendingRecipes(env, url.searchParams.get("ing"));
       console.log(JSON.stringify({ route: "trending", uid: user.uid, videos: r.videos.length }));
       return json(r, 200, cors);

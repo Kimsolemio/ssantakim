@@ -146,7 +146,7 @@ Claude가 안전 정책으로 거절하면 같은 호출 안에서 알맞은 대
    - `ALLOWED_ORIGINS`: 앱 주소들 (쉼표 구분, 예: `http://localhost:5173,https://cook.example.pages.dev`)
    - `ALLOWED_EMAILS`: 설치한 사람(가족 대표)의 구글 이메일 (쉼표 구분). 이 사람이 있는 가족에 초대 코드로 들어온 사람은 모두 AI를 쓸 수 있다(각자 앱을 한 번 열면 자기 인증된 이메일이 가족 문서에 적히고, AI 서버가 그 사람 권한으로 가족 문서를 읽어 확인한다). **비어 있으면 AI 기능이 전부 막힌다**(비용 사고 방지). 누구나 허용하려면 `*`를 적어야 한다(권장하지 않음). 이메일 인증이 끝난 구글 계정만 맞춰 본다.
    - `DAILY_LIMIT_PER_USER` / `DAILY_LIMIT_TOTAL`: 하루 한도 (기본 40 / 150, 레시피 1·영수증/식재료 사진 2·링크 가져오기 1·글 가져오기 1(사진 있으면 2)·메뉴 추천 1로 센다. 저장할 때 뒤에서 도는 이름 정리는 세지 않는다). 한국 자정에 초기화. AI 호출이 실패하면 돌려준다. "우리 가족" 화면에 오늘 남은 횟수가 보인다.
-4. 하루 한도용 저장소 만들기 (권장, 무료): `pnpm --filter @cook/worker exec wrangler kv namespace create USAGE` → 출력된 id를 `wrangler.toml` 맨 아래 `[[kv_namespaces]]` 주석을 풀어 넣는다. 없으면 1분 한도(사람당 12회)만 동작한다.
+4. 하루 한도용 저장소 만들기 (무료. 설치한 사람 외 가족에게 AI를 열어 주려면 꼭 필요, 자동 배포는 알아서 만든다): `pnpm --filter @cook/worker exec wrangler kv namespace create USAGE` → 출력된 id를 `wrangler.toml` 맨 아래 `[[kv_namespaces]]` 주석을 풀어 넣는다. 없으면 1분 한도(사람당 12회)만 동작한다.
 5. 비밀값 등록 후 배포
 
 ```bash

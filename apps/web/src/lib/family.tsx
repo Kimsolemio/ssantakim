@@ -60,8 +60,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   const recorded = user ? family?.memberEmails?.[user.uid] : undefined;
   const isMember = !!user && !!family?.members.includes(user.uid);
   const tried = useRef(new Set<string>());
+  /** 지금 떠나는 가족: 내 칸을 지우는 동안 다시 적지 않게 */
+  const leaving = useRef<string | null>(null);
   useEffect(() => {
-    if (!user || !familyId || !isMember || !user.emailVerified) return;
+    if (!user || !familyId || !isMember || !user.emailVerified || leaving.current === familyId) return;
     let cancelled = false;
     void user.getIdTokenResult().then((r) => {
       const email = typeof r.claims.email === "string" ? r.claims.email : null;
@@ -74,8 +76,12 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [user, familyId, isMember, recorded]);
 
+  /** 새 가족을 만들거나 들어갈 때: 예전 시도 기록을 지워 다시 적을 수 있게 */
+  const freshStart = () => { leaving.current = null; tried.current.clear(); };
+
   const createFamily = async (name: string) => {
     if (!user) throw new Error("로그인이 필요합니다");
+    freshStart();
     const db = getDb();
     const id = crypto.randomUUID();
     const inviteCode = makeInviteCode();
@@ -97,6 +103,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     if (!user) throw new Error("로그인이 필요합니다");
     const code = codeRaw.trim().toUpperCase();
     if (!/^[A-Z2-9]{6}$/.test(code)) throw new Error("올바른 초대 코드를 입력해주세요");
+    freshStart();
     const db = getDb();
     const inv = await getDoc(doc(db, "invites", code));
     if (!inv.exists()) throw new Error("초대 코드를 찾을 수 없습니다");
@@ -113,12 +120,15 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   const leaveToSwitch = async () => {
     if (!user) return;
-    // 떠나는 가족에서 내 이메일 칸을 지운다 (내 권한으로 그 가족이 AI를 계속 쓰지 않게). 실패해도 떠나기는 한다
+    // 떠나는 가족에서 내 이메일 칸을 지운다 (내 권한으로 그 가족이 AI를 계속 쓰지 않게). 실패해도 떠나기는 한다.
+    // 지우는 동안 위의 등록이 다시 적지 않게 먼저 표시해 둔다
     if (familyId) {
+      leaving.current = familyId;
       await updateDoc(doc(getDb(), "families", familyId), { [`memberEmails.${user.uid}`]: deleteField() })
         .catch((e: unknown) => console.warn("memberEmails", e));
     }
     await updateDoc(doc(getDb(), "users", user.uid), { familyId: null });
+    tried.current.clear();
   };
 
   const updateProfile = async (profile: FamilyProfile) => {

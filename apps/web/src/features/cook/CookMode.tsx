@@ -87,7 +87,7 @@ export function CookMode({ recipe, recipeKey, servings, fridgeNames, onClose, on
   };
 
   return (
-    <div className="theme-dark fixed inset-0 z-50 flex flex-col bg-canvas text-ink" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <div data-cooking className="theme-dark fixed inset-0 z-50 flex flex-col bg-canvas text-ink" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <header className="mx-auto w-full max-w-2xl shrink-0" style={{ paddingTop: "var(--safe-top)" }}>
         <div className="flex h-14 items-center gap-1 px-1">
           <IconButton tone="dark" onClick={tryClose} aria-label="쿡 모드 닫기"><X size={26} /></IconButton>

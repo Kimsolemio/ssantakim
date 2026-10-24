@@ -53,9 +53,10 @@ function fetchToday(day: string, ing: string | null): Promise<TrendingResponse> 
   const p = getWorker<TrendingResponse>(`/trending${ing ? `?ing=${encodeURIComponent(ing)}` : ""}`, 25_000)
     .catch((e: unknown) => { throw e instanceof ApiError ? e : new ApiError("서버에 연결할 수 없어요", 0); })
     .then((data) => {
+      // 일부만 받아 온 날(검색·채널 확인 하나가 실패)은 기억하지 않아 다음에 다시 묻는다 (화면에는 보여 준다)
+      if (data.partial) return data;
       mem = { day, data };
-      // 일부만 받아 온 날(검색·채널 확인 하나가 실패)은 기기에 남기지 않아 다음에 다시 묻는다
-      if (data.videos.length >= PICK_COUNT && !data.partial) {
+      if (data.videos.length >= PICK_COUNT) {
         try { localStorage.setItem(STORE, JSON.stringify(mem)); } catch { /* 무시 */ }
       }
       return data;
