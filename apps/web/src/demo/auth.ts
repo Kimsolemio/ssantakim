@@ -4,6 +4,8 @@ import { seedDemo } from "./seed";
 export type User = {
   uid: string; displayName: string | null; email: string | null; emailVerified: boolean;
   getIdToken: () => Promise<string>;
+  /** 체험판은 이메일 칸을 적지 않는다 (claims 에 email 없음) */
+  getIdTokenResult: () => Promise<{ claims: Record<string, unknown> }>;
 };
 export type Auth = { currentUser: User | null };
 
@@ -11,6 +13,7 @@ const KEY = "cook-demo-user-v1";
 const makeUser = (uid: string): User => ({
   uid, displayName: "나", email: "체험판", emailVerified: true,
   getIdToken: async () => `demo-token-${uid}-${"x".repeat(40)}`,
+  getIdTokenResult: async () => ({ claims: {} }),
 });
 function loadUser(): User | null {
   try { const uid = localStorage.getItem(KEY); return uid ? makeUser(uid) : null; } catch { return null; }

@@ -35,7 +35,11 @@ function TrendingCard({ v, size }: { v: TrendingPick; size: Size }) {
         className="group block w-full text-left active:opacity-80">
         <span className="relative block aspect-[9/16] overflow-hidden rounded-card bg-surface-2">
           <img src={v.thumbnail} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer"
-            onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
+            onError={(e) => {
+              // 큰 썸네일이 없으면 한 번은 기본 썸네일로, 그것도 안 되면 숨긴다
+              const img = e.currentTarget, fallback = `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`;
+              if (img.src !== fallback) img.src = fallback; else img.style.visibility = "hidden";
+            }}
             className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
           <span aria-hidden className="absolute left-2 top-2 inline-flex h-6 items-center rounded-badge bg-black/55 px-2 text-caption font-semibold text-white backdrop-blur-sm">{region}</span>
           <span aria-hidden className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-linear-to-t from-black/70 to-black/0 px-2.5 pb-2 pt-10 text-white">
@@ -62,7 +66,8 @@ function Skeleton({ className }: { className: string }) {
 }
 
 function Trouble({ s, className = "" }: { s: Extract<TrendingState, { status: "error" }>; className?: string }) {
-  const canRetry = s.code !== "youtube_quota" && s.code !== "youtube_not_configured" && s.code !== "youtube_key";
+  // 다시 눌러도 달라지지 않는 경우(한도·키·권한)에는 "다시"를 보이지 않는다
+  const canRetry = !["youtube_quota", "youtube_not_configured", "youtube_key", "not_allowed", "not_configured", "family_needs_daily_limit"].includes(s.code ?? "");
   return <Banner kind="info" onCanvas className={className} action={canRetry ? { label: "다시", onClick: s.retry } : undefined}>{s.message}</Banner>;
 }
 

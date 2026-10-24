@@ -11,15 +11,16 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/families/$(familyId)).data.inviteCode == code;
     }
     // memberEmails: AI 권한 확인용 (Worker가 "허용된 사람이 있는 가족인가"를 본다).
-    // 각자 자기 칸만, 로그인한 계정의 인증된 이메일 그대로만 적을 수 있다.
+    // 각자 자기 칸만: 로그인한 계정의 인증된 이메일 그대로 적거나, 가족을 떠날 때 자기 칸을 지운다.
     function ownEmailEntry() {
       let before = resource.data.get('memberEmails', {});
       let after = request.resource.data.memberEmails;
       return after is map
         && after.diff(before).affectedKeys().hasOnly([request.auth.uid])
-        && request.auth.token.email_verified == true
-        && request.auth.token.email is string
-        && after.get(request.auth.uid, null) == request.auth.token.email;
+        && (!(request.auth.uid in after)
+          || (request.auth.token.email_verified == true
+            && request.auth.token.email is string
+            && after[request.auth.uid] == request.auth.token.email));
     }
     function joinAuthorized(familyId) {
       let proof = getAfter(/databases/$(database)/documents/families/$(familyId)/joinProofs/$(request.auth.uid)).data;

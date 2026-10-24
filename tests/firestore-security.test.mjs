@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, arrayUnion, deleteField } from 'firebase/firestore';
 let env;
 const family = (uid, code) => ({name: 'Home', members: [uid], inviteCode: code, createdAt: '2026-10-09', profile: {}});
 const db = uid => uid ? env.authenticatedContext(uid).firestore() : env.unauthenticatedContext().firestore();
@@ -132,4 +132,24 @@ test('nobody can forge, overwrite or remove email entries', async () => {
 test('outsiders cannot write an email entry into another family', async () => {
   await assertFails(updateDoc(doc(dbAs('stranger','owner@example.com'),'families','a'), {'memberEmails.stranger':'owner@example.com'}));
   await assertFails(updateDoc(doc(dbAs('other','other@example.com'),'families','a'), {'memberEmails.other':'other@example.com'}));
+});
+test('members remove only their own email entry when leaving', async () => {
+  await assertSucceeds(updateDoc(doc(dbAs('owner','owner@example.com'),'families','a'), {'memberEmails.owner':'owner@example.com'}));
+  await assertSucceeds(join('guest'));
+  await assertSucceeds(updateDoc(doc(dbAs('guest','guest@example.com'),'families','a'), {'memberEmails.guest':'guest@example.com'}));
+  // 남의 칸·통째로 지우기는 안 되고, 자기 칸은 지울 수 있다
+  await assertFails(updateDoc(doc(dbAs('guest','guest@example.com'),'families','a'), {'memberEmails.owner':deleteField()}));
+  await assertFails(updateDoc(doc(dbAs('guest','guest@example.com'),'families','a'), {memberEmails:deleteField()}));
+  await assertSucceeds(updateDoc(doc(dbAs('guest','guest@example.com'),'families','a'), {'memberEmails.guest':deleteField()}));
+});
+test('email entries cannot ride along with joining or creating, and must match exactly', async () => {
+  const d = dbAs('guest','guest@example.com'), b = writeBatch(d);
+  b.set(doc(d,'families','a','joinProofs','guest'), {code:'ABC234'});
+  b.update(doc(d,'families','a'), {members:arrayUnion('guest'), 'memberEmails.guest':'guest@example.com'});
+  await assertFails(b.commit());
+  const n = dbAs('new','new@example.com'), c = writeBatch(n);
+  c.set(doc(n,'families','new'), {...family('new','NEW234'), memberEmails:{new:'new@example.com'}});
+  c.set(doc(n,'invites','NEW234'), {familyId:'new'});
+  await assertFails(c.commit());
+  await assertFails(updateDoc(doc(dbAs('owner','owner@example.com'),'families','a'), {'memberEmails.owner':'Owner@Example.com'}));
 });

@@ -34,7 +34,8 @@ export type TrendingVideo = {
   ing?: string;
 };
 
-export type TrendingResponse = { day: string; minLikes: number; videos: TrendingVideo[] };
+/** partial: 검색 일부나 채널 나라 확인이 실패해 일부만 모았다 (기기에 하루 동안 남기지 않는다) */
+export type TrendingResponse = { day: string; minLikes: number; videos: TrendingVideo[]; partial?: boolean };
 
 export type Country = "kr" | "us" | "es" | "jp";
 
@@ -120,12 +121,11 @@ async function search(f: typeof fetch, key: string, q: string, country: Country,
 
 /** ID 50개씩 나눠 묻기 (videos.list, channels.list 모두 한 번에 1 유닛) */
 async function listByIds<T>(f: typeof fetch, key: string, path: string, part: string, ids: string[], extra: Record<string, string> = {}): Promise<T[]> {
-  const out: T[] = [];
-  for (let i = 0; i < ids.length; i += 50) {
-    const j = (await youtubeGet(f, path, { part, id: ids.slice(i, i + 50).join(","), ...extra }, key)) as { items?: T[] };
-    out.push(...(j.items ?? []));
-  }
-  return out;
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
+  // 나눠 묻는 것은 한꺼번에 (하나씩 기다리면 휴대폰 화면이 오래 빈 채로 있다)
+  const pages = await Promise.all(chunks.map((c) => youtubeGet(f, path, { part, id: c.join(","), ...extra }, key) as Promise<{ items?: T[] }>));
+  return pages.flatMap((j) => j.items ?? []);
 }
 
 /**
@@ -174,13 +174,40 @@ export function toVideo(v: VideoItem, ing?: string, channelCountry?: string | nu
 
 /** 같은 날·같은 재료는 다시 묻지 않는다 (이 서버 안에서) */
 const memory = new Map<string, TrendingResponse>();
-export function resetTrendingCache() { memory.clear(); }
+/** 같은 결과를 동시에 두 번 모으지 않는다 (가족 둘이 함께 열 때) */
+const inflight = new Map<string, Promise<TrendingResponse>>();
+/** 검색(100 유닛) 결과는 검색어별로 기억한다: 나라별 검색 넷은 그날 모두에게 같으므로 재료가 바뀌어도 다시 하지 않는다 */
+const searchMemo = new Map<string, Promise<string[]>>();
+export function resetTrendingCache() { memory.clear(); inflight.clear(); searchMemo.clear(); }
+
+type TrendingEnv = { YOUTUBE_API_KEY?: string; USAGE?: KVNamespace };
+
+/** 검색 한 번: 이 서버 메모리 → (있으면) KV → 유튜브. workers.dev 에서는 Cache API가 남지 않아 KV가 서버 사이 기억이 된다 */
+function cachedSearch(env: TrendingEnv, f: typeof fetch, key: string, q: string, country: Country, lang: string, day: string): Promise<string[]> {
+  const k = `${day}|${country}|${q}`;
+  const hit = searchMemo.get(k);
+  if (hit) return hit;
+  const kvKey = `yt:s:${day}:${country}:${encodeURIComponent(q)}`;
+  const p = (async () => {
+    try {
+      const saved = await env.USAGE?.get(kvKey);
+      if (saved) { const ids = JSON.parse(saved) as unknown; if (Array.isArray(ids)) return ids.filter((x): x is string => typeof x === "string"); }
+    } catch { /* KV 없이 진행 */ }
+    const ids = await search(f, key, q, country, lang, day);
+    try { await env.USAGE?.put(kvKey, JSON.stringify(ids), { expirationTtl: 60 * 60 * 36 }); } catch { /* 무시 */ }
+    return ids;
+  })();
+  searchMemo.set(k, p);
+  p.catch(() => { if (searchMemo.get(k) === p) searchMemo.delete(k); });
+  if (searchMemo.size > 200) searchMemo.delete(searchMemo.keys().next().value!);
+  return p;
+}
 
 const cacheUrl = (day: string, ing: string | null) => `https://trending.cache.internal/v2/${day}/${encodeURIComponent(ing ?? "-")}`;
 /** Cache API: workers.dev 주소에서는 저장되지 않을 수 있어 실패해도 넘어간다 */
 const edgeCache = (): Cache | null => (typeof caches !== "undefined" ? (caches as unknown as { default?: Cache }).default ?? null : null);
 
-export async function trendingRecipes(env: { YOUTUBE_API_KEY?: string }, ingRaw?: string | null, now = Date.now(), f: typeof fetch = fetch): Promise<TrendingResponse> {
+export async function trendingRecipes(env: TrendingEnv, ingRaw?: string | null, now = Date.now(), f: typeof fetch = fetch): Promise<TrendingResponse> {
   const key = env.YOUTUBE_API_KEY?.trim();
   if (!key) throw new TrendingError(503, "인기 레시피를 보려면 YouTube API 키가 필요해요. 앱을 설치한 사람에게 알려 주세요", "youtube_not_configured");
   const day = kstDay(now);
@@ -188,6 +215,14 @@ export async function trendingRecipes(env: { YOUTUBE_API_KEY?: string }, ingRaw?
   const memKey = `${day}|${ing ?? ""}`;
   const hit = memory.get(memKey);
   if (hit) return hit;
+  const running = inflight.get(memKey);
+  if (running) return running;
+  const p = collect(env, key, day, ing, memKey, f).finally(() => { if (inflight.get(memKey) === p) inflight.delete(memKey); });
+  inflight.set(memKey, p);
+  return p;
+}
+
+async function collect(env: TrendingEnv, key: string, day: string, ing: string | null, memKey: string, f: typeof fetch): Promise<TrendingResponse> {
   const cache = edgeCache();
   try {
     const cached = await cache?.match(cacheUrl(day, ing));
@@ -199,7 +234,7 @@ export async function trendingRecipes(env: { YOUTUBE_API_KEY?: string }, ingRaw?
     ...SEARCHES.map((s) => ({ q: pickFor(s.queries, day), country: s.country, lang: s.lang })),
     ...(ing ? [{ q: `${ing} 레시피`, country: "kr" as const, lang: "ko", ing }] : []),
   ];
-  const settled = await Promise.allSettled(jobs.map((j) => search(f, key, j.q, j.country, j.lang, day)));
+  const settled = await Promise.allSettled(jobs.map((j) => cachedSearch(env, f, key, j.q, j.country, j.lang, day)));
   const firstError = settled.find((s): s is PromiseRejectedResult => s.status === "rejected")?.reason;
   if (settled.every((s) => s.status === "rejected")) throw firstError;
   const ingOf = new Map<string, string>();
@@ -225,7 +260,7 @@ export async function trendingRecipes(env: { YOUTUBE_API_KEY?: string }, ingRaw?
   const videos = items.map((v) => toVideo(v, ingOf.get(v.id ?? ""), countryOfChannel.get(v.snippet?.channelId ?? "")))
     .filter((v): v is TrendingVideo => !!v)
     .sort((a, b) => b.likes - a.likes);
-  const data: TrendingResponse = { day, minLikes: MIN_LIKES, videos };
+  const data: TrendingResponse = { day, minLikes: MIN_LIKES, videos, ...(firstError || channelFailed ? { partial: true } : {}) };
   const byCountry = Object.fromEntries(SEARCHES.map((s) => [s.country, videos.filter((v) => v.region === s.country).length]));
   console.log(JSON.stringify({ route: "trending", day, ing, searched: ids.length, kept: videos.length, byCountry, failed: settled.filter((s) => s.status === "rejected").length, channelFailed }));
 

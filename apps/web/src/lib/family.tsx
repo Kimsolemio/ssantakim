@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  doc, getDoc, updateDoc, onSnapshot, arrayUnion, writeBatch,
+  doc, getDoc, updateDoc, onSnapshot, arrayUnion, writeBatch, deleteField,
 } from "firebase/firestore";
 import { Family, FamilyProfile, makeInviteCode } from "@cook/shared";
 import { getDb } from "./firebase";
@@ -27,7 +27,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   // users/{uid} → familyId
   useEffect(() => {
-    if (!user) { setFamilyId(null); setFamily(null); setLoading(false); return; }
+    if (!user) { setApiFamily(null); setFamilyId(null); setFamily(null); setLoading(false); return; }
     setFamilyId(null);
     setFamily(null);
     setLoading(true);
@@ -36,7 +36,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     // 서버가 저장을 확정한 스냅샷만 사용한다.
     return onSnapshot(doc(getDb(), "users", user.uid), { includeMetadataChanges: true }, (snap) => {
       if (snap.metadata.hasPendingWrites) return;
-      setFamilyId((snap.data()?.familyId as string | undefined) ?? null);
+      const id = (snap.data()?.familyId as string | undefined) ?? null;
+      // AI 서버에 지금 가족을 알려 준다 (허용 목록 밖 가족도 설치한 사람의 권한으로 AI를 쓰게). 화면보다 먼저
+      setApiFamily(id);
+      setFamilyId(id);
       setLoading(false);
     }, () => setLoading(false));
   }, [user]);
@@ -52,18 +55,24 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     }, () => setFamily(null));
   }, [familyId, user?.uid]);
 
-  // AI 서버에 지금 가족을 알려 준다 (허용 목록에 없는 가족도 설치한 사람의 권한으로 AI를 쓰게)
-  useEffect(() => { setApiFamily(familyId); }, [familyId]);
-
-  // 내 인증된 이메일을 가족 문서에 적어 둔다 (규칙상 자기 칸, 자기 이메일만). 이미 같으면 아무것도 안 한다
-  const email = user?.emailVerified ? user.email : null;
-  const recorded = family?.memberEmails?.[user?.uid ?? ""];
+  // 내 인증된 이메일을 가족 문서에 적어 둔다 (규칙상 자기 칸, 로그인 토큰의 이메일 그대로만).
+  // 같은 사람·가족·이메일은 한 번만 시도한다: 규칙이 거절하면 스냅샷이 되돌아와도 다시 쓰지 않게
+  const recorded = user ? family?.memberEmails?.[user.uid] : undefined;
+  const isMember = !!user && !!family?.members.includes(user.uid);
+  const tried = useRef(new Set<string>());
   useEffect(() => {
-    if (!user || !familyId || !family || !email || recorded === email) return;
-    if (!family.members.includes(user.uid)) return;
-    updateDoc(doc(getDb(), "families", familyId), { [`memberEmails.${user.uid}`]: email })
-      .catch((e: unknown) => console.warn("memberEmails", e));
-  }, [user, familyId, family, email, recorded]);
+    if (!user || !familyId || !isMember || !user.emailVerified) return;
+    let cancelled = false;
+    void user.getIdTokenResult().then((r) => {
+      const email = typeof r.claims.email === "string" ? r.claims.email : null;
+      if (cancelled || !email || r.claims.email_verified !== true || recorded === email) return;
+      const key = `${user.uid}|${familyId}|${email}`;
+      if (tried.current.has(key)) return;
+      tried.current.add(key);
+      return updateDoc(doc(getDb(), "families", familyId), { [`memberEmails.${user.uid}`]: email });
+    }).catch((e: unknown) => console.warn("memberEmails", e));
+    return () => { cancelled = true; };
+  }, [user, familyId, isMember, recorded]);
 
   const createFamily = async (name: string) => {
     if (!user) throw new Error("로그인이 필요합니다");
@@ -104,6 +113,11 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   const leaveToSwitch = async () => {
     if (!user) return;
+    // 떠나는 가족에서 내 이메일 칸을 지운다 (내 권한으로 그 가족이 AI를 계속 쓰지 않게). 실패해도 떠나기는 한다
+    if (familyId) {
+      await updateDoc(doc(getDb(), "families", familyId), { [`memberEmails.${user.uid}`]: deleteField() })
+        .catch((e: unknown) => console.warn("memberEmails", e));
+    }
     await updateDoc(doc(getDb(), "users", user.uid), { familyId: null });
   };
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import handler, { type Env } from "../src/index";
 import { resetFamilyMemo } from "../src/guard";
 import { makeSigner, PROJECT, SAMPLE_RECIPE, jsonResponse, claudeMessage } from "./helpers";
@@ -100,7 +100,9 @@ describe("/recipe auth and validation", () => {
 
 describe("family members share the owner's access", () => {
   // uid-1(me@example.com, 허용 목록 밖)이 가족 fam-1 에 들어 있고, 설치한 사람 uid-owner 가 owner@example.com
-  const env = { ...baseEnv, ALLOWED_EMAILS: "owner@example.com", ANTHROPIC_API_KEY: "k" };
+  const kv = () => { const m = new Map<string, string>(); return { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); } } as unknown as KVNamespace; };
+  let env: Env;
+  beforeEach(() => { env = { ...baseEnv, ALLOWED_EMAILS: "owner@example.com", ANTHROPIC_API_KEY: "k", USAGE: kv() }; });
   const famDoc = (members: string[], emails: Record<string, string>) => ({
     name: "projects/test-project/databases/(default)/documents/families/fam-1",
     fields: {
@@ -146,6 +148,48 @@ describe("family members share the owner's access", () => {
     const calls = firestore(() => jsonResponse({}, 500));
     expect((await withFamily("../users/uid-owner")).status).toBe(403);
     expect(calls.filter((c) => c.url.startsWith("https://firestore.googleapis.com/"))).toHaveLength(0);
+  });
+  it("needs the family header (old apps send none) and then does not read Firestore", async () => {
+    const calls = firestore(() => jsonResponse({}, 500));
+    const r = await recipeReq(env, { dish: "라면" });
+    expect(r.status).toBe(403);
+    expect(calls.filter((c) => c.url.startsWith("https://firestore.googleapis.com/"))).toHaveLength(0);
+  });
+  it("does not open family sharing without the daily limit (KV)", async () => {
+    const calls = firestore(() => jsonResponse(famDoc(["uid-owner", "uid-1"], { "uid-owner": "owner@example.com" })));
+    env = { ...env, USAGE: undefined };
+    const r = await withFamily();
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ code: "family_needs_daily_limit" });
+    expect(calls).toHaveLength(0);
+  });
+  it("says try again (not 'not allowed') when Firestore is briefly unavailable, and does not remember it", async () => {
+    let n = 0;
+    firestore(() => (++n === 1 ? jsonResponse({ error: "busy" }, 503) : jsonResponse(famDoc(["uid-owner", "uid-1"], { "uid-owner": "owner@example.com" }))));
+    const r = await withFamily();
+    expect(r.status).toBe(503);
+    expect(await r.json()).toMatchObject({ code: "family_check_failed" });
+    expect((await withFamily()).status).toBe(200);
+  });
+  it("throttles denied lookups per person even with other family ids", async () => {
+    const calls = firestore(() => jsonResponse({ error: { status: "PERMISSION_DENIED" } }, 403));
+    expect((await withFamily("fam-1")).status).toBe(403);
+    expect((await withFamily("fam-2")).status).toBe(403);
+    expect((await withFamily("fam-3")).status).toBe(403);
+    expect(calls.filter((c) => c.url.startsWith("https://firestore.googleapis.com/"))).toHaveLength(1);
+  });
+  it("handles empty member lists and email maps", async () => {
+    firestore(() => jsonResponse({ fields: { members: { arrayValue: {} }, memberEmails: { mapValue: {} } } }));
+    expect((await withFamily()).status).toBe(403);
+  });
+  it("opens today's popular recipes for a family member too", async () => {
+    stubFetch((c) => {
+      if (c.url.startsWith("https://firestore.googleapis.com/")) return jsonResponse(famDoc(["uid-owner", "uid-1"], { "uid-owner": "owner@example.com" }));
+      return jsonResponse({ items: [] });
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const r = await call({ ...env, YOUTUBE_API_KEY: "yt" }, "/trending", { headers: { Authorization: `Bearer ${goodToken}`, "X-Family-Id": "fam-1" } });
+    expect(r.status).toBe(200);
   });
   it("allows the X-Family-Id header in CORS", async () => {
     const r = await call(baseEnv, "/recipe", { method: "OPTIONS" });

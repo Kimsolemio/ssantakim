@@ -164,8 +164,10 @@ describe("trendingRecipes", () => {
     const { f, calls } = youtubeStub({ kr: [id(1)], videos: [video(id(1), "계란말이", 40_000)], fail: "US" });
     const r = await trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f);
     expect(r.videos.map((v) => v.id)).toEqual([id(1)]);
+    expect(r.partial).toBe(true);
     await trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f);
-    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(8);
+    // 다시 물을 때는 실패한 검색만 다시 한다 (성공한 나라 검색 셋은 기억해 둔 것으로)
+    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(5);
   });
 
   it("keeps Korean and Japanese titles when the channel lookup fails, and does not remember it", async () => {
@@ -176,8 +178,37 @@ describe("trendingRecipes", () => {
     });
     const r = await trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f);
     expect(r.videos.map((v) => v.id)).toEqual([id(1), id(3)]);
+    expect(r.partial).toBe(true);
     await trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f);
-    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(8);
+    // 검색은 기억해 둔 것으로, 채널 나라 확인만 다시 한다
+    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(4);
+    expect(calls.filter((u) => u.pathname.endsWith("/channels")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("asks YouTube once for the country searches even when the fridge ingredient changes", async () => {
+    const { f, calls } = youtubeStub({ kr: [id(1)], videos: [video(id(1), "계란말이", 40_000)] });
+    await trendingRecipes({ YOUTUBE_API_KEY: "yt" }, "대파", NOW, f);
+    await trendingRecipes({ YOUTUBE_API_KEY: "yt" }, "두부", NOW, f);
+    // 나라 넷 + 대파 + 두부 = 6번 (예전에는 10번)
+    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(6);
+  });
+
+  it("shares one collection between two devices asking at the same time", async () => {
+    const { f, calls } = youtubeStub({ kr: [id(1)], videos: [video(id(1), "계란말이", 40_000)] });
+    const [a, b] = await Promise.all([trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f), trendingRecipes({ YOUTUBE_API_KEY: "yt" }, null, NOW, f)]);
+    expect(a).toBe(b);
+    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(4);
+  });
+
+  it("remembers searches in KV across servers when it is there", async () => {
+    const m = new Map<string, string>();
+    const USAGE = { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); } } as unknown as KVNamespace;
+    const { f, calls } = youtubeStub({ kr: [id(1)], videos: [video(id(1), "계란말이", 40_000)] });
+    await trendingRecipes({ YOUTUBE_API_KEY: "yt", USAGE }, null, NOW, f);
+    resetTrendingCache(); // 다른 서버(메모리 없음)
+    await trendingRecipes({ YOUTUBE_API_KEY: "yt", USAGE }, null, NOW, f);
+    expect(calls.filter((u) => u.pathname.endsWith("/search"))).toHaveLength(4);
+    expect([...m.keys()].every((k) => k.startsWith("yt:s:"))).toBe(true);
   });
 
   it("explains a used-up quota without leaking the key", async () => {

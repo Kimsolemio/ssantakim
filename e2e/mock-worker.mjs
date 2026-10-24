@@ -94,7 +94,7 @@ createServer((req, res) => {
     if (req.url.startsWith("/trending")) {
       if (!req.headers["x-family-id"]) { res.writeHead(403, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ error: "가족 ID 없음", code: "not_allowed" })); }
       const v = (i, region, title) => ({ id: `vid${String(i).padStart(8, "0")}`, url: `https://www.youtube.com/shorts/vid${String(i).padStart(8, "0")}`, title, channel: `채널${i}`,
-        likes: 120000 - i * 5000, views: 900000, thumbnail: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", publishedAt: "2026-10-20T00:00:00Z", seconds: 45, region, vertical: true });
+        likes: 120000 - i * 5000, views: 900000, thumbnail: "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", publishedAt: "2026-10-20T00:00:00Z", seconds: 45, region, vertical: true });
       const videos = [v(1, "kr", "초간단 계란말이 레시피"), v(2, "kr", "대파 듬뿍 김치찌개"), v(3, "us", "Easy garlic pasta"), v(4, "jp", "親子丼の作り方"),
         v(5, "es", "Tortilla de patatas"), v(6, "kr", "두부조림 황금레시피"), v(7, "us", "Crispy potatoes")];
       res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ day: new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10), minLikes: 10000, videos }));

@@ -19,7 +19,7 @@ export type TrendingVideo = {
   vertical: boolean | null;
   ing?: string;
 };
-type TrendingResponse = { day: string; minLikes: number; videos: TrendingVideo[] };
+type TrendingResponse = { day: string; minLikes: number; videos: TrendingVideo[]; partial?: boolean };
 
 /** 화면에 보일 영상 + 냉장고에 있는 재료 중 제목에 나온 것 */
 export type TrendingPick = TrendingVideo & { matched: string[] };
@@ -50,12 +50,12 @@ function fetchToday(day: string, ing: string | null): Promise<TrendingResponse> 
   const saved = readSaved(day);
   if (saved) return Promise.resolve(saved);
   if (inflight?.day === day) return inflight.p;
-  const p = getWorker<TrendingResponse>(`/trending${ing ? `?ing=${encodeURIComponent(ing)}` : ""}`)
+  const p = getWorker<TrendingResponse>(`/trending${ing ? `?ing=${encodeURIComponent(ing)}` : ""}`, 25_000)
     .catch((e: unknown) => { throw e instanceof ApiError ? e : new ApiError("서버에 연결할 수 없어요", 0); })
     .then((data) => {
       mem = { day, data };
-      // 일부만 받아 온 날(검색 하나가 실패)은 기기에 남기지 않아 다음에 다시 묻는다
-      if (data.videos.length >= PICK_COUNT) {
+      // 일부만 받아 온 날(검색·채널 확인 하나가 실패)은 기기에 남기지 않아 다음에 다시 묻는다
+      if (data.videos.length >= PICK_COUNT && !data.partial) {
         try { localStorage.setItem(STORE, JSON.stringify(mem)); } catch { /* 무시 */ }
       }
       return data;
@@ -186,8 +186,10 @@ export function useWide(): boolean {
   return useSyncExternalStore(
     (cb) => {
       const m = window.matchMedia(WIDE);
-      m.addEventListener("change", cb);
-      return () => m.removeEventListener("change", cb);
+      // 오래된 사파리(13 이하)는 addEventListener 가 없다
+      if (m.addEventListener) { m.addEventListener("change", cb); return () => m.removeEventListener("change", cb); }
+      m.addListener(cb);
+      return () => m.removeListener(cb);
     },
     () => window.matchMedia(WIDE).matches,
     () => false,

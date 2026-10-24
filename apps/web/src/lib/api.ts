@@ -56,14 +56,23 @@ export async function callWorker<T>(path: string, body: unknown, signal?: AbortS
   return data as T;
 }
 
-/** 로그인한 GET 요청 (예: 오늘 남은 AI 사용량) */
-export async function getWorker<T>(path: string): Promise<T> {
+/** 로그인한 GET 요청 (예: 오늘 남은 AI 사용량). timeoutMs: 휴대폰 망이 멈춰도 끝없이 기다리지 않게 */
+export async function getWorker<T>(path: string, timeoutMs?: number): Promise<T> {
   if (isDemo) return viaDemo<T>(path, undefined);
   if (!workerConfigured) throw new ApiError("AI 서버가 연결되지 않았어요", 0);
   if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요", 0, "offline");
   const user = getAuthInstance().currentUser;
   if (!user) throw new ApiError("로그인이 필요합니다", 401);
-  const res = await fetch(`${workerUrl}${path}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}`, ...familyHeader() } });
+  let res: Response;
+  try {
+    res = await fetch(`${workerUrl}${path}`, {
+      headers: { Authorization: `Bearer ${await user.getIdToken()}`, ...familyHeader() },
+      ...(timeoutMs ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+    });
+  } catch (e) {
+    if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) throw new ApiError("서버가 늦게 답해요. 잠시 뒤 다시 해 주세요", 0, "timeout");
+    throw new ApiError("서버에 연결할 수 없어요. 인터넷 연결을 확인하세요", 0);
+  }
   const data = await res.json().catch(() => null) as { error?: string; code?: string } | null;
   if (!res.ok) throw new ApiError(friendly(res.status, data?.error), res.status, data?.code);
   return data as T;

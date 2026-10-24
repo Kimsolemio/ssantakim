@@ -51,9 +51,14 @@ function emailAllowed(allowed: string[], user: Verified): boolean {
   return !!user.email && user.emailVerified && allowed.includes(user.email.toLowerCase());
 }
 
-/** 같은 사람·같은 가족은 잠깐 기억한다 (AI 요청마다 Firestore를 읽지 않게). 허용은 10분, 거절은 1분 */
-const familyMemo = new Map<string, { ok: boolean; until: number }>();
-export function resetFamilyMemo() { familyMemo.clear(); }
+/** 같은 사람·같은 가족의 허용은 10분 기억한다 (AI 요청마다 Firestore를 읽지 않게) */
+const familyMemo = new Map<string, number>();
+/** 거절은 사람 단위로 1분: 가족 ID를 바꿔 가며 Firestore 읽기를 늘리지 못하게 */
+const deniedUntil = new Map<string, number>();
+export function resetFamilyMemo() { familyMemo.clear(); deniedUntil.clear(); }
+
+/** Firestore를 잠깐 못 읽었을 때 (거절이 아니라 다시 해 볼 일) */
+export class FamilyCheckError extends Error {}
 
 type FsValue = { stringValue?: string; arrayValue?: { values?: FsValue[] }; mapValue?: { fields?: Record<string, FsValue> } };
 
@@ -65,20 +70,21 @@ export async function familyAllowed(allowed: string[], user: Verified, proof: Fa
   const fid = proof.familyId?.trim() ?? "";
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(fid)) return false;
   const memoKey = `${user.uid}|${fid}`;
-  const memo = familyMemo.get(memoKey);
-  if (memo && memo.until > now) return memo.ok;
+  if ((familyMemo.get(memoKey) ?? 0) > now) return true;
+  if ((deniedUntil.get(user.uid) ?? 0) > now) return false;
   const remember = (ok: boolean) => {
-    familyMemo.set(memoKey, { ok, until: now + (ok ? 600_000 : 60_000) });
-    if (familyMemo.size > 500) familyMemo.delete(familyMemo.keys().next().value!);
+    const m = ok ? familyMemo : deniedUntil;
+    m.set(ok ? memoKey : user.uid, now + (ok ? 600_000 : 60_000));
+    if (m.size > 500) m.delete(m.keys().next().value!);
     return ok;
   };
   const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(proof.projectId)}/databases/(default)/documents/families/${fid}`
     + "?mask.fieldPaths=members&mask.fieldPaths=memberEmails";
   let res: Response;
-  try { res = await (proof.fetch ?? fetch)(url, { headers: { Authorization: `Bearer ${proof.idToken}` } }); }
-  catch { return false; } // 잠깐 연결이 안 되면 이번만 거절 (기억하지 않는다)
+  try { res = await (proof.fetch ?? fetch)(url, { headers: { Authorization: `Bearer ${proof.idToken}` }, signal: AbortSignal.timeout(5000) }); }
+  catch { throw new FamilyCheckError("가족 확인 연결 실패"); } // 잠깐 연결이 안 되면 거절이 아니라 "다시 해 주세요"
   if (res.status === 403 || res.status === 404) return remember(false);
-  if (!res.ok) return false;
+  if (!res.ok) throw new FamilyCheckError(`가족 확인 실패 ${res.status}`);
   const doc = (await res.json().catch(() => null)) as { fields?: Record<string, FsValue> } | null;
   const members = (doc?.fields?.members?.arrayValue?.values ?? []).map((v) => v.stringValue).filter((v): v is string => !!v);
   if (!members.includes(user.uid)) return remember(false);
@@ -97,7 +103,19 @@ export async function checkAllowed(env: GuardEnv, user: Verified, proof?: Family
   }
   if (allowed.includes("*")) return;
   if (emailAllowed(allowed, user)) return;
-  if (proof && await familyAllowed(allowed, user, proof)) return;
+  if (proof?.familyId) {
+    // 가족 단위로 열어 줄 때는 하루 한도(USAGE KV)가 꼭 켜져 있어야 한다: 초대 코드가 새도 손해에 상한이 있게
+    if (!env.USAGE) {
+      throw new GuardError(403, "가족과 AI를 함께 쓰려면 하루 사용 한도가 켜져 있어야 해요. 앱을 설치한 사람에게 알려 주세요 (README: 하루 한도 KV)", "family_needs_daily_limit");
+    }
+    let ok: boolean;
+    try { ok = await familyAllowed(allowed, user, proof); }
+    catch (e) {
+      if (e instanceof FamilyCheckError) throw new GuardError(503, "가족인지 잠깐 확인하지 못했어요. 잠시 뒤 다시 해 주세요", "family_check_failed");
+      throw e;
+    }
+    if (ok) return;
+  }
   throw new GuardError(403, NOT_ALLOWED, "not_allowed");
 }
 

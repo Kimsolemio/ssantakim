@@ -12,7 +12,16 @@ captureShareFromLocation();
 // 체험판은 링크로 여는 페이지라 확인 창(confirm)이 뜨지 않는다 → 묻는 곳은 '예'로 진행
 if (import.meta.env.VITE_DEMO === "1") window.confirm = () => true;
 
-registerSW({ immediate: true });
+// 홈 화면 앱은 다시 열어도 새로 고침되지 않을 때가 많아, 앱으로 돌아올 때와 한 시간마다 새 버전을 확인한다
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, reg) {
+    if (!reg) return;
+    const check = () => { if (navigator.onLine) void reg.update().catch(() => {}); };
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+    setInterval(check, 60 * 60 * 1000);
+  },
+});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

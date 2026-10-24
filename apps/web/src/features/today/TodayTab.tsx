@@ -205,6 +205,8 @@ export function TodayTab() {
         {run.error && !busy && <Banner kind="danger" className="mt-3">{run.error}</Banner>}
       </div>
       {busy && skeletons}
+      {/* 휴대폰에서는 이 탭에만 있으므로 위쪽에 (PC는 양옆 칸에 늘 보인다) */}
+      <TrendingSection />
 
       {t.fits.length > 0 && (
         <section>
@@ -237,7 +239,6 @@ export function TodayTab() {
         </section>
       )}
 
-      <TrendingSection />
       <PlanSection where="bottom" />
 
       {!busy && hasResults && (
