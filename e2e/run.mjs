@@ -88,6 +88,10 @@ await mom.getByText("저장", { exact: true }).click();
 await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
 await mom.screenshot({ path: `${shots}/05-detail.png` });
 const amountOf = async (name) => (await mom.locator("li", { hasText: name }).first().locator("span").last().textContent()).trim();
+// 3인분으로 저장한 레시피도 우리 집 기본 인분(2)으로 열린다
+assert.equal(await amountOf("스파게티면"), "200g", "가족 기본 2인분으로 열기");
+await mom.getByText("기준 3인분에서 자동 환산했어요").waitFor();
+await mom.getByLabel("인분 늘리기").click(); // 2 → 3
 assert.equal(await amountOf("스파게티면"), "300g", "3인분 기준 저장");
 await mom.getByLabel("인분 늘리기").click(); // 3 → 4
 assert.equal(await amountOf("스파게티면"), "400g");
@@ -275,13 +279,13 @@ assert.equal(await mom.getByLabel("페페론치노 담기").isChecked(), false, 
 assert.equal(await mom.getByLabel("소금 담기").isChecked(), true);
 await mom.getByRole("button", { name: "1개 담기", exact: true }).click();
 await mom.getByText(/장보기에 1개 담았어요/).waitFor();
-// 6인분이면 스파게티면 600g 필요 → 100g 부족
-await mom.getByLabel("인분 늘리기").click(); await mom.getByLabel("인분 늘리기").click(); await mom.getByLabel("인분 늘리기").click();
+// 6인분이면 스파게티면 600g 필요 → 100g 부족 (가족 기본 2인분으로 열리므로 네 번)
+for (let i = 0; i < 4; i++) await mom.getByLabel("인분 늘리기").click();
 await status("스파게티면").getByText("100g 부족").waitFor();
 await mom.getByRole("button", { name: "장보기에 담기", exact: true }).click();
 await mom.getByRole("button", { name: "2개 담기", exact: true }).click();
 await mom.getByText(/장보기에 2개 담았어요 · 1개는 양만 더함/).waitFor();
-await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click();
+await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click(); await mom.getByLabel("인분 줄이기").click(); // 6 → 3
 // 요리 → 차감
 await mom.getByRole("button", { name: "요리 시작", exact: true }).click();
 for (let i = 0; i < 5; i++) await mom.getByText(/^(다음|마무리)$/).click();
@@ -437,6 +441,8 @@ await mom.locator("nav").getByText("레시피", { exact: true }).click();
 // ---------- 6단계: 오늘 뭐 먹지 ----------
 await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
 await mom.getByRole("heading", { name: "오늘 뭐 먹지?" }).waitFor();
+// 휴대폰 화면에서도 오늘의 인기 레시피가 보인다 (가족 ID 머리글이 함께 가야 가짜 서버가 답한다)
+await mom.getByTestId("trending").getByTestId("trending-card").first().waitFor();
 const mackerel = mom.getByTestId("expiring-card").filter({ hasText: "고등어" });
 await mackerel.getByLabel(/D-1 추정/).waitFor();
 await mackerel.getByText("~D-1").waitFor();

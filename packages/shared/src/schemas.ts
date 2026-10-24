@@ -169,6 +169,8 @@ export const Family = z.object({
   members: z.array(z.string()).min(1),
   createdAt: z.string(),
   profile: FamilyProfile.default(() => FamilyProfile.parse({})),
+  /** uid → 그 사람의 인증된 구글 이메일. 각자 자기 칸만 적을 수 있다 (AI 서버가 "설치한 사람이 있는 가족인가"를 본다) */
+  memberEmails: z.record(z.string(), z.string()).optional(),
 });
 export type Family = z.infer<typeof Family>;
 

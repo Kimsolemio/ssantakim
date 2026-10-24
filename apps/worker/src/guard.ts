@@ -2,6 +2,8 @@
  * 비용 차단 장치. AI 호출은 돈이 들므로 기본값을 "막힘"으로 둔다.
  * ① 허용 목록(ALLOWED_EMAILS)이 비어 있으면 아무도 쓸 수 없다 ("*"를 적어야 모두 허용)
  * ② 이메일 인증이 끝난 계정만 허용 목록과 맞춰 본다
+ * ②' 허용 목록에 없어도, 허용된 사람(설치한 사람)이 있는 가족에 초대 코드로 들어온 사람은 쓸 수 있다
+ *     (Firestore 규칙이 가족 참여는 초대 코드로만, memberEmails 는 각자 자기 인증된 이메일로만 쓰게 막는다)
  * ③ 1분에 몇 번 (AI_LIMIT 바인딩, 설정 없이 동작) + 하루에 몇 번 (USAGE KV, 선택)
  */
 import type { Verified } from "./auth";
@@ -40,15 +42,63 @@ export function allowList(env: GuardEnv): string[] {
   return (env.ALLOWED_EMAILS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
-export function checkAllowed(env: GuardEnv, user: Verified): void {
+/** 가족 확인에 필요한 것: 요청한 사람의 Firebase ID 토큰(그 사람 권한으로 가족 문서를 읽는다)과 앱이 알려 준 가족 ID */
+export type FamilyProof = { projectId: string; idToken: string; familyId: string | null; fetch?: typeof fetch };
+
+const NOT_ALLOWED = "이 계정은 아직 AI를 쓸 수 없어요. 앱을 설치한 사람의 가족에 초대 코드로 참여했는지 확인해 주세요. 참여했는데도 이러면, 설치한 사람이 새 버전 앱을 한 번 열어 주면 풀려요";
+
+function emailAllowed(allowed: string[], user: Verified): boolean {
+  return !!user.email && user.emailVerified && allowed.includes(user.email.toLowerCase());
+}
+
+/** 같은 사람·같은 가족은 잠깐 기억한다 (AI 요청마다 Firestore를 읽지 않게). 허용은 10분, 거절은 1분 */
+const familyMemo = new Map<string, { ok: boolean; until: number }>();
+export function resetFamilyMemo() { familyMemo.clear(); }
+
+type FsValue = { stringValue?: string; arrayValue?: { values?: FsValue[] }; mapValue?: { fields?: Record<string, FsValue> } };
+
+/**
+ * 요청한 사람의 토큰으로 가족 문서를 읽는다. 보안 규칙상 가족이 아니면 읽기부터 거절된다.
+ * 가족 구성원 중 한 명이라도 허용 목록 이메일(각자 자기 인증된 이메일로만 적을 수 있다)이면 허용.
+ */
+export async function familyAllowed(allowed: string[], user: Verified, proof: FamilyProof, now = Date.now()): Promise<boolean> {
+  const fid = proof.familyId?.trim() ?? "";
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(fid)) return false;
+  const memoKey = `${user.uid}|${fid}`;
+  const memo = familyMemo.get(memoKey);
+  if (memo && memo.until > now) return memo.ok;
+  const remember = (ok: boolean) => {
+    familyMemo.set(memoKey, { ok, until: now + (ok ? 600_000 : 60_000) });
+    if (familyMemo.size > 500) familyMemo.delete(familyMemo.keys().next().value!);
+    return ok;
+  };
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(proof.projectId)}/databases/(default)/documents/families/${fid}`
+    + "?mask.fieldPaths=members&mask.fieldPaths=memberEmails";
+  let res: Response;
+  try { res = await (proof.fetch ?? fetch)(url, { headers: { Authorization: `Bearer ${proof.idToken}` } }); }
+  catch { return false; } // 잠깐 연결이 안 되면 이번만 거절 (기억하지 않는다)
+  if (res.status === 403 || res.status === 404) return remember(false);
+  if (!res.ok) return false;
+  const doc = (await res.json().catch(() => null)) as { fields?: Record<string, FsValue> } | null;
+  const members = (doc?.fields?.members?.arrayValue?.values ?? []).map((v) => v.stringValue).filter((v): v is string => !!v);
+  if (!members.includes(user.uid)) return remember(false);
+  const emails = doc?.fields?.memberEmails?.mapValue?.fields ?? {};
+  const ok = members.some((uid) => {
+    const e = emails[uid]?.stringValue?.trim().toLowerCase();
+    return !!e && allowed.includes(e);
+  });
+  return remember(ok);
+}
+
+export async function checkAllowed(env: GuardEnv, user: Verified, proof?: FamilyProof): Promise<void> {
   const allowed = allowList(env);
   if (allowed.length === 0) {
     throw new GuardError(403, "AI를 쓸 가족 이메일이 아직 등록되지 않았어요. 앱을 설치한 사람에게 알려 주세요 (Worker 설정 ALLOWED_EMAILS)", "not_configured");
   }
   if (allowed.includes("*")) return;
-  if (!user.email || !user.emailVerified || !allowed.includes(user.email.toLowerCase())) {
-    throw new GuardError(403, "이 구글 계정은 AI 기능을 쓸 수 있는 가족 목록에 없어요. 앱을 설치한 사람에게 이메일을 알려 주세요", "not_allowed");
-  }
+  if (emailAllowed(allowed, user)) return;
+  if (proof && await familyAllowed(allowed, user, proof)) return;
+  throw new GuardError(403, NOT_ALLOWED, "not_allowed");
 }
 
 const num = (v: string | undefined, d: number) => {

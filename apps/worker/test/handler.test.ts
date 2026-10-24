@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import handler, { type Env } from "../src/index";
+import { resetFamilyMemo } from "../src/guard";
 import { makeSigner, PROJECT, SAMPLE_RECIPE, jsonResponse, claudeMessage } from "./helpers";
 
 type Captured = { url: string; headers: Headers; body: any };
@@ -94,6 +95,61 @@ describe("/recipe auth and validation", () => {
     const r = await recipeReq(baseEnv);
     expect(r.status).toBe(500);
     expect((await r.json() as any).error).toMatch(/AI 키가 없습니다/);
+  });
+});
+
+describe("family members share the owner's access", () => {
+  // uid-1(me@example.com, 허용 목록 밖)이 가족 fam-1 에 들어 있고, 설치한 사람 uid-owner 가 owner@example.com
+  const env = { ...baseEnv, ALLOWED_EMAILS: "owner@example.com", ANTHROPIC_API_KEY: "k" };
+  const famDoc = (members: string[], emails: Record<string, string>) => ({
+    name: "projects/test-project/databases/(default)/documents/families/fam-1",
+    fields: {
+      members: { arrayValue: { values: members.map((stringValue) => ({ stringValue })) } },
+      memberEmails: { mapValue: { fields: Object.fromEntries(Object.entries(emails).map(([k, v]) => [k, { stringValue: v }])) } },
+    },
+  });
+  const withFamily = (fid = "fam-1") => call(env, "/recipe", { method: "POST", body: JSON.stringify({ dish: "라면" }),
+    headers: { Authorization: `Bearer ${goodToken}`, "Content-Type": "application/json", "X-Family-Id": fid } });
+  const firestore = (respond: (c: Captured) => Response) => stubFetch((c) =>
+    c.url.startsWith("https://firestore.googleapis.com/") ? respond(c) : jsonResponse(claudeMessage(JSON.stringify(SAMPLE_RECIPE))));
+  afterEach(() => resetFamilyMemo());
+
+  it("lets a member of the owner's family in, reading the family as that member", async () => {
+    const calls = firestore(() => jsonResponse(famDoc(["uid-owner", "uid-1"], { "uid-owner": "Owner@Example.com", "uid-1": "me@example.com" })));
+    expect((await withFamily()).status).toBe(200);
+    const fs = calls.find((c) => c.url.startsWith("https://firestore.googleapis.com/"))!;
+    expect(fs.url).toContain("/projects/test-project/databases/(default)/documents/families/fam-1?");
+    expect(fs.headers.get("Authorization")).toBe(`Bearer ${goodToken}`);
+    // 두 번째는 기억해 둔 결과로 (Firestore를 다시 읽지 않는다)
+    expect((await withFamily()).status).toBe(200);
+    expect(calls.filter((c) => c.url.startsWith("https://firestore.googleapis.com/"))).toHaveLength(1);
+  });
+  it("blocks a family without anyone on the allow list", async () => {
+    firestore(() => jsonResponse(famDoc(["uid-1", "uid-x"], { "uid-1": "me@example.com", "uid-x": "x@example.com" })));
+    const r = await withFamily();
+    expect(r.status).toBe(403);
+    expect(await r.json()).toMatchObject({ code: "not_allowed" });
+  });
+  it("ignores an allowed email whose owner is not in the member list", async () => {
+    firestore(() => jsonResponse(famDoc(["uid-1"], { "uid-1": "me@example.com", "uid-gone": "owner@example.com" })));
+    expect((await withFamily()).status).toBe(403);
+  });
+  it("blocks when the rules refuse the read (not a member)", async () => {
+    firestore(() => jsonResponse({ error: { code: 403, status: "PERMISSION_DENIED" } }, 403));
+    expect((await withFamily()).status).toBe(403);
+  });
+  it("blocks when the member list does not include the caller", async () => {
+    firestore(() => jsonResponse(famDoc(["uid-owner"], { "uid-owner": "owner@example.com" })));
+    expect((await withFamily()).status).toBe(403);
+  });
+  it("never sends odd family ids to Firestore", async () => {
+    const calls = firestore(() => jsonResponse({}, 500));
+    expect((await withFamily("../users/uid-owner")).status).toBe(403);
+    expect(calls.filter((c) => c.url.startsWith("https://firestore.googleapis.com/"))).toHaveLength(0);
+  });
+  it("allows the X-Family-Id header in CORS", async () => {
+    const r = await call(baseEnv, "/recipe", { method: "OPTIONS" });
+    expect(r.headers.get("Access-Control-Allow-Headers")).toContain("X-Family-Id");
   });
 });
 

@@ -44,7 +44,7 @@ const minusDays = (d, n) => { const [y, m, dd] = d.split("-").map(Number); const
 
 let calls = 0;
 createServer((req, res) => {
-  const cors = { "Access-Control-Allow-Origin": req.headers.origin ?? "*", "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,OPTIONS" };
+  const cors = { "Access-Control-Allow-Origin": req.headers.origin ?? "*", "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Family-Id", "Access-Control-Allow-Methods": "GET,POST,OPTIONS" };
   if (req.method === "OPTIONS") { res.writeHead(204, cors); return res.end(); }
   if (req.url === "/health") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ ok: true, ai: { provider: process.env.MOCK_PROVIDER ?? "claude", model: "mock", fastModel: "mock-fast", webSearch: true }, configured: { gemini: false } })); }
   let body = ""; req.on("data", (c) => (body += c)); req.on("end", () => {
@@ -89,6 +89,15 @@ createServer((req, res) => {
           : { items: [{ ingredient: b.missing[0].name, skippable: true, options: [{ name: b.fridge[0] ?? "고춧가루", fromFridge: !!b.fridge[0], amount: "조금", how: "매운맛을 대신해요" }] }] };
       setTimeout(() => { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ ...out, provider: "mock", model: "mock" })); }, 500);
       return;
+    }
+    // 오늘의 인기 레시피: 가족 ID 머리글이 함께 와야 한다 (허용 목록 밖 가족도 쓰게 하는 확인에 쓴다)
+    if (req.url.startsWith("/trending")) {
+      if (!req.headers["x-family-id"]) { res.writeHead(403, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ error: "가족 ID 없음", code: "not_allowed" })); }
+      const v = (i, region, title) => ({ id: `vid${String(i).padStart(8, "0")}`, url: `https://www.youtube.com/shorts/vid${String(i).padStart(8, "0")}`, title, channel: `채널${i}`,
+        likes: 120000 - i * 5000, views: 900000, thumbnail: "data:image/gif;base64,R0lGODlhAQABAAAAACw=", publishedAt: "2026-10-20T00:00:00Z", seconds: 45, region, vertical: true });
+      const videos = [v(1, "kr", "초간단 계란말이 레시피"), v(2, "kr", "대파 듬뿍 김치찌개"), v(3, "us", "Easy garlic pasta"), v(4, "jp", "親子丼の作り方"),
+        v(5, "es", "Tortilla de patatas"), v(6, "kr", "두부조림 황금레시피"), v(7, "us", "Crispy potatoes")];
+      res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ day: new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10), minLikes: 10000, videos }));
     }
     if (req.url === "/usage") { res.writeHead(200, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ today: { used: 3.25, limit: 40, familyUsed: 10, familyLimit: 150, remaining: 36.75 } })); }
     if (req.url === "/suggest") {

@@ -2,7 +2,7 @@
 //   node scripts/ci-deploy-config.mjs                  → apps/web/.env, apps/worker/wrangler.toml [vars]
 //   node scripts/ci-deploy-config.mjs --worker-url URL → apps/web/.env 의 VITE_WORKER_URL 만
 // FIREBASE_WEB_CONFIG: Firebase 콘솔 "웹 앱" 설정에 나오는 firebaseConfig 덩어리를 그대로 (const … = { apiKey: "…", … })
-// ALLOWED_EMAILS: AI를 쓸 가족 구글 이메일 (쉼표로)
+// ALLOWED_EMAILS: 설치한 사람의 구글 이메일 (쉼표로). 그 사람의 가족에 초대 코드로 들어온 사람은 넣지 않아도 AI를 쓴다
 import { readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,7 +50,7 @@ setEnv({
 });
 
 const emails = (process.env.ALLOWED_EMAILS ?? "").split(/[,\s]+/).filter(Boolean).join(",");
-if (!emails) console.warn("::warning title=ALLOWED_EMAILS 없음::가족 이메일이 없으면 AI 기능이 모두 막혀요 (비용 사고 방지). 저장소 변수 ALLOWED_EMAILS 에 쉼표로 넣어 주세요.");
+if (!emails) console.warn("::warning title=ALLOWED_EMAILS 없음::설치한 사람 이메일이 없으면 AI 기능이 모두 막혀요 (비용 사고 방지). 저장소 변수 ALLOWED_EMAILS 에 쉼표로 넣어 주세요.");
 const tomlPath = join(root, "apps", "worker", "wrangler.toml");
 let toml = readFileSync(tomlPath, "utf8");
 const setVar = (k, v) => { toml = toml.replace(new RegExp(`^${k} = ".*"`, "m"), `${k} = ${JSON.stringify(v)}`); };

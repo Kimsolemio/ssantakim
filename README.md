@@ -52,7 +52,7 @@ scripts/        아이콘 생성기 등
    3. 오른쪽 위 사람 아이콘 → My Profile → API Tokens → Create Token → **Edit Cloudflare Workers** 템플릿 → 만들기 → 비밀값 `CLOUDFLARE_API_TOKEN`
 4. **GitHub** 저장소 → Settings → Secrets and variables → **Actions**
    - Secrets 탭 → New repository secret: `FIREBASE_SERVICE_ACCOUNT`, `ANTHROPIC_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-   - Variables 탭 → New repository variable: `FIREBASE_WEB_CONFIG`(5번 덩어리 그대로), `ALLOWED_EMAILS`(AI를 쓸 가족 구글 이메일, 쉼표로)
+   - Variables 탭 → New repository variable: `FIREBASE_WEB_CONFIG`(5번 덩어리 그대로), `ALLOWED_EMAILS`(설치한 사람의 구글 이메일. 그 사람의 가족에 초대 코드로 들어온 가족은 따로 넣지 않아도 AI를 쓴다. 여러 가족이면 쉼표로)
 5. **Actions** 탭 → 왼쪽 **Deploy** → 가장 최근 실행 → **Re-run all jobs** (이후에는 올릴 때마다 자동). 3~5분 뒤 실행 요약에 `https://<프로젝트>.web.app`이 나온다
 6. 폰에서 그 주소 → 홈 화면에 추가 → Google로 시작하기 → 한 사람이 가족을 만들고 나머지는 초대 코드로
 
@@ -144,7 +144,7 @@ Claude가 안전 정책으로 거절하면 같은 호출 안에서 알맞은 대
 3. `apps/worker/wrangler.toml`의 `[vars]` 수정
    - `FIREBASE_PROJECT_ID`: Firebase 프로젝트 ID (토큰 검증용)
    - `ALLOWED_ORIGINS`: 앱 주소들 (쉼표 구분, 예: `http://localhost:5173,https://cook.example.pages.dev`)
-   - `ALLOWED_EMAILS`: 가족 구글 계정 이메일 (쉼표 구분). **비어 있으면 AI 기능이 전부 막힌다**(비용 사고 방지). 누구나 허용하려면 `*`를 적어야 한다(권장하지 않음). 이메일 인증이 끝난 구글 계정만 맞춰 본다.
+   - `ALLOWED_EMAILS`: 설치한 사람(가족 대표)의 구글 이메일 (쉼표 구분). 이 사람이 있는 가족에 초대 코드로 들어온 사람은 모두 AI를 쓸 수 있다(각자 앱을 한 번 열면 자기 인증된 이메일이 가족 문서에 적히고, AI 서버가 그 사람 권한으로 가족 문서를 읽어 확인한다). **비어 있으면 AI 기능이 전부 막힌다**(비용 사고 방지). 누구나 허용하려면 `*`를 적어야 한다(권장하지 않음). 이메일 인증이 끝난 구글 계정만 맞춰 본다.
    - `DAILY_LIMIT_PER_USER` / `DAILY_LIMIT_TOTAL`: 하루 한도 (기본 40 / 150, 레시피 1·영수증/식재료 사진 2·링크 가져오기 1·글 가져오기 1(사진 있으면 2)·메뉴 추천 1로 센다. 저장할 때 뒤에서 도는 이름 정리는 세지 않는다). 한국 자정에 초기화. AI 호출이 실패하면 돌려준다. "우리 가족" 화면에 오늘 남은 횟수가 보인다.
 4. 하루 한도용 저장소 만들기 (권장, 무료): `pnpm --filter @cook/worker exec wrangler kv namespace create USAGE` → 출력된 id를 `wrangler.toml` 맨 아래 `[[kv_namespaces]]` 주석을 풀어 넣는다. 없으면 1분 한도(사람당 12회)만 동작한다.
 5. 비밀값 등록 후 배포

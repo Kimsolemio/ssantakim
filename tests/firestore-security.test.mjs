@@ -104,3 +104,32 @@ test('authorization records and unknown subcollections are not general shared da
   await assertFails(setDoc(doc(db('owner'),'families','a','admin','x'), {role:'owner'}));
   await assertFails(getDoc(doc(db('owner'),'families','a','joinProofs','guest')));
 });
+// AI 권한 확인용 memberEmails: 각자 자기 칸에 자기 인증된 이메일만
+const dbAs = (uid, email, verified = true) => env.authenticatedContext(uid, { email, email_verified: verified }).firestore();
+test('members can record only their own verified email', async () => {
+  await assertSucceeds(updateDoc(doc(dbAs('owner','owner@example.com'),'families','a'), {'memberEmails.owner':'owner@example.com'}));
+  await assertSucceeds(join('guest'));
+  await assertSucceeds(updateDoc(doc(dbAs('guest','guest@example.com'),'families','a'), {'memberEmails.guest':'guest@example.com'}));
+  // 같은 값을 다시 적어도 된다
+  await assertSucceeds(updateDoc(doc(dbAs('guest','guest@example.com'),'families','a'), {'memberEmails.guest':'guest@example.com'}));
+});
+test('nobody can forge, overwrite or remove email entries', async () => {
+  await assertSucceeds(updateDoc(doc(dbAs('owner','owner@example.com'),'families','a'), {'memberEmails.owner':'owner@example.com'}));
+  await assertSucceeds(join('guest'));
+  const g = dbAs('guest','guest@example.com');
+  // 다른 이메일, 남의 칸, 남의 칸 덮어쓰기·지우기
+  await assertFails(updateDoc(doc(g,'families','a'), {'memberEmails.guest':'owner@example.com'}));
+  await assertFails(updateDoc(doc(g,'families','a'), {'memberEmails.x':'guest@example.com'}));
+  await assertFails(updateDoc(doc(g,'families','a'), {'memberEmails.owner':'guest@example.com'}));
+  await assertFails(updateDoc(doc(g,'families','a'), {memberEmails:{guest:'guest@example.com'}}));
+  // 인증 안 된 이메일, 이메일 없는 계정
+  await assertFails(updateDoc(doc(dbAs('guest','guest@example.com',false),'families','a'), {'memberEmails.guest':'guest@example.com'}));
+  await assertFails(updateDoc(doc(db('guest'),'families','a'), {'memberEmails.guest':'guest@example.com'}));
+  // 이메일과 함께 다른 칸을 바꾸는 것도 안 된다
+  await assertFails(updateDoc(doc(g,'families','a'), {'memberEmails.guest':'guest@example.com', members:['owner','guest','x']}));
+  await assertFails(updateDoc(doc(g,'families','a'), {'memberEmails.guest':'guest@example.com', name:'x'}));
+});
+test('outsiders cannot write an email entry into another family', async () => {
+  await assertFails(updateDoc(doc(dbAs('stranger','owner@example.com'),'families','a'), {'memberEmails.stranger':'owner@example.com'}));
+  await assertFails(updateDoc(doc(dbAs('other','other@example.com'),'families','a'), {'memberEmails.other':'other@example.com'}));
+});

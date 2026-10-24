@@ -16,6 +16,11 @@ async function viaDemo<T>(path: string, body: unknown, signal?: AbortSignal): Pr
   }
 }
 
+/** 지금 보고 있는 가족 (AI 서버가 "설치한 사람이 있는 가족의 구성원인가"를 확인하는 데 쓴다) */
+let currentFamilyId: string | null = null;
+export function setApiFamily(id: string | null) { currentFamilyId = id; }
+const familyHeader = (): Record<string, string> => (currentFamilyId ? { "X-Family-Id": currentFamilyId } : {});
+
 export class ApiError extends Error {
   /** code: 서버가 알려 준 상황 (예: instagram → 캡션 입력으로 전환) */
   constructor(message: string, public status: number, public code?: string) { super(message); }
@@ -34,7 +39,7 @@ export async function callWorker<T>(path: string, body: unknown, signal?: AbortS
   try {
     res = await fetch(`${workerUrl}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...familyHeader() },
       body: JSON.stringify(body),
       signal,
     });
@@ -58,7 +63,7 @@ export async function getWorker<T>(path: string): Promise<T> {
   if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요", 0, "offline");
   const user = getAuthInstance().currentUser;
   if (!user) throw new ApiError("로그인이 필요합니다", 401);
-  const res = await fetch(`${workerUrl}${path}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
+  const res = await fetch(`${workerUrl}${path}`, { headers: { Authorization: `Bearer ${await user.getIdToken()}`, ...familyHeader() } });
   const data = await res.json().catch(() => null) as { error?: string; code?: string } | null;
   if (!res.ok) throw new ApiError(friendly(res.status, data?.error), res.status, data?.code);
   return data as T;

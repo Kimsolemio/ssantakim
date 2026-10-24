@@ -4,6 +4,7 @@ import {
 } from "firebase/firestore";
 import { Family, FamilyProfile, makeInviteCode } from "@cook/shared";
 import { getDb } from "./firebase";
+import { setApiFamily } from "./api";
 import { useAuth } from "./auth";
 
 type FamilyState = {
@@ -50,6 +51,19 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       setFamily(parsed.success ? parsed.data : null);
     }, () => setFamily(null));
   }, [familyId, user?.uid]);
+
+  // AI 서버에 지금 가족을 알려 준다 (허용 목록에 없는 가족도 설치한 사람의 권한으로 AI를 쓰게)
+  useEffect(() => { setApiFamily(familyId); }, [familyId]);
+
+  // 내 인증된 이메일을 가족 문서에 적어 둔다 (규칙상 자기 칸, 자기 이메일만). 이미 같으면 아무것도 안 한다
+  const email = user?.emailVerified ? user.email : null;
+  const recorded = family?.memberEmails?.[user?.uid ?? ""];
+  useEffect(() => {
+    if (!user || !familyId || !family || !email || recorded === email) return;
+    if (!family.members.includes(user.uid)) return;
+    updateDoc(doc(getDb(), "families", familyId), { [`memberEmails.${user.uid}`]: email })
+      .catch((e: unknown) => console.warn("memberEmails", e));
+  }, [user, familyId, family, email, recorded]);
 
   const createFamily = async (name: string) => {
     if (!user) throw new Error("로그인이 필요합니다");

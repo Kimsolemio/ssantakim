@@ -30,7 +30,7 @@ function corsHeaders(env: Env, request: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": ok ? origin : (allowed[0] ?? ""),
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Family-Id",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
@@ -48,7 +48,8 @@ async function authenticate(request: Request, env: Env): Promise<Verified> {
   let user: Verified;
   try { user = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID); }
   catch (e) { throw new HttpError(401, e instanceof AuthError ? e.message : "토큰 검증 실패"); }
-  checkAllowed(env, user);
+  // 허용 목록에 없으면, 앱이 알려 준 가족에 허용된 사람이 있는지 그 사람 권한으로 확인한다
+  await checkAllowed(env, user, { projectId: env.FIREBASE_PROJECT_ID, idToken: token, familyId: request.headers.get("X-Family-Id") });
   return user;
 }
 
