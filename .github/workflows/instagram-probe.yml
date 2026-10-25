@@ -10,7 +10,7 @@ on:
         required: false
   push:
     branches: [claude/cooking-app-planning-9zxk62]
-    paths: [.github/workflows/instagram-probe.yml, apps/worker/probe/**, apps/worker/test/instagram-live.test.ts]
+    paths: [.github/workflows/instagram-probe.yml, apps/worker/test/instagram-live.test.ts]
 concurrency:
   group: instagram-probe
   cancel-in-progress: false

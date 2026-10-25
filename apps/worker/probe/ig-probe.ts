@@ -32,6 +32,35 @@ export default {
         };
       } catch (e) { out[name] = { error: e instanceof Error ? e.message : String(e) }; }
     }
+    // 같은 게시물을 여러 방식으로 열어 어떤 방식에 캡션이 담겨 오는지 본다
+    const variants: [string, string, Record<string, string>][] = [
+      ["embed+iframe", `https://www.instagram.com/p/${code}/embed/captioned/`, { ...headers, "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "cross-site", Referer: "https://family-cook.example/" }],
+      ["embed?cr", `https://www.instagram.com/p/${code}/embed/captioned/?cr=1&v=14&wp=540`, headers],
+      ["reel-embed", `https://www.instagram.com/reel/${code}/embed/captioned/`, headers],
+      ["embed-plain", `https://www.instagram.com/p/${code}/embed/`, headers],
+      ["embed-noUA", `https://www.instagram.com/p/${code}/embed/captioned/`, { Accept: "text/html" }],
+      ["oembed", `https://www.instagram.com/api/v1/oembed/?url=${encodeURIComponent(`https://www.instagram.com/p/${code}/`)}`, { "User-Agent": UA, Accept: "application/json" }],
+    ];
+    const deep: Record<string, unknown> = {};
+    for (const [name, target, h] of variants) {
+      try {
+        const r = await fetch(target, { headers: h, redirect: "manual" });
+        const text = r.status === 200 ? await r.text() : "";
+        if (r.status !== 200) void r.body?.cancel();
+        const at = (needle: string) => { const i = text.indexOf(needle); return i < 0 ? null : text.slice(Math.max(0, i - 60), i + 240).replace(/\s+/g, " "); };
+        deep[name] = {
+          status: r.status, location: r.headers.get("location"), type: r.headers.get("content-type"), bytes: text.length,
+          title: /<title[^>]*>([^<]{0,120})/.exec(text)?.[1]?.trim() ?? null,
+          codeHits: text.split(code).length - 1,
+          markers: ["contextJSON", 'class="Caption"', "edge_media_to_caption", "EmbeddedMedia", "xdt_", "shortcode_media", "ScheduledServerJS", "og:description", '"caption"', "accessibility_caption"].filter((m) => text.includes(m)),
+          parsed: parseInstagramEmbed(text).caption?.slice(0, 200) ?? null,
+          snipCaption: at('"caption"') ?? at('class="Caption"'),
+          snipCode: at(code),
+          head: text.length < 3000 ? text.slice(0, 1500) : null,
+        };
+      } catch (e) { deep[name] = { error: e instanceof Error ? e.message : String(e) }; }
+    }
+    out.deep = deep;
     const p = await instagramPost(resolved.url, fetch);
     out.instagramPost = { blocked: p.blocked, missing: p.missing, caption: p.post?.caption?.slice(0, 300) ?? null, username: p.post?.username ?? null, image: !!p.post?.image };
     return Response.json(out);
