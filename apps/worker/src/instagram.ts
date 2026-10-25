@@ -51,19 +51,23 @@ export function instagramShortcode(raw: string): string | null {
 
 export const isInstagramShare = (raw: string) => { try { const u = new URL(raw); return isInstaHost(u.hostname) && /^\/share\//.test(u.pathname); } catch { return false; } };
 
-/** 인스타 앱 "공유" 주소(/share/reel/…)는 한 번 넘겨 주는 주소라, 실제 게시물 주소로 바꾼다 (인스타 안에서만) */
-export async function resolveInstagramUrl(raw: string, f: typeof fetch): Promise<string> {
-  if (!isInstagramShare(raw)) return raw;
+/**
+ * 인스타 앱 "공유" 주소(/share/reel/…)는 한 번 넘겨 주는 주소라, 실제 게시물 주소로 바꾼다 (인스타 안에서만).
+ * 못 풀면 받은 주소 그대로. blocked: 인스타가 막았다 (로그인 화면으로 넘김 등)
+ */
+export async function resolveInstagramUrl(raw: string, f: typeof fetch): Promise<{ url: string; blocked: boolean }> {
+  if (!isInstagramShare(raw)) return { url: raw, blocked: false };
   try {
     const r = await f(raw, { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(8_000) });
     void r.body?.cancel();
+    if (looksBlocked(r)) return { url: raw, blocked: true };
     const loc = r.headers.get("location");
     if (r.status >= 300 && r.status < 400 && loc) {
       const next = new URL(loc, raw);
-      if (next.protocol === "https:" && isInstaHost(next.hostname)) return next.toString();
+      if (next.protocol === "https:" && isInstaHost(next.hostname)) return { url: next.toString(), blocked: false };
     }
   } catch { /* 아래 */ }
-  return raw;
+  return { url: raw, blocked: false };
 }
 
 /** JSON 안 어디에 있든 첫 번째로 나오는 키 값을 찾는다 (퍼가기 페이지의 데이터 모양이 자주 바뀐다) */
@@ -136,15 +140,19 @@ export function captionFromOgDescription(desc: string | null): string | null {
   return str(m ? m[1] : null);
 }
 
-/** 공개 게시물 읽기. blocked: 인스타가 서버 접속을 막았다 (로그인 화면·너무 많은 요청) */
-export async function instagramPost(url: string, f: typeof fetch): Promise<{ post: InstagramPost | null; blocked: boolean }> {
+/**
+ * 공개 게시물 읽기. blocked: 인스타가 서버 접속을 막았다 (로그인 화면·너무 많은 요청).
+ * missing: 퍼가기·본 페이지 모두 "없는 게시물"(404) — 지워졌거나 비공개라 다른 방법으로도 못 읽는다
+ */
+export async function instagramPost(url: string, f: typeof fetch): Promise<{ post: InstagramPost | null; blocked: boolean; missing: boolean }> {
   const shortcode = instagramShortcode(url);
-  if (!shortcode) return { post: null, blocked: false };
-  let blocked = false;
+  if (!shortcode) return { post: null, blocked: false, missing: false };
+  let blocked = false, embedStatus = 0, pageStatus = 0;
   const headers = { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8", Accept: "text/html" };
   let post: Omit<InstagramPost, "shortcode"> = { caption: null, username: null, image: null };
   try {
     const r = await f(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, { headers, redirect: "manual", signal: AbortSignal.timeout(10_000) });
+    embedStatus = r.status;
     if (r.ok) post = parseInstagramEmbed(await readLimited(r, 2_000_000));
     else { blocked = looksBlocked(r); void r.body?.cancel(); }
     console.log(JSON.stringify({ route: "instagram", step: "embed", status: r.status, caption: !!post.caption, image: !!post.image }));
@@ -153,16 +161,17 @@ export async function instagramPost(url: string, f: typeof fetch): Promise<{ pos
     // 퍼가기 페이지가 막혔으면 본 페이지의 미리보기 문구라도 (로그인 화면이면 없다)
     try {
       const r = await f(`https://www.instagram.com/p/${shortcode}/`, { headers, redirect: "manual", signal: AbortSignal.timeout(10_000) });
+      pageStatus = r.status;
       if (r.ok) {
         const html = await readLimited(r, 1_500_000);
         const cap = captionFromOgDescription(metaContent(html, "og:description"));
         if (cap) { post = { ...post, caption: cap, image: post.image ?? safeImage(metaContent(html, "og:image")) }; blocked = false; }
-      } else void r.body?.cancel();
+      } else { blocked ||= looksBlocked(r); void r.body?.cancel(); }
       console.log(JSON.stringify({ route: "instagram", step: "page", status: r.status, caption: !!post.caption }));
     } catch (e) { console.warn("instagram page failed", e instanceof Error ? e.message : e); }
   }
   const found = !!(post.caption || post.image);
-  return { post: found ? { shortcode, ...post } : null, blocked: blocked && !found };
+  return { post: found ? { shortcode, ...post } : null, blocked: blocked && !found, missing: !found && embedStatus === 404 && pageStatus === 404 };
 }
 
 const MAX_IMAGE = 1_500_000;

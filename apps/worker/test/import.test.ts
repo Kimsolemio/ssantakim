@@ -215,16 +215,78 @@ describe("/import/url — Instagram and web", () => {
     expect(calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length).toBe(igCalls);
   });
 
-  it("does not treat a missing post (404) as Instagram blocking us", async () => {
-    let n = 0;
+  it("does not treat a missing post (404) as Instagram blocking us, and does not pay Claude for it", async () => {
     const calls = stub([
       { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 404 }) },
-      { match: isClaude, reply: () => jsonResponse(fetched(++n ? "레시피 없음" : "", "https://www.instagram.com/p/GONEpost/embed/captioned/")) },
+      { match: isClaude, reply: () => jsonResponse(fetched("레시피 없음")) },
     ]);
-    await post("/import/url", { url: "https://www.instagram.com/p/GONEpost/" });
+    const r = await post("/import/url", { url: "https://www.instagram.com/p/GONEpost/" });
+    expect(r.status).toBe(422);
+    expect((await r.json() as any).error).toContain("지워졌거나 비공개");
+    expect(calls.some((c) => isClaude(c.url))).toBe(false);
     const before = calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length;
     await post("/import/url", { url: "https://www.instagram.com/p/OTHERpost/" });
     expect(calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length).toBeGreaterThan(before);
+  });
+
+  it("keeps reading on the Worker while only Claude's reading is failing", async () => {
+    let embeds = 0;
+    const calls = stub([
+      // 처음엔 퍼가기 페이지가 비어 있고 (캡션 없음), 다음엔 캡션이 있다
+      { match: isEmbed, reply: () => html(++embeds === 1 ? "<html></html>" : embedWith("떡볶이 황금레시피\n떡 300g, 고추장 2큰술, 설탕 1큰술\n1. 물을 끓인다 2. 떡을 넣는다")) },
+      { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => html("<html></html>") },
+      { match: isClaude, reply: (c) => jsonResponse(JSON.stringify(c.body).includes("web_fetch") ? fetched("죄송합니다. 페이지를 읽지 못했어요.") : claudeMessage(found())) },
+    ]);
+    expect((await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).status).toBe(422);
+    const claudeBefore = calls.filter((c) => isClaude(c.url)).length;
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any;
+    expect(j.via).toBe("instagram_caption");
+    expect(embeds).toBe(2);
+    // 두 번째는 캡션 정리 한 번만 (웹 읽기는 건너뜀)
+    expect(calls.filter((c) => isClaude(c.url)).length).toBe(claudeBefore + 1);
+  });
+
+  it("counts a refusal (403) or a login redirect on either page as Instagram blocking the Worker", async () => {
+    let n = 0;
+    const calls = stub([
+      { match: isEmbed, reply: () => new Response("", { status: 403 }) },
+      { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 302, headers: { location: "https://www.instagram.com/accounts/login/" } }) },
+      { match: isClaude, reply: () => jsonResponse(n++ % 2 === 0 ? fetched("떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다.", "https://www.instagram.com/p/C1abcDEF/embed/captioned/") : claudeMessage(found())) },
+    ]);
+    expect((await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any).via).toBe("instagram_caption");
+    const igCalls = calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length;
+    await post("/import/url", { url: "https://www.instagram.com/p/C2abcDEF/" });
+    expect(calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length).toBe(igCalls);
+  });
+
+  it("hands a share-button link to Claude as is while the Worker is blocked", async () => {
+    let n = 0;
+    const calls = stub([
+      { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 429 }) },
+      { match: isClaude, reply: () => jsonResponse(n++ % 2 === 0 ? fetched("떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다.", "https://www.instagram.com/reel/C1abcDEF/") : claudeMessage(found())) },
+    ]);
+    await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" });
+    const igCalls = calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length;
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/share/reel/BAxyz123/" })).json() as any;
+    expect(j.via).toBe("instagram_caption");
+    expect(j.result.recipe.source.url).toBe("https://www.instagram.com/share/reel/BAxyz123/");
+    // 막힌 동안은 공유 주소 풀기도 하지 않고, Claude에게 공유 주소를 그대로 준다
+    expect(calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length).toBe(igCalls);
+    expect(JSON.stringify(calls.filter((c) => isClaude(c.url)).at(-2)!.body)).toContain("https://www.instagram.com/share/reel/BAxyz123/");
+  });
+
+  it("treats a share link that redirects to the login page as blocked, then lets Claude try it", async () => {
+    let n = 0;
+    const calls = stub([
+      { match: (u) => u.startsWith("https://www.instagram.com/share/"), reply: () => new Response("", { status: 302, headers: { location: "https://www.instagram.com/accounts/login/?next=%2Fshare%2Freel%2FBAxyz123%2F" } }) },
+      { match: isClaude, reply: () => jsonResponse(n++ % 2 === 0 ? fetched("떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다.", "https://www.instagram.com/reel/C1abcDEF/") : claudeMessage(found())) },
+    ]);
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/share/reel/BAxyz123/" })).json() as any;
+    expect(j.via).toBe("instagram_caption");
+    expect(calls.some((c) => c.url.includes("/accounts/login"))).toBe(false);
+    const igCalls = calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length;
+    await post("/import/url", { url: "https://www.instagram.com/p/C2abcDEF/" });
+    expect(calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length).toBe(igCalls);
   });
 
   it("follows the share-button link to the real post", async () => {

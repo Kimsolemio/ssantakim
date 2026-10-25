@@ -198,13 +198,16 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
  */
 async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch): Promise<ImportResponse> {
   if ((env.INSTAGRAM_EMBED ?? "").trim().toLowerCase() === "off") throw instagramBlocked("인스타 게시물 읽기를 꺼 두었어요");
-  // 서버도 AI 웹 읽기도 막혀 있으면 아무것도 묻지 않고 바로 안내 (공유 주소 풀기도 하지 않는다)
-  if (await igBlockedNow(env.USAGE, "ai")) throw instagramBlocked();
-  const url = await resolveInstagramUrl(rawUrl, f);
+  const [serverBlocked, aiBlocked] = await Promise.all([igBlockedNow(env.USAGE, "server"), igBlockedNow(env.USAGE, "ai")]);
+  // 서버 읽기도 AI 웹 읽기도 막혀 있으면 아무것도 묻지 않고 바로 안내
+  if (serverBlocked && aiBlocked) throw instagramBlocked();
+  // 서버가 막혀 있으면 인스타에 아무것도 묻지 않는다 (공유 주소 풀기도). 못 푼 공유 주소는 그대로 Claude에게 준다
+  let url = rawUrl, blocked = serverBlocked;
+  if (!serverBlocked) ({ url, blocked } = await resolveInstagramUrl(rawUrl, f));
   const code = instagramShortcode(url);
-  if (!code) throw instagramBlocked("게시물 주소를 찾지 못했어요");
-  const serverBlocked = await igBlockedNow(env.USAGE, "server");
-  const { post, blocked } = serverBlocked ? { post: null, blocked: true } : await instagramPost(url, f);
+  if (!code && !isInstagramShare(url)) throw instagramBlocked("게시물 주소를 찾지 못했어요");
+  let post: Awaited<ReturnType<typeof instagramPost>>["post"] = null, missing = false;
+  if (code && !blocked) ({ post, blocked, missing } = await instagramPost(url, f));
   const source: RecipeSource = { type: "instagram", url: rawUrl, ...(post?.username ? { channel: post.username } : {}) };
   const header = `인스타그램 게시물${post?.username ? `\n작성자: @${post.username}` : ""}\n주소: ${url}`;
   if (post) {
@@ -219,15 +222,18 @@ async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch):
       return runImport(importAi(env, parts), parts, source, "instagram_caption");
     }
   }
+  // 지워졌거나 비공개인 게시물: Claude에게 물어도 못 읽으니 돈 들이지 않고 안내 (막힘으로 기억하지도 않는다)
+  if (missing) throw instagramBlocked("게시물을 찾지 못했어요. 지워졌거나 비공개 게시물일 수 있어요");
   if (blocked && !serverBlocked) await markInstagramBlocked(env.USAGE, "server");
-  // 서버에서 막혔으면 Claude가 퍼가기 페이지를 직접 읽어 본다 (Claude일 때만). 인스타 페이지를 실제로 읽은 경우만 믿는다
+  // 서버에서 못 읽었으면 Claude가 퍼가기 페이지를 직접 읽어 본다 (Claude일 때만, 최근에 Claude도 못 읽었으면 건너뛴다). 인스타 페이지를 실제로 읽은 경우만 믿는다
+  if (aiBlocked) throw instagramBlocked();
   const ai = selectProvider(env);
   if (!ai.research) throw instagramBlocked();
   let r: Awaited<ReturnType<NonNullable<typeof ai.research>>>;
   try {
     r = await ai.research({
       system: PAGE_READ_PROMPT,
-      prompt: `이 인스타그램 게시물의 캡션에 있는 레시피를 읽어 주세요: https://www.instagram.com/p/${code}/embed/captioned/`,
+      prompt: `이 인스타그램 게시물의 캡션에 있는 레시피를 읽어 주세요: ${code ? `https://www.instagram.com/p/${code}/embed/captioned/` : url}`,
       searches: 0, fetches: 1, maxTokens: 4000,
     });
   } catch (e) {
