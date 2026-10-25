@@ -3,7 +3,7 @@
  * 점검 워크플로가 만든 열쇠(PROBE_TOKEN)가 있어야만 답한다. 인스타 주소만 읽는다.
  */
 import { metaContent } from "../src/extract";
-import { captionFromOgDescription, instagramPost, instagramShortcode, parseInstagramEmbed, resolveInstagramUrl, UA } from "../src/instagram";
+import { captionFromOgDescription, fetchInstagramVideo, instagramPost, instagramShortcode, parseInstagramEmbed, resolveInstagramUrl, UA } from "../src/instagram";
 
 export default {
   async fetch(req: Request, env: { PROBE_TOKEN?: string }): Promise<Response> {
@@ -15,6 +15,13 @@ export default {
     const code = instagramShortcode(resolved.url);
     Object.assign(out, { resolved, code });
     if (!code) return Response.json(out);
+    // video=1: 진짜 서버처럼 게시물을 읽어 영상 파일을 그대로 넘긴다 (점검이 장면을 뽑아 Claude에게 보낸다). 캡션은 머리글로
+    if (q.get("video") === "1") {
+      const p = await instagramPost(resolved.url, fetch);
+      const v = p.post?.video ? await fetchInstagramVideo(p.post.video, fetch) : null;
+      if (!v) return Response.json({ ...out, video: null, blocked: p.blocked }, { status: 404 });
+      return new Response(v.body, { headers: { "Content-Type": v.type, "X-Caption": encodeURIComponent(p.post?.caption ?? "") } });
+    }
     const headers = { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8", Accept: "text/html" };
     for (const [name, target] of [["embed", `https://www.instagram.com/p/${code}/embed/captioned/`], ["page", `https://www.instagram.com/p/${code}/`]] as const) {
       try {

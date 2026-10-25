@@ -37,18 +37,29 @@ describe.skipIf(!url)("live Instagram", () => {
   }, 180_000);
 
   it.skipIf(!key)("imports the link like the app does, then reads the reel's frames", async () => {
-    const env = { ANTHROPIC_API_KEY: key!, AI_PROVIDER: "claude" };
-    const t0 = Date.now();
-    const r = await importFromUrl(env, url!, fetch);
-    console.log("IMPORT URL", JSON.stringify({ seconds: Math.round((Date.now() - t0) / 1000), via: r.via, model: r.model, video: r.video ?? null, hasRecipe: r.result.hasRecipe, reason: r.result.reason, title: r.result.recipe?.title ?? null }));
-    if (r.result.hasRecipe || !r.video) return;
-    const resolved = await resolveInstagramUrl(url!, fetch);
-    const p = await instagramPost(resolved.url, fetch);
-    const v = p.post?.video ? await fetchInstagramVideo(p.post.video, fetch) : null;
-    if (!v) { console.log("REEL", "영상을 받지 못함"); return; }
+    const env = { ANTHROPIC_API_KEY: key!, AI_PROVIDER: "claude", CLAUDE_MODEL: process.env.COOK_CLAUDE_MODEL || "claude-sonnet-5-5" };
+    const probe = process.env.COOK_PROBE_URL, probeToken = process.env.COOK_PROBE_TOKEN;
+    // 영상과 캡션: Cloudflare 임시 Worker가 있으면 진짜 서버와 같은 곳에서 받고, 없으면 이 컴퓨터에서 앱처럼 링크부터
+    let caption: string | null = null, bytes: Uint8Array | null = null;
+    if (probe && probeToken) {
+      const r = await fetch(`${probe}/?video=1&t=${encodeURIComponent(probeToken)}&u=${encodeURIComponent(url!)}`);
+      if (r.ok) { caption = decodeURIComponent(r.headers.get("x-caption") ?? "") || null; bytes = new Uint8Array(await r.arrayBuffer()); }
+      console.log("REEL VIDEO", JSON.stringify({ from: "cloudflare", status: r.status, bytes: bytes?.byteLength ?? 0, caption }));
+    } else {
+      const t0 = Date.now();
+      const r = await importFromUrl(env, url!, fetch);
+      console.log("IMPORT URL", JSON.stringify({ seconds: Math.round((Date.now() - t0) / 1000), via: r.via, model: r.model, video: r.video ?? null, hasRecipe: r.result.hasRecipe, reason: r.result.reason, title: r.result.recipe?.title ?? null }));
+      if (r.result.hasRecipe || !r.video) return;
+      caption = r.video.caption;
+      const resolved = await resolveInstagramUrl(url!, fetch);
+      const p = await instagramPost(resolved.url, fetch);
+      const v = p.post?.video ? await fetchInstagramVideo(p.post.video, fetch) : null;
+      if (v) bytes = new Uint8Array(await new Response(v.body).arrayBuffer());
+    }
+    if (!bytes?.byteLength) { console.log("REEL", "영상을 받지 못함"); return; }
     const dir = mkdtempSync(join(tmpdir(), "reel-"));
     const file = join(dir, "reel.mp4");
-    writeFileSync(file, new Uint8Array(await new Response(v.body).arrayBuffer()));
+    writeFileSync(file, bytes);
     // 앱과 같게: 앞뒤를 조금 빼고 고르게 최대 12장, 긴 변 768px
     const duration = Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).toString().trim());
     const n = Math.max(1, Math.min(12, Math.floor(duration / 1.5) || 1));
@@ -60,9 +71,9 @@ describe.skipIf(!url)("live Instagram", () => {
       return { mediaType: "image/jpeg" as const, data: Buffer.from(readFileSync(out)).toString("base64") };
     });
     const t1 = Date.now();
-    const f = await importFromText(env, { text: r.video.caption, url: url!, images, frames: true });
+    const f = await importFromText(env, { text: caption, url: url!, images, frames: true });
     const rec = f.result.recipe;
-    console.log("REEL", JSON.stringify({ seconds: Math.round((Date.now() - t1) / 1000), duration, frames: images.length, bytes: v.length, hasRecipe: f.result.hasRecipe, reason: f.result.reason, title: rec?.title ?? null,
+    console.log("REEL", JSON.stringify({ seconds: Math.round((Date.now() - t1) / 1000), model: f.model, duration, frames: images.length, bytes: bytes.byteLength, hasRecipe: f.result.hasRecipe, reason: f.result.reason, title: rec?.title ?? null,
       ingredients: rec?.ingredients.map((i) => `${i.name} ${i.qty ?? ""}${i.unit === "기타" ? "" : i.unit}${i.note ? ` (${i.note})` : ""}`) ?? [],
       steps: rec?.steps.map((x) => x.text) ?? [] }));
   }, 300_000);
