@@ -140,6 +140,8 @@ describe("/import/url — Instagram and web", () => {
     expect(ai.body.messages[0].content.at(-1).text).toContain("@cook_mom");
     // 캡션이 충분하면 표지 사진은 받지 않는다
     expect(calls.some((c) => c.url.includes("cdninstagram.com"))).toBe(false);
+    // 틀(iframe)에 띄우는 요청이어야 인스타가 캡션이 담긴 화면을 준다
+    expect(calls.find((c) => isEmbed(c.url))!.headers.get("sec-fetch-dest")).toBe("iframe");
   });
 
   it("adds the cover picture when the caption is too short to hold a recipe", async () => {
@@ -169,6 +171,79 @@ describe("/import/url — Instagram and web", () => {
     const j2 = await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any;
     expect(j2.via).toBe("instagram_caption");
     expect(calls.find((c) => isClaude(c.url))!.body.messages[0].content.at(-1).text).toContain("계란 4개 소금 약간");
+    // 본 페이지는 주소창에서 연 것처럼 열어야 미리보기 문구를 준다
+    expect(calls.find((c) => c.url === "https://www.instagram.com/p/C1abcDEF/")!.headers.get("sec-fetch-dest")).toBe("document");
+  });
+
+  // 릴스: 퍼가기 페이지 데이터에 영상 주소가 함께 온다
+  const VIDEO = "https://scontent-iad6-1.cdninstagram.com/o1/v/t2/f2/m86/reel.mp4?efg=x&oh=y";
+  const reelEmbed = (caption: string, video = VIDEO) => {
+    const ctx = JSON.stringify({ context: { media: { owner: { username: "bayashi_tv" }, is_video: true, video_url: video, display_url: "https://scontent.cdninstagram.com/v/t51/cover.jpg", edge_media_to_caption: { edges: [{ node: { text: caption } }] } } } });
+    return `<html><body><script>window.x = {"contextJSON":${JSON.stringify(ctx)}}</script></body></html>`;
+  };
+  const mp4 = (bytes = 3000, extra: Record<string, string> = {}) => new Response(new Uint8Array(bytes), { headers: { "content-type": "video/mp4", "content-length": String(bytes), ...extra } });
+
+  it("asks the app for video frames, without calling AI, when a reel's caption is too short", async () => {
+    const calls = stub([
+      { match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣")) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(found())) },
+    ]);
+    const r = await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" });
+    expect(r.status).toBe(200);
+    const j = await r.json() as any;
+    expect(j).toMatchObject({ via: "instagram_caption", model: "", video: { caption: "Salmon Sushi 🍣" }, result: { hasRecipe: false, recipe: null } });
+    expect(calls.some((c) => isClaude(c.url))).toBe(false);
+    // 표지 사진도 받지 않는다 (영상 장면이 대신한다)
+    expect(calls.some((c) => c.url.includes("cdninstagram.com"))).toBe(false);
+  });
+
+  it("still reads a long reel caption, and tells the app it can look at the video", async () => {
+    const calls = stub([
+      { match: isEmbed, reply: () => html(reelEmbed("연어 초밥 만들기\n밥 300g, 식초 2큰술, 설탕 1큰술, 소금 1작은술\n1. 밥에 단촛물을 섞는다 2. 연어를 썬다")) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(notFound)) },
+    ]);
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/reel/C1abcDEF/" })).json() as any;
+    expect(calls.some((c) => isClaude(c.url))).toBe(true);
+    expect(j.video.caption).toContain("연어 초밥");
+  });
+
+  it("streams the reel video it found itself, and only from Instagram's CDN", async () => {
+    const calls = stub([
+      { match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣")) },
+      { match: (u) => u.startsWith("https://scontent-iad6-1.cdninstagram.com/"), reply: () => mp4(3000) },
+    ]);
+    const r = await post("/import/instagram-video", { url: "https://www.instagram.com/reel/C1abcDEF/?igsh=x" });
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toBe("video/mp4");
+    expect((await r.arrayBuffer()).byteLength).toBe(3000);
+    expect(calls.find((c) => c.url === VIDEO)).toBeTruthy();
+    // 인스타 게시물 주소가 아니면 받지 않는다
+    expect((await post("/import/instagram-video", { url: "https://example.com/video.mp4" })).status).toBe(400);
+  });
+
+  it("refuses a video that is not on Instagram's CDN, not a video, or too big", async () => {
+    stub([{ match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣", "https://evil.example.com/reel.mp4")) }]);
+    expect((await post("/import/instagram-video", { url: "https://www.instagram.com/p/C1abcDEF/" })).status).toBe(422);
+    stub([
+      { match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣")) },
+      { match: (u) => u.startsWith("https://scontent-iad6-1.cdninstagram.com/"), reply: () => html("<html>login</html>") },
+    ]);
+    expect((await post("/import/instagram-video", { url: "https://www.instagram.com/p/C1abcDEF/" })).status).toBe(422);
+    stub([
+      { match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣")) },
+      { match: (u) => u.startsWith("https://scontent-iad6-1.cdninstagram.com/"), reply: () => mp4(10, { "content-length": "50000000" }) },
+    ]);
+    const r = await post("/import/instagram-video", { url: "https://www.instagram.com/p/C1abcDEF/" });
+    expect(r.status).toBe(422);
+    expect(await r.json()).toMatchObject({ code: "instagram" });
+  });
+
+  it("does not use the video route while Instagram is blocking the Worker", async () => {
+    const calls = stub([{ match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 429 }) }]);
+    expect((await post("/import/instagram-video", { url: "https://www.instagram.com/p/C1abcDEF/" })).status).toBe(422);
+    const before = calls.length;
+    expect((await post("/import/instagram-video", { url: "https://www.instagram.com/p/C1abcDEF/" })).status).toBe(422);
+    expect(calls.length).toBe(before);
   });
 
   /** Claude 웹 읽기 응답: 실제로 읽은 주소가 있으면 web_fetch 결과 블록을 붙인다 */

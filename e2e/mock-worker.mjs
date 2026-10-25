@@ -1,5 +1,10 @@
 // 2단계 e2e용 가짜 Worker: Authorization 헤더만 확인하고 고정 레시피를 돌려준다.
 import { createServer } from "node:http";
+import { existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+/** 인스타 릴스 영상 자리: E2E가 화면을 녹화해 여기에 놓는다 */
+const REEL_FILE = join(tmpdir(), "family-cook-reel.webm");
 const recipe = {
   title: "알리오올리오", source: { type: "generated" }, servingsBase: 2, timeMinutes: 20, difficulty: "쉬움",
   tags: ["파스타", "20분요리", "간단"],
@@ -60,6 +65,14 @@ createServer((req, res) => {
       setTimeout(() => { res.writeHead(200, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify({ recipe: r, model: "mock", usage: { input: 1, output: 1 } })); }, 800);
       return;
     }
+    // 인스타 릴스 영상: 앱이 받아 장면을 뽑는다
+    if (req.url === "/import/instagram-video") {
+      const b = JSON.parse(body || "{}");
+      console.log("mock /import/instagram-video", JSON.stringify({ url: b.url }));
+      if (!String(b.url ?? "").includes("REELvideo") || !existsSync(REEL_FILE)) { res.writeHead(422, { ...cors, "content-type": "application/json" }); return res.end(JSON.stringify({ error: "이 게시물의 영상을 받지 못했어요. 캡션을 복사해 붙여넣거나, 영상을 화면 녹화해 올려 주세요.", code: "instagram" })); }
+      res.writeHead(200, { ...cors, "content-type": "video/webm" });
+      return res.end(readFileSync(REEL_FILE));
+    }
     if (req.url === "/import/url" || req.url === "/import/text") {
       const b = JSON.parse(body || "{}");
       console.log("mock " + req.url, JSON.stringify({ url: b.url, text: b.text?.slice(0, 40), images: b.images?.length, frames: b.frames }));
@@ -68,6 +81,8 @@ createServer((req, res) => {
       if (req.url === "/import/url") {
         const u = String(b.url ?? "");
         // 공개 게시물(캡션을 읽을 수 있는 경우)과 막힌 경우
+        // 캡션이 짧은 릴스: AI 없이 "영상을 봐 주세요"
+        if (u.includes("instagram.com/reel/REELvideo")) return setTimeout(() => send(200, { result: { hasRecipe: false, reason: "캡션이 짧아 영상을 보고 찾아야 해요", dishName: null, recipe: null }, via: "instagram_caption", provider: "mock", model: "", video: { caption: "Salmon Sushi 🍣" } }), 300);
         if (u.includes("instagram.com/p/OKpost")) return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make("인스타 캡션 떡볶이", { type: "instagram", url: u, channel: "cook_mom" }) }, via: "instagram_caption", provider: "mock", model: "mock" }), 700);
         if (u.includes("instagram.com")) return send(422, { error: "인스타그램이 이 게시물 내용을 보여 주지 않았어요. 캡션을 복사해 붙여넣거나, 영상을 화면 녹화해 올려 주세요.", code: "instagram" });
         if (u.includes("noRecipe")) return setTimeout(() => send(200, { result: { hasRecipe: false, reason: "설명란에 레시피가 없어요", dishName: "김치볶음밥", recipe: null }, via: "youtube_description", provider: "mock", model: "mock" }), 500);
@@ -79,7 +94,12 @@ createServer((req, res) => {
       }
       if (!(b.text && b.text.trim()) && !(b.images?.length)) return send(400, { error: "글이나 사진이 필요합니다" });
       // 영상에서 뽑은 장면: 앱이 frames 표시와 함께 여러 장을 보낸다
-      if (b.frames) return setTimeout(() => send(200, { result: { hasRecipe: (b.images?.length ?? 0) >= 2, reason: "", dishName: "떡볶이", recipe: make(`영상 장면 떡볶이 ${b.images.length}장`, { type: "photo" }) }, via: "photo", provider: "mock", model: "mock" }), 700);
+      if (b.frames) {
+        // 릴스 영상 장면: 캡션과 게시물 주소가 함께 와야 한다
+        const reel = String(b.url ?? "").includes("REELvideo");
+        const title = reel ? `릴스 연어초밥 ${b.images.length}장 ${b.text === "Salmon Sushi 🍣" ? "캡션있음" : "캡션없음"}` : `영상 장면 떡볶이 ${b.images.length}장`;
+        return setTimeout(() => send(200, { result: { hasRecipe: (b.images?.length ?? 0) >= 2, reason: "", dishName: "떡볶이", recipe: make(title, reel ? { type: "instagram", url: b.url } : { type: "photo" }) }, via: "photo", provider: "mock", model: "mock" }), 700);
+      }
       const insta = String(b.url ?? "").includes("instagram.com");
       return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make(insta ? "인스타 떡볶이" : "메모 떡볶이", insta ? { type: "instagram", url: b.url } : { type: b.text ? "text" : "photo" }) }, via: b.text ? "caption" : "photo", provider: "mock", model: "mock" }), 700);
     }

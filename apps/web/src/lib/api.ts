@@ -29,6 +29,32 @@ export class ApiError extends Error {
 /** Worker 호출. Firebase ID 토큰을 Authorization 헤더로 보낸다. */
 export async function callWorker<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   if (isDemo) return viaDemo<T>(path, body, signal);
+  const res = await postWorker(path, body, signal);
+  let data: unknown = null;
+  try { data = await res.json(); } catch { /* 본문 없음 */ }
+  if (!res.ok) {
+    const d = data as { error?: string; code?: string } | null;
+    throw new ApiError(friendly(res.status, d?.error), res.status, d?.code);
+  }
+  return data as T;
+}
+
+/** 파일을 돌려받는 Worker 호출 (예: 인스타 릴스 영상). 실패하면 서버가 보낸 오류로 */
+export async function callWorkerBlob(path: string, body: unknown, signal?: AbortSignal): Promise<Blob> {
+  if (isDemo) throw new ApiError("체험판에서는 인스타 영상을 받지 않아요", 0, "instagram");
+  const res = await postWorker(path, body, signal);
+  if (!res.ok) {
+    const d = await res.json().catch(() => null) as { error?: string; code?: string } | null;
+    throw new ApiError(friendly(res.status, d?.error), res.status, d?.code);
+  }
+  try { return await res.blob(); }
+  catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw new ApiError("취소되었습니다", 0);
+    throw new ApiError("영상을 끝까지 받지 못했어요", 0);
+  }
+}
+
+async function postWorker(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
   if (!workerConfigured) throw new ApiError("AI 서버 주소(VITE_WORKER_URL)가 설정되지 않았습니다", 0);
   // 끊긴 채로 기다리게 하지 않는다 (저장한 레시피·냉장고는 오프라인에서도 볼 수 있다)
   if (isOffline()) throw new ApiError("인터넷이 끊겨 있어요. 연결되면 다시 해 주세요", 0, "offline");
@@ -47,13 +73,7 @@ export async function callWorker<T>(path: string, body: unknown, signal?: AbortS
     if (e instanceof DOMException && e.name === "AbortError") throw new ApiError("취소되었습니다", 0);
     throw new ApiError("서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요", 0);
   }
-  let data: unknown = null;
-  try { data = await res.json(); } catch { /* 본문 없음 */ }
-  if (!res.ok) {
-    const d = data as { error?: string; code?: string } | null;
-    throw new ApiError(friendly(res.status, d?.error), res.status, d?.code);
-  }
-  return data as T;
+  return res;
 }
 
 /** 로그인한 GET 요청 (예: 오늘 남은 AI 사용량). timeoutMs: 휴대폰 망이 멈춰도 끝없이 기다리지 않게 */

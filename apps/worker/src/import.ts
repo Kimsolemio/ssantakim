@@ -3,7 +3,7 @@ import { GenerationError, lazyFetch, selectProvider, type AiEnv, type AiPart, ty
 import { geminiProvider } from "./ai/gemini";
 import { IMPORT_SYSTEM_PROMPT, PAGE_READ_PROMPT } from "./prompts";
 import { parseAiJson } from "./recipe";
-import { fetchInstagramImage, instagramBlocked as igBlockedNow, instagramPost, instagramShortcode, isInstagramShare, markInstagramBlocked, resolveInstagramUrl } from "./instagram";
+import { fetchInstagramImage, fetchInstagramVideo, instagramBlocked as igBlockedNow, instagramPost, instagramShortcode, isInstagramShare, markInstagramBlocked, resolveInstagramUrl } from "./instagram";
 import {
   htmlToText, isSafePublicUrl, jsonLdRecipeText, linkKind, metaContent, naverBlogMobileUrl, readLimited, youtubeId, youtubePageInfo,
 } from "./extract";
@@ -20,7 +20,11 @@ export type ImportEnv = AiEnv & {
 };
 /** 어디서 레시피를 읽었는지 (화면 안내용) */
 export type ImportVia = "youtube_description" | "youtube_video" | "jsonld" | "page" | "caption" | "photo" | "instagram_caption";
-export type ImportResponse = { result: ImportResult; via: ImportVia; provider: ProviderName; model: string };
+/**
+ * video: 인스타 릴스라 영상으로 더 볼 수 있다 (앱이 /import/instagram-video 로 영상을 받아 장면을 뽑아 보낸다).
+ * caption 은 장면과 함께 보낼 짧은 캡션. model 이 빈 문자열이면 AI를 부르지 않은 답이다
+ */
+export type ImportResponse = { result: ImportResult; via: ImportVia; provider: ProviderName; model: string; video?: { caption: string | null } };
 
 /** 글뿐인지 (사진·영상이 섞이면 읽기가 어려워 기본 모델로 깊게 본다) */
 const textOnly = (parts: AiPart[]) => parts.every((p) => p.type === "text");
@@ -211,15 +215,23 @@ async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch):
   const source: RecipeSource = { type: "instagram", url: rawUrl, ...(post?.username ? { channel: post.username } : {}) };
   const header = `인스타그램 게시물${post?.username ? `\n작성자: @${post.username}` : ""}\n주소: ${url}`;
   if (post) {
+    const shortCaption = (post.caption ?? "").replace(/\s/g, "").length < 40;
+    const video = post.video ? { caption: post.caption } : undefined;
+    // 릴스인데 캡션이 짧으면 레시피는 영상 안에 있다: AI를 부르지 않고 앱에게 영상 장면을 보내 달라고 한다
+    if (video && shortCaption) {
+      return { result: { hasRecipe: false, reason: "캡션이 짧아 영상을 보고 찾아야 해요", dishName: null, recipe: null }, via: "instagram_caption", provider: selectProvider(env).name, model: "", video };
+    }
     const parts: AiPart[] = [];
     // 캡션이 짧거나 없으면 표지 사진의 글자(재료·양)를 함께 본다
-    if (post.image && (post.caption ?? "").replace(/\s/g, "").length < 40) {
+    if (post.image && shortCaption) {
       const img = await fetchInstagramImage(post.image, f);
       if (img) parts.push({ type: "image", mediaType: img.mediaType, data: img.data });
     }
     if (post.caption || parts.length) {
       parts.push({ type: "text", text: `${header}\n\n${post.caption ? `캡션:\n${post.caption}` : "(캡션 없음, 표지 사진만)"}` });
-      return runImport(importAi(env, parts), parts, source, "instagram_caption");
+      const r = await runImport(importAi(env, parts), parts, source, "instagram_caption");
+      // 긴 캡션에도 레시피가 없으면 앱이 영상을 더 볼 수 있게
+      return video ? { ...r, video } : r;
     }
   }
   // 지워졌거나 비공개인 게시물: Claude에게 물어도 못 읽으니 돈 들이지 않고 안내 (막힘으로 기억하지도 않는다)
@@ -249,6 +261,23 @@ async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch):
   return runImport(importAi(env, parts), parts, source, "instagram_caption");
 }
 
+/**
+ * 인스타 릴스 영상 파일을 받아 그대로 흘려보낸다 (앱이 장면을 뽑아 /import/text 로 보낸다).
+ * 앱이 준 영상 주소는 쓰지 않고, 게시물 주소로 이 서버가 직접 찾은 인스타 CDN 주소만 받는다
+ */
+export async function instagramVideo(env: ImportEnv, rawUrl: string, f: typeof fetch = lazyFetch): Promise<{ body: ReadableStream<Uint8Array>; type: string; length: number | null }> {
+  if ((env.INSTAGRAM_EMBED ?? "").trim().toLowerCase() === "off") throw instagramBlocked("인스타 게시물 읽기를 꺼 두었어요");
+  if (await igBlockedNow(env.USAGE, "server")) throw instagramBlocked();
+  const { url, blocked } = await resolveInstagramUrl(rawUrl, f);
+  if (blocked) { await markInstagramBlocked(env.USAGE, "server"); throw instagramBlocked(); }
+  if (!instagramShortcode(url)) throw instagramBlocked("게시물 주소를 찾지 못했어요");
+  const r = await instagramPost(url, f);
+  if (r.blocked) await markInstagramBlocked(env.USAGE, "server");
+  const v = r.post?.video ? await fetchInstagramVideo(r.post.video, f) : null;
+  if (!v) throw instagramBlocked("이 게시물의 영상을 받지 못했어요");
+  return v;
+}
+
 export async function importFromText(env: ImportEnv, input: { text?: string | null; images?: { mediaType: ImageMediaType; data: string }[]; url?: string | null; frames?: boolean }): Promise<ImportResponse> {
   const images = input.images ?? [];
   const text = input.text?.trim() ?? "";
@@ -262,7 +291,7 @@ export async function importFromText(env: ImportEnv, input: { text?: string | nu
     { type: "text", text: [
       isInsta ? "인스타그램 게시물" : images.length && !text ? "레시피 사진" : "붙여넣은 글",
       input.frames && images.length
-        ? `\n위 사진 ${images.length}장은 요리 영상에서 일정한 간격으로 뽑은 장면이에요 (시간 순서). 화면 글자·자막·보이는 재료와 동작으로 재료와 순서를 정리해 주세요. 소리는 들을 수 없으니 양이 안 보이면 지어내지 말고 비워 두세요.`
+        ? `\n위 사진 ${images.length}장은 요리 영상에서 일정한 간격으로 뽑은 장면이에요 (시간 순서). 화면 글자·자막·보이는 재료와 동작으로 재료와 순서를 정리해 주세요. 소리는 들을 수 없어요. 글자 없이 만드는 모습만 나오는 영상이면, 장면에 보이는 재료와 순서만 옮기고 양은 보이는 크기로 어림해 note에 "추정"이라고 적어 주세요. 장면에 없는 재료·단계는 넣지 마세요.`
         : "",
       text ? `\n${text.slice(0, 8000)}` : `\n사진 ${images.length}장`,
     ].join("") },

@@ -5,11 +5,12 @@ import { selectProvider, describeAi, GenerationError, type AiEnv } from "./ai";
 import { generateRecipe } from "./recipe";
 import { scanReceipt } from "./receipt";
 import { normalizeNames } from "./normalize";
-import { importFromUrl, importFromText, precheckImportUrl } from "./import";
+import { importFromUrl, importFromText, instagramVideo, precheckImportUrl } from "./import";
 import { suggestMenus } from "./suggest";
 import { adaptRecipe, askChef, suggestSubstitutes } from "./assist";
 import { checkAllowed, chargeUsage, refundUsage, usageToday, allowList, GuardError, type GuardEnv } from "./guard";
 import { trendingRecipes, TrendingError } from "./trending";
+import { instagramShortcode, isInstagramShare } from "./instagram";
 
 export interface Env extends AiEnv, GuardEnv {
   /** "off" 면 인스타 게시물을 서버에서 읽지 않는다 */
@@ -207,7 +208,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
   try {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
-        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "pantry/photo", "normalize", "import/url", "import/text", "suggest", "ask", "adapt", "substitute", "trending"],
+        ok: true, stage: 6, features: ["recipe", "pantry/receipt", "pantry/photo", "normalize", "import/url", "import/text", "import/instagram-video", "suggest", "ask", "adapt", "substitute", "trending"],
         configured: { firebase: !!env.FIREBASE_PROJECT_ID, claude: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY, youtube: !!env.YOUTUBE_API_KEY },
         ai: describeAi(env),
         guard: { allowList: allowList(env).includes("*") ? "everyone" : allowList(env).length, perMinute: !!env.AI_LIMIT, daily: !!env.USAGE },
@@ -256,8 +257,21 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (url.pathname === "/import/url" && request.method === "POST") {
       const { user, body } = await begin(ctx, request, env, "/import/url", ImportUrlRequest, undefined, undefined, (b) => precheckImportUrl(b.url));
       const r = await importFromUrl(env, body.url);
-      console.log(JSON.stringify({ route: "import/url", uid: user.uid, via: r.via, hasRecipe: r.result.hasRecipe, provider: r.provider, model: r.model }));
+      // AI를 부르지 않고 끝났으면 (릴스라 영상을 봐야 함) 사용량을 돌려준다. 영상 장면을 보낼 때 센다
+      if (!r.model && ctx.refund) { const refund = ctx.refund; ctx.refund = null; await refund().catch((err) => console.warn("refund failed", err)); }
+      console.log(JSON.stringify({ route: "import/url", uid: user.uid, via: r.via, hasRecipe: r.result.hasRecipe, video: !!r.video, provider: r.provider, model: r.model }));
       return json(r, 200, cors);
+    }
+
+    // 인스타 릴스 영상 파일 (앱이 장면을 뽑는다). AI가 아니어서 하루 사용량은 쓰지 않고, 1분 한도만 따로 건다
+    if (url.pathname === "/import/instagram-video" && request.method === "POST") {
+      const user = await authenticate(request, env);
+      if (env.AI_LIMIT && !(await env.AI_LIMIT.limit({ key: `igvideo:${user.uid}` })).success) throw new HttpError(429, "너무 자주 요청했어요. 1분 뒤에 다시 해 주세요", "rate_limited");
+      const body = await readJson(request, ImportUrlRequest);
+      if (!instagramShortcode(body.url) && !isInstagramShare(body.url)) throw new HttpError(400, "인스타 게시물 주소만 받을 수 있어요");
+      const v = await instagramVideo(env, body.url);
+      console.log(JSON.stringify({ route: "import/instagram-video", uid: user.uid, bytes: v.length }));
+      return new Response(v.body, { status: 200, headers: { "Content-Type": v.type, "Cache-Control": "no-store", ...(v.length ? { "Content-Length": String(v.length) } : {}), ...cors } });
     }
 
     if (url.pathname === "/import/text" && request.method === "POST") {

@@ -1,7 +1,8 @@
 name: 인스타 읽기 점검
-# 인스타 게시물 하나를 실제로 읽어 본다: ① GitHub 서버에서 직접 ② Claude 웹 읽기 ③ 진짜 AI 서버와 같은 곳(Cloudflare, 미국 동부).
+# 인스타 게시물 하나를 실제로 읽어 본다: ① GitHub 서버에서 직접(+ 앱처럼 링크 가져오기, 릴스면 영상 장면으로 레시피 정리)
+# ② Claude 웹 읽기 ③ 진짜 AI 서버와 같은 곳(Cloudflare, 미국 동부).
 # ③은 같은 코드를 임시 Worker(family-cook-ig-probe)로 잠깐 올려 읽고 바로 지운다. 결과는 실행 화면의 Summary에 적힌다.
-# Claude 웹 읽기 한 번 요금이 조금 들어서, 이 파일·점검 코드를 고쳐 올릴 때와 손으로 누를 때만 돈다.
+# Claude 요금이 조금 들어서(몇 번), 이 파일·점검 코드를 고쳐 올릴 때와 손으로 누를 때만 돈다.
 on:
   workflow_dispatch:
     inputs:
@@ -40,7 +41,7 @@ jobs:
           {
             echo "### 점검한 링크: $IG_URL"
             echo '```'
-            grep -E '^(THIS MACHINE|CLAUDE) ' "$RUNNER_TEMP/live.log" || echo "(결과 없음)"
+            grep -E '^(THIS MACHINE|CLAUDE|IMPORT URL|REEL) ' "$RUNNER_TEMP/live.log" || echo "(결과 없음)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Cloudflare(진짜 AI 서버와 같은 곳)에서

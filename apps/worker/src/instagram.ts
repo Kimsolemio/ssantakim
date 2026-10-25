@@ -3,7 +3,7 @@
  * 인스타 본 페이지는 서버에서 열면 로그인 화면을 주고, 남의 게시물을 읽는 공식 API도 없다.
  * 그래서 블로그에 게시물을 붙일 때 쓰는 공개 "퍼가기(embed)" 페이지에서 캡션·작성자·표지 사진을 읽는다.
  * 막히거나(로그인 화면, 너무 많은 요청) 페이지 구조가 바뀌면 null → 앱이 "캡션 붙여넣기·화면 녹화" 안내로 넘어간다.
- * (Claude는 영상을 볼 수 없어서 영상 자체 분석은 하지 않는다. 화면 녹화를 올리면 앱이 장면을 뽑아 보낸다)
+ * 릴스면 영상 파일 주소도 함께 온다: Claude는 영상을 볼 수 없어서, 앱이 이 서버를 거쳐 영상을 받아 장면을 뽑아 보낸다.
  */
 import { Buffer } from "node:buffer";
 import { htmlToText, metaContent, readLimited } from "./extract";
@@ -35,7 +35,13 @@ export function looksBlocked(r: Response): boolean {
   return r.status >= 300 && r.status < 400 && /login|challenge/i.test(r.headers.get("location") ?? "");
 }
 
-export type InstagramPost = { shortcode: string; caption: string | null; username: string | null; image: string | null };
+/** 브라우저가 틀(iframe) 안에 퍼가기 페이지를 띄울 때 붙이는 머리글 */
+export const EMBED_FRAME = { "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "cross-site" } as const;
+/** 주소창에 직접 연 페이지의 머리글 (이게 있어야 본 페이지가 미리보기 문구를 담아 준다) */
+const PAGE_DOCUMENT = { "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none" } as const;
+
+/** video: 릴스·동영상 게시물의 영상 파일 주소 (인스타 CDN만) */
+export type InstagramPost = { shortcode: string; caption: string | null; username: string | null; image: string | null; video: string | null };
 
 const isInstaHost = (h: string) => /(^|\.)instagram\.com$/i.test(h);
 
@@ -82,7 +88,8 @@ function findKey(o: unknown, key: string, depth = 0): unknown {
 }
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
-const safeImage = (u: string | null) => {
+/** 인스타 CDN의 https 주소만 (사진·영상) */
+const safeMedia = (u: string | null) => {
   if (!u) return null;
   try {
     const x = new URL(u.replace(/&amp;/g, "&"));
@@ -92,7 +99,7 @@ const safeImage = (u: string | null) => {
 
 /** 퍼가기 페이지 HTML → 캡션·작성자·표지 사진. 못 찾으면 각각 null */
 export function parseInstagramEmbed(html: string): Omit<InstagramPost, "shortcode"> {
-  let caption: string | null = null, username: string | null = null, image: string | null = null;
+  let caption: string | null = null, username: string | null = null, image: string | null = null, video: string | null = null;
   // ① 페이지에 들어 있는 데이터(JSON 문자열을 한 번 더 감싼 것)
   const ctx = /"contextJSON":"((?:[^"\\]|\\.)*)"/.exec(html);
   if (ctx) {
@@ -104,7 +111,12 @@ export function parseInstagramEmbed(html: string): Omit<InstagramPost, "shortcod
       const owner = findKey(data, "owner") as { username?: string } | undefined;
       username = str(owner?.username) ?? str(findKey(data, "username"));
       image = str(findKey(data, "display_url"));
+      video = str(findKey(data, "video_url"));
     } catch { /* 아래 방법으로 */ }
+  }
+  if (!video) {
+    const m = /"video_url":("(?:[^"\\]|\\.)*")/.exec(html);
+    if (m) { try { video = str(JSON.parse(m[1])); } catch { /* 무시 */ } }
   }
   // ② 감싸지 않은 데이터
   if (!caption) {
@@ -130,7 +142,7 @@ export function parseInstagramEmbed(html: string): Omit<InstagramPost, "shortcod
       if (m) { image = m[1]; break; }
     }
   }
-  return { caption: caption ? caption.slice(0, 8000) : null, username, image: safeImage(image) };
+  return { caption: caption ? caption.slice(0, 8000) : null, username, image: safeMedia(image), video: safeMedia(video) };
 }
 
 /** 본 페이지의 미리보기 문구: "좋아요 12개, 댓글 3개 - user님, 날짜: \"캡션\"" → 캡션 (짧게 잘려 있을 수 있다) */
@@ -149,9 +161,10 @@ export async function instagramPost(url: string, f: typeof fetch): Promise<{ pos
   if (!shortcode) return { post: null, blocked: false, missing: false };
   let blocked = false, embedStatus = 0, pageStatus = 0;
   const headers = { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8", Accept: "text/html" };
-  let post: Omit<InstagramPost, "shortcode"> = { caption: null, username: null, image: null };
+  let post: Omit<InstagramPost, "shortcode"> = { caption: null, username: null, image: null, video: null };
   try {
-    const r = await f(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, { headers, redirect: "manual", signal: AbortSignal.timeout(10_000) });
+    // 퍼가기 페이지는 블로그 안 틀(iframe)에 띄울 때만 캡션이 담긴 화면을 준다. 그냥 열면 빈 앱 껍데기(약 490KB)가 온다
+    const r = await f(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, { headers: { ...headers, ...EMBED_FRAME }, redirect: "manual", signal: AbortSignal.timeout(10_000) });
     embedStatus = r.status;
     if (r.ok) post = parseInstagramEmbed(await readLimited(r, 2_000_000));
     else { blocked = looksBlocked(r); void r.body?.cancel(); }
@@ -160,12 +173,12 @@ export async function instagramPost(url: string, f: typeof fetch): Promise<{ pos
   if (!post.caption) {
     // 퍼가기 페이지가 막혔으면 본 페이지의 미리보기 문구라도 (로그인 화면이면 없다)
     try {
-      const r = await f(`https://www.instagram.com/p/${shortcode}/`, { headers, redirect: "manual", signal: AbortSignal.timeout(10_000) });
+      const r = await f(`https://www.instagram.com/p/${shortcode}/`, { headers: { ...headers, ...PAGE_DOCUMENT }, redirect: "manual", signal: AbortSignal.timeout(10_000) });
       pageStatus = r.status;
       if (r.ok) {
         const html = await readLimited(r, 1_500_000);
         const cap = captionFromOgDescription(metaContent(html, "og:description"));
-        if (cap) { post = { ...post, caption: cap, image: post.image ?? safeImage(metaContent(html, "og:image")) }; blocked = false; }
+        if (cap) { post = { ...post, caption: cap, image: post.image ?? safeMedia(metaContent(html, "og:image")) }; blocked = false; }
       } else { blocked ||= looksBlocked(r); void r.body?.cancel(); }
       console.log(JSON.stringify({ route: "instagram", step: "page", status: r.status, caption: !!post.caption }));
     } catch (e) { console.warn("instagram page failed", e instanceof Error ? e.message : e); }
@@ -187,5 +200,28 @@ export async function fetchInstagramImage(src: string, f: typeof fetch): Promise
     if (buf.byteLength < 500 || buf.byteLength > MAX_IMAGE) return null;
     // Buffer 변환은 문자 하나씩 이어 붙이는 것보다 훨씬 빨라 무료 요금제 CPU 한도 안에 든다
     return { mediaType: type as "image/jpeg" | "image/png" | "image/webp", data: Buffer.from(buf).toString("base64") };
+  } catch { return null; }
+}
+
+/** 영상 한 편 상한 (릴스 90초 고화질도 대개 20MB 아래) */
+export const MAX_VIDEO = 40_000_000;
+/** 영상 파일 받기: 인스타 CDN에서 확인한 주소만, 상한을 넘으면 끊는다. 실패하면 null */
+export async function fetchInstagramVideo(src: string, f: typeof fetch): Promise<{ body: ReadableStream<Uint8Array>; type: string; length: number | null } | null> {
+  if (!safeMedia(src)) return null;
+  try {
+    const r = await f(src, { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(20_000) });
+    const type = (r.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const len = r.headers.get("content-length") ? Number(r.headers.get("content-length")) : null;
+    if (!r.ok || !r.body || !type.startsWith("video/") || (len != null && len > MAX_VIDEO)) { void r.body?.cancel(); return null; }
+    // 길이를 안 알려 주는 응답도 상한에서 끊는다
+    let seen = 0;
+    const cap = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, ctl) {
+        seen += chunk.byteLength;
+        if (seen > MAX_VIDEO) ctl.error(new Error("영상이 너무 커요"));
+        else ctl.enqueue(chunk);
+      },
+    });
+    return { body: r.body.pipeThrough(cap), type, length: len };
   } catch { return null; }
 }

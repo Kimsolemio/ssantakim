@@ -6,10 +6,13 @@ import { chromium } from "playwright";
 import assert from "node:assert/strict";
 
 const APP = "http://127.0.0.1:5173/";
-import { mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const shots = join(dirname(fileURLToPath(import.meta.url)), "shots");
+/** 가짜 Worker가 인스타 릴스 영상으로 내주는 파일 (e2e/mock-worker.mjs 와 같은 자리) */
+const REEL_FILE = join(tmpdir(), "family-cook-reel.webm");
 mkdirSync(shots, { recursive: true });
 
 async function waitFor(url, label) {
@@ -655,6 +658,31 @@ assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputV
 await mom.getByText("저장", { exact: true }).click();
 await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
 await mom.getByLabel("뒤로").click();
+
+// 캡션이 짧은 인스타 릴스 링크: 앱이 서버를 거쳐 영상을 받아 장면을 뽑아 정리한다 (방금 녹화한 영상을 릴스 대신 쓴다)
+copyFileSync(videoPath, REEL_FILE);
+await mom.getByRole("button", { name: "레시피 추가" }).click();
+await mom.getByTestId("open-import").click();
+await mom.getByLabel("링크").fill("https://www.instagram.com/reel/REELvideo1/?igsh=x");
+await mom.getByText("가져오기", { exact: true }).click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 30000 });
+await mom.getByTestId("import-note").getByText(/인스타 영상 장면을 보고 정리했어요/).waitFor();
+const reelTitle = await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue();
+assert.match(reelTitle, /^릴스 연어초밥 \d+장 캡션있음$/, reelTitle);
+const reelFrames = Number(/(\d+)장/.exec(reelTitle)[1]);
+assert.ok(reelFrames >= 2 && reelFrames <= 12, `릴스 장면 ${reelFrames}장`);
+await mom.screenshot({ path: `${shots}/31-import-reel-video.png` });
+await mom.getByText("저장", { exact: true }).click();
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+await mom.getByLabel("뒤로").click();
+rmSync(REEL_FILE, { force: true });
+// 영상을 받지 못하면 화면 녹화 안내로
+await mom.getByRole("button", { name: "레시피 추가" }).click();
+await mom.getByTestId("open-import").click();
+await mom.getByLabel("링크").fill("https://www.instagram.com/reel/REELvideo2/");
+await mom.getByText("가져오기", { exact: true }).click();
+await mom.getByTestId("import-info").getByText("영상을 받아 오지 못했어요").waitFor({ timeout: 15000 });
+await mom.getByLabel("뒤로").last().click();
 
 // ---------- 사용자 3: 다른 가족은 못 봄 ----------
 const stranger = await newUserTracked("x@test.local", "남");

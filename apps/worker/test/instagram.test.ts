@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { captionFromOgDescription, instagramShortcode, looksBlocked, parseInstagramEmbed } from "../src/instagram";
 
 describe("instagram helpers", () => {
+  it("reads the reel video address from the embed data, from Instagram's CDN only", () => {
+    const page = (video: string) => `<script>{"contextJSON":${JSON.stringify(JSON.stringify({ context: { media: { is_video: true, video_url: video } } }))}}</script>`;
+    expect(parseInstagramEmbed(page("https://scontent-iad6-1.cdninstagram.com/o1/reel.mp4?oh=1")).video).toBe("https://scontent-iad6-1.cdninstagram.com/o1/reel.mp4?oh=1");
+    expect(parseInstagramEmbed(page("https://video.fbcdn.net/reel.mp4")).video).toBe("https://video.fbcdn.net/reel.mp4");
+    expect(parseInstagramEmbed(page("https://evil.example.com/reel.mp4")).video).toBeNull();
+    expect(parseInstagramEmbed(page("http://scontent.cdninstagram.com/reel.mp4")).video).toBeNull();
+    // 감싸지 않은 데이터에서도
+    expect(parseInstagramEmbed(`{"video_url":"https:\\/\\/scontent.cdninstagram.com\\/v.mp4"}`).video).toBe("https://scontent.cdninstagram.com/v.mp4");
+  });
   it("counts refusals and login redirects as blocking, not a missing post", () => {
     expect(looksBlocked(new Response("", { status: 429 }))).toBe(true);
     expect(looksBlocked(new Response("", { status: 403 }))).toBe(true);

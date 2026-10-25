@@ -8,12 +8,13 @@ import { Banner } from "../../components/ui/Banner";
 import { Field, TextArea, TextField, inputBase } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { AiProgress } from "../../components/ui/Ai";
-import { callWorker, workerConfigured, ApiError } from "../../lib/api";
+import { callWorker, callWorkerBlob, workerConfigured, ApiError } from "../../lib/api";
 import { prepareImage, type PreparedImage } from "../../lib/image";
 import { extractFrames } from "../../lib/videoFrames";
 import type { SharedPayload } from "../../lib/share";
 
-type ImportResponse = { result: ImportResult; via: string; provider: string; model: string };
+/** video: 인스타 릴스라 영상을 받아 장면으로 더 볼 수 있다 (caption 은 장면과 함께 보낸다) */
+type ImportResponse = { result: ImportResult; via: string; provider: string; model: string; video?: { caption: string | null } };
 type Mode = "link" | "paste";
 type Info = { title: string; body?: string };
 /** 올린 사진 한 장 (frame: 영상에서 뽑은 장면) */
@@ -34,9 +35,16 @@ const VIDEO_FRAMES = 12;
 const MODES: { value: Mode; label: string }[] = [{ value: "link", label: "링크" }, { value: "paste", label: "캡션·사진" }];
 const LINK_STEPS = ["페이지를 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
 const PASTE_STEPS = ["글과 사진을 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
+/** 인스타 릴스 영상을 받아 장면을 보는 동안 */
+const REEL_STEPS = ["영상을 받는 중…", "장면을 고르는 중…", "재료와 순서를 정리하는 중…"];
+const REEL_NOTE = "인스타 영상 장면을 보고 정리했어요";
 const TO_PASTE: Info = { title: "캡션을 붙여넣거나 스크린샷을 올려 주세요" };
 /** 인스타 캡션에 레시피가 없을 때: 영상 속 화면 글자를 읽게 한다 */
 const INSTA_VIDEO: Info = { title: "캡션에는 레시피가 없어요", body: "릴스를 화면 녹화해 '동영상'으로 올리면 화면 속 글자와 재료를 읽어 볼게요" };
+/** 릴스 영상을 받아 봤는데도 못 찾았을 때 */
+const REEL_MISS: Info = { title: "영상에서도 레시피를 찾지 못했어요", body: "캡션을 붙여넣거나 레시피가 보이는 화면을 캡처해 올려 주세요" };
+/** 릴스 영상을 받지 못했을 때 */
+const REEL_FAIL: Info = { title: "영상을 받아 오지 못했어요", body: "릴스를 화면 녹화해 '동영상'으로 올리면 장면을 읽어 볼게요" };
 
 /** 서버 문장 "A했어요. B해 주세요." → 제목 A, 본문 B */
 function splitMessage(msg: string): Info {
@@ -70,6 +78,8 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   /** 동영상에서 장면을 뽑는 중 */
   const [framing, setFraming] = useState(false);
   const [miss, setMiss] = useState<ImportResult | null>(null);
+  /** 진행 문구를 바꿔 보일 때 (인스타 릴스 영상 보기) */
+  const [steps, setSteps] = useState<string[] | null>(null);
   const [srcOpen, setSrcOpen] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -96,10 +106,43 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const switchMode = (m: Mode) => { setMode(m); clearNotes(); };
   const toPaste = (message: Info | null) => { switchMode("paste"); setInfo(message); };
 
-  const handle = (res: ImportResponse) => {
+  /** link: 링크로 가져왔을 때 그 주소 (인스타 릴스면 영상을 이어서 본다) */
+  const handle = (res: ImportResponse, link?: string) => {
     if (res.result.hasRecipe && res.result.recipe) onResult(res.result.recipe, VIA_LABEL[res.via] ?? "");
+    else if (res.video && link) void readReel(link, res.video.caption);
     else if (res.via === "instagram_caption") { toPaste(INSTA_VIDEO); setMiss(res.result); }
     else setMiss(res.result);
+  };
+
+  /** 인스타 릴스: 서버를 거쳐 영상을 받아 장면을 뽑고, 캡션과 함께 정리를 맡긴다 */
+  const readReel = async (link: string, caption: string | null) => {
+    setBusy(true); clearNotes(); setSteps(REEL_STEPS);
+    const ctl = new AbortController();
+    abort.current = ctl;
+    let frames: PreparedImage[] = [];
+    let gotFrames = false;
+    try {
+      const blob = await callWorkerBlob("/import/instagram-video", { url: link }, ctl.signal);
+      frames = await extractFrames(new File([blob], "reel.mp4", { type: blob.type || "video/mp4" }), VIDEO_FRAMES);
+      gotFrames = true;
+      if (ctl.signal.aborted || !alive.current) return;
+      const res = await callWorker<ImportResponse>("/import/text", {
+        text: caption?.trim() || null, url: link, frames: true,
+        images: frames.map((i) => ({ mediaType: i.mediaType, data: i.data })),
+      }, ctl.signal);
+      if (!alive.current) return;
+      if (res.result.hasRecipe && res.result.recipe) onResult(res.result.recipe, REEL_NOTE);
+      else { toPaste(REEL_MISS); setMiss(res.result); }
+    } catch (e) {
+      if (ctl.signal.aborted || !alive.current) return;
+      // 영상을 못 받았거나 못 열면 화면 녹화로. 끊김·한도·정리 단계 오류는 그대로 알린다
+      const limit = e instanceof ApiError && (e.code === "offline" || e.status === 429 || e.status === 401);
+      if (!gotFrames && !limit) toPaste(REEL_FAIL);
+      else setErr(e instanceof ApiError ? e.message : "가져오지 못했습니다");
+    } finally {
+      frames.forEach((i) => URL.revokeObjectURL(i.previewUrl));
+      if (alive.current) { setBusy(false); setSteps(null); }
+    }
   };
 
   const run = async <T,>(path: string, body: unknown): Promise<T | null> => {
@@ -120,7 +163,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
     const target = u.trim();
     if (!/^https?:\/\//i.test(target)) { setUrlErr("http:// 또는 https:// 로 시작하는 주소를 넣어 주세요"); return; }
     const res = await run<ImportResponse>("/import/url", { url: target });
-    if (res) handle(res);
+    if (res) handle(res, target);
   };
   const importPaste = async () => {
     const res = await run<ImportResponse>("/import/text", {
@@ -199,8 +242,8 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
     <FullScreen title="레시피 가져오기" onClose={() => { abort.current?.abort(); onClose(); }}
       confirmClose={busy ? "레시피를 정리하는 중이에요. 그만둘까요?" : null} footer={footer}>
       {busy ? (
-        <AiProgress messages={mode === "link" ? LINK_STEPS : PASTE_STEPS}
-          typical={mode === "link" && isYoutube(url) ? "영상까지 보면 1분 넘게 걸려요" : "보통 15~40초"}
+        <AiProgress messages={steps ?? (mode === "link" ? LINK_STEPS : PASTE_STEPS)}
+          typical={steps ? "영상을 보면 30초~1분쯤 걸려요" : mode === "link" && isYoutube(url) ? "영상까지 보면 1분 넘게 걸려요" : "보통 15~40초"}
           onCancel={() => abort.current?.abort()} />
       ) : (
         <div className="pb-4">
