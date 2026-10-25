@@ -86,7 +86,7 @@ export default {
     }
     out.deep = deep;
     const p = await instagramPost(resolved.url, fetch);
-    out.instagramPost = { blocked: p.blocked, missing: p.missing, caption: p.post?.caption?.slice(0, 300) ?? null, username: p.post?.username ?? null, image: !!p.post?.image };
+    out.instagramPost = { blocked: p.blocked, missing: p.missing, caption: p.post?.caption?.slice(0, 300) ?? null, username: p.post?.username ?? null, image: !!p.post?.image, video: p.post?.video ? new URL(p.post.video).hostname : null };
     return Response.json(out);
   },
 };

@@ -22,7 +22,7 @@ describe.skipIf(!url)("live Instagram", () => {
   it("reads the post from this machine", async () => {
     const resolved = await resolveInstagramUrl(url!, fetch);
     const p = await instagramPost(resolved.url, fetch);
-    console.log("THIS MACHINE", JSON.stringify({ resolved, blocked: p.blocked, missing: p.missing, caption: p.post?.caption?.slice(0, 300) ?? null, username: p.post?.username ?? null, image: !!p.post?.image }));
+    console.log("THIS MACHINE", JSON.stringify({ resolved, blocked: p.blocked, missing: p.missing, caption: p.post?.caption?.slice(0, 300) ?? null, username: p.post?.username ?? null, image: !!p.post?.image, video: !!p.post?.video }));
   }, 60_000);
 
   it.skipIf(!key)("lets Claude read the embed page", async () => {
