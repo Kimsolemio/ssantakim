@@ -233,7 +233,7 @@ describe("/import/url — Instagram and web", () => {
     let embeds = 0;
     const calls = stub([
       // 처음엔 퍼가기 페이지가 비어 있고 (캡션 없음), 다음엔 캡션이 있다
-      { match: isEmbed, reply: () => html(++embeds === 1 ? "<html></html>" : embedWith("떡볶이 황금레시피\n떡 300g, 고추장 2큰술, 설탕 1큰술\n1. 물을 끓인다 2. 떡을 넣는다")) },
+      { match: isEmbed, reply: () => html(++embeds !== 2 ? "<html></html>" : embedWith("떡볶이 황금레시피\n떡 300g, 고추장 2큰술, 설탕 1큰술\n1. 물을 끓인다 2. 떡을 넣는다")) },
       { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => html("<html></html>") },
       { match: isClaude, reply: (c) => jsonResponse(JSON.stringify(c.body).includes("web_fetch") ? fetched("죄송합니다. 페이지를 읽지 못했어요.") : claudeMessage(found())) },
     ]);
@@ -244,12 +244,16 @@ describe("/import/url — Instagram and web", () => {
     expect(embeds).toBe(2);
     // 두 번째는 캡션 정리 한 번만 (웹 읽기는 건너뜀)
     expect(calls.filter((c) => isClaude(c.url)).length).toBe(claudeBefore + 1);
+    // 세 번째: 서버도 못 찾으면 돈 드는 웹 읽기 없이 바로 안내
+    expect((await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).status).toBe(422);
+    expect(embeds).toBe(3);
+    expect(calls.filter((c) => isClaude(c.url)).length).toBe(claudeBefore + 1);
   });
 
-  it("counts a refusal (403) or a login redirect on either page as Instagram blocking the Worker", async () => {
+  it("counts a login redirect on the main page as Instagram blocking the Worker, even when the embed page loads", async () => {
     let n = 0;
     const calls = stub([
-      { match: isEmbed, reply: () => new Response("", { status: 403 }) },
+      { match: isEmbed, reply: () => html("<html></html>") },
       { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 302, headers: { location: "https://www.instagram.com/accounts/login/" } }) },
       { match: isClaude, reply: () => jsonResponse(n++ % 2 === 0 ? fetched("떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다.", "https://www.instagram.com/p/C1abcDEF/embed/captioned/") : claudeMessage(found())) },
     ]);

@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { captionFromOgDescription, instagramShortcode, parseInstagramEmbed } from "../src/instagram";
+import { captionFromOgDescription, instagramShortcode, looksBlocked, parseInstagramEmbed } from "../src/instagram";
 
 describe("instagram helpers", () => {
+  it("counts refusals and login redirects as blocking, not a missing post", () => {
+    expect(looksBlocked(new Response("", { status: 429 }))).toBe(true);
+    expect(looksBlocked(new Response("", { status: 403 }))).toBe(true);
+    expect(looksBlocked(new Response("", { status: 302, headers: { location: "https://www.instagram.com/accounts/login/" } }))).toBe(true);
+    expect(looksBlocked(new Response("", { status: 302, headers: { location: "https://www.instagram.com/challenge/?next=/p/x/" } }))).toBe(true);
+    expect(looksBlocked(new Response("", { status: 301, headers: { location: "https://www.instagram.com/reel/C1abcDEF/" } }))).toBe(false);
+    expect(looksBlocked(new Response("", { status: 404 }))).toBe(false);
+  });
   it("finds the post code in post, reel and tv links only", () => {
     expect(instagramShortcode("https://www.instagram.com/reel/C1abcDEF/?igsh=x")).toBe("C1abcDEF");
     expect(instagramShortcode("https://instagram.com/p/Cx-y_z12/")).toBe("Cx-y_z12");
