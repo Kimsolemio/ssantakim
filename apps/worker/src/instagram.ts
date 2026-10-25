@@ -9,7 +9,7 @@ import { Buffer } from "node:buffer";
 import { htmlToText, metaContent, readLimited } from "./extract";
 
 // 다른 페이지 읽기와 같은 이름표 (다른 앱인 척하지 않는다)
-const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36 FamilyCookBot/1.0";
+export const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36 FamilyCookBot/1.0";
 /**
  * 인스타가 막고 있으면 10분 동안은 다시 묻지 않는다. 두 갈래로 따로 기억한다:
  *  server: 이 서버의 직접 읽기가 막힘 → 서버 읽기만 건너뛰고 Claude 웹 읽기는 해 본다

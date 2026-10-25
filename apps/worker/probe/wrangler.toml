@@ -1,0 +1,9 @@
+# 인스타 읽기 점검용 임시 Worker (.github/workflows/instagram-probe.yml 이 잠깐 올렸다가 바로 지운다).
+# 진짜 서버와 같은 곳(미국 동부)에서 인스타가 무엇을 돌려주는지 본다.
+name = "family-cook-ig-probe"
+main = "ig-probe.ts"
+compatibility_date = "2025-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[placement]
+region = "aws:us-east-1"
