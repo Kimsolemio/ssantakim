@@ -16,6 +16,8 @@ import type { SharedPayload } from "../../lib/share";
 type ImportResponse = { result: ImportResult; via: string; provider: string; model: string };
 type Mode = "link" | "paste";
 type Info = { title: string; body?: string };
+/** 올린 사진 한 장 (frame: 영상에서 뽑은 장면) */
+type Shot = PreparedImage & { frame?: boolean };
 
 const isYoutube = (u: string) => /(^|\.)(youtube\.com|youtu\.be)$/i.test((() => { try { return new URL(u).hostname; } catch { return ""; } })());
 const VIA_LABEL: Record<string, string> = {
@@ -23,10 +25,12 @@ const VIA_LABEL: Record<string, string> = {
   page: "페이지 본문에서 찾았어요", caption: "붙여넣은 글에서 찾았어요", photo: "사진에서 읽었어요",
   instagram_caption: "인스타 캡션에서 찾았어요",
 };
-/** 사진·영상 장면을 합쳐 한 번에 보낼 수 있는 수 */
-const MAX_IMAGES = 8;
-/** 영상 하나에서 뽑는 장면 수 */
-const VIDEO_FRAMES = 8;
+/** 사진·영상 장면을 합쳐 한 번에 보낼 수 있는 수 (서버도 12장·9MB까지 받는다) */
+const MAX_IMAGES = 12;
+/** 직접 올리는 사진은 4장까지 (한 장이 커서) */
+const MAX_PHOTOS = 4;
+/** 영상 하나에서 뽑는 장면 수 (비슷한 장면은 빼서 더 적을 수 있다) */
+const VIDEO_FRAMES = 12;
 const MODES: { value: Mode; label: string }[] = [{ value: "link", label: "링크" }, { value: "paste", label: "캡션·사진" }];
 const LINK_STEPS = ["페이지를 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
 const PASTE_STEPS = ["글과 사진을 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
@@ -54,7 +58,8 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const [mode, setMode] = useState<Mode>(!startUrl && initial?.text ? "paste" : "link");
   const [url, setUrl] = useState(startUrl);
   const [text, setText] = useState(initial?.text && initial.text !== startUrl ? initial.text.replace(startUrl, "").trim() : "");
-  const [images, setImages] = useState<PreparedImage[]>([]);
+  const [images, setImages] = useState<Shot[]>([]);
+  const photos = images.filter((i) => !i.frame).length;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   /** 주소 칸 바로 아래 오류 (형식·붙여넣기 권한) */
@@ -64,8 +69,6 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const [info, setInfo] = useState<Info | null>(null);
   /** 동영상에서 장면을 뽑는 중 */
   const [framing, setFraming] = useState(false);
-  /** 올린 사진 중 영상 장면이 있는가 (서버에 "시간 순서 장면"이라고 알려 준다) */
-  const [fromVideo, setFromVideo] = useState(false);
   const [miss, setMiss] = useState<ImportResult | null>(null);
   const [srcOpen, setSrcOpen] = useState(false);
   const abort = useRef<AbortController | null>(null);
@@ -74,10 +77,20 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const urlId = useId();
   const canPaste = typeof navigator !== "undefined" && "clipboard" in navigator;
 
-  useEffect(() => () => { abort.current?.abort(); images.forEach((i) => URL.revokeObjectURL(i.previewUrl)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // 사진을 모두 빼면 "영상 장면"이라는 표시도 지운다
-  useEffect(() => { if (images.length === 0) setFromVideo(false); }, [images.length]);
+  // 닫을 때 그때까지 올린 사진 미리보기를 모두 정리한다
+  const imagesRef = useRef<Shot[]>([]);
+  imagesRef.current = images;
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true; // 개발 모드는 한 번 내렸다 다시 올린다
+    return () => { alive.current = false; abort.current?.abort(); imagesRef.current.forEach((i) => URL.revokeObjectURL(i.previewUrl)); };
+  }, []);
+  /** 자리를 넘는 사진은 미리보기를 지우고 버린다 */
+  const addShots = (next: Shot[]) => setImages((l) => {
+    const merged = [...l, ...next];
+    merged.slice(MAX_IMAGES).forEach((i) => URL.revokeObjectURL(i.previewUrl));
+    return merged.slice(0, MAX_IMAGES);
+  });
 
   const clearNotes = () => { setErr(null); setUrlErr(null); setUnreadable(null); setMiss(null); };
   const switchMode = (m: Mode) => { setMode(m); clearNotes(); };
@@ -85,7 +98,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
 
   const handle = (res: ImportResponse) => {
     if (res.result.hasRecipe && res.result.recipe) onResult(res.result.recipe, VIA_LABEL[res.via] ?? "");
-    else if (res.via === "instagram_caption") toPaste(INSTA_VIDEO);
+    else if (res.via === "instagram_caption") { toPaste(INSTA_VIDEO); setMiss(res.result); }
     else setMiss(res.result);
   };
 
@@ -113,7 +126,8 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
     const res = await run<ImportResponse>("/import/text", {
       text: text.trim() || null, url: url.trim() || null,
       images: images.map((i) => ({ mediaType: i.mediaType, data: i.data })),
-      ...(fromVideo && images.length ? { frames: true } : {}),
+      // 모두 영상 장면이면 "시간 순서 장면"이라고 알린다 (사진이 섞이면 알리지 않는다)
+      ...(images.length && images.every((i) => i.frame) ? { frames: true } : {}),
     });
     if (res) handle(res);
   };
@@ -129,11 +143,12 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
     try {
-      const room = MAX_IMAGES - images.length;
-      const next: PreparedImage[] = [];
+      const room = Math.min(MAX_PHOTOS - photos, MAX_IMAGES - images.length);
+      const next: Shot[] = [];
       for (const f of Array.from(files).slice(0, room)) next.push(await prepareImage(f));
-      setImages((l) => [...l, ...next]);
-      setMiss(null);
+      if (!alive.current) { next.forEach((i) => URL.revokeObjectURL(i.previewUrl)); return; }
+      addShots(next);
+      setMiss(null); setInfo(null);
     } catch (e) { setErr(e instanceof Error ? e.message : "사진을 처리하지 못했습니다"); }
     finally { if (fileRef.current) fileRef.current.value = ""; }
   };
@@ -143,12 +158,12 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
     if (!file) return;
     setFraming(true); setErr(null);
     try {
-      const frames = await extractFrames(file, Math.min(VIDEO_FRAMES, MAX_IMAGES - images.length));
-      setImages((l) => [...l, ...frames].slice(0, MAX_IMAGES));
-      setFromVideo(true);
-      setMiss(null);
-    } catch (e) { setErr(e instanceof Error ? e.message : "영상을 처리하지 못했어요"); }
-    finally { setFraming(false); if (videoRef.current) videoRef.current.value = ""; }
+      const frames = await extractFrames(file, Math.min(VIDEO_FRAMES, MAX_IMAGES - imagesRef.current.length));
+      if (!alive.current) { frames.forEach((i) => URL.revokeObjectURL(i.previewUrl)); return; }
+      addShots(frames.map((f) => ({ ...f, frame: true })));
+      setMiss(null); setInfo(null);
+    } catch (e) { if (alive.current) setErr(e instanceof Error ? e.message : "영상을 처리하지 못했어요"); }
+    finally { if (alive.current) setFraming(false); if (videoRef.current) videoRef.current.value = ""; }
   };
 
   const pasteFromClipboard = async () => {
@@ -175,7 +190,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
       {mode === "link" ? (
         <Button ai block disabled={!url.trim() || !workerConfigured} onClick={() => importLink()}>가져오기</Button>
       ) : (
-        <Button ai block disabled={(!text.trim() && images.length === 0) || !workerConfigured} onClick={importPaste}>정리하기</Button>
+        <Button ai block disabled={(!text.trim() && images.length === 0) || !workerConfigured || framing} onClick={importPaste}>정리하기</Button>
       )}
     </>
   ) : undefined;
@@ -218,21 +233,21 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
                 <div className="flex flex-wrap gap-3">
                   {images.map((im, i) => (
                     <span key={im.previewUrl} className="relative size-16 shrink-0">
-                      <img src={im.previewUrl} alt={`사진 ${i + 1}`} className="size-16 rounded-control object-cover ring-1 ring-line" />
+                      <img src={im.previewUrl} alt={im.frame ? `영상 장면 ${i + 1}` : `사진 ${i + 1}`} className="size-16 rounded-control object-cover ring-1 ring-line" />
                       <button type="button" aria-label={`사진 ${i + 1} 빼기`} onClick={() => { URL.revokeObjectURL(im.previewUrl); setImages((l) => l.filter((x) => x !== im)); }}
                         className="absolute -right-3 -top-3 grid size-11 place-items-center">
                         <span className="grid size-7 place-items-center rounded-full bg-ink/70 text-surface"><X size={16} strokeWidth={2.5} aria-hidden /></span>
                       </button>
                     </span>
                   ))}
-                  {images.length < MAX_IMAGES && (
+                  {photos < MAX_PHOTOS && images.length < MAX_IMAGES && (
                     <button type="button" aria-label="사진 추가" onClick={() => fileRef.current?.click()}
                       className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-control bg-surface-2 text-ink-2 transition-colors active:bg-fill-pressed">
-                      <Camera size={22} aria-hidden /><span className="text-micro tabular-nums">{images.length}/{MAX_IMAGES}</span>
+                      <Camera size={22} aria-hidden /><span className="text-micro tabular-nums">{photos}/{MAX_PHOTOS}</span>
                     </button>
                   )}
                   {images.length < MAX_IMAGES && (
-                    <button type="button" aria-label="동영상에서 장면 뽑기" onClick={() => videoRef.current?.click()} disabled={framing} aria-busy={framing}
+                    <button type="button" aria-label={framing ? "동영상에서 장면 뽑는 중" : "동영상에서 장면 뽑기"} onClick={() => videoRef.current?.click()} disabled={framing} aria-busy={framing}
                       className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-control bg-surface-2 text-ink-2 transition-colors active:bg-fill-pressed disabled:opacity-60">
                       <Film size={22} aria-hidden /><span className="text-micro">{framing ? "읽는 중" : "동영상"}</span>
                     </button>
@@ -240,7 +255,9 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="import-files" />
                 <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={(e) => addVideo(e.target.files)} data-testid="import-video" />
-                <p className="mt-2 text-caption text-ink-3">요리책·손글씨는 사진만 올려도 돼요. 릴스·쇼츠는 화면 녹화를 '동영상'으로 올리면 장면 {VIDEO_FRAMES}장을 뽑아 화면 글자를 읽어요 (소리는 못 들어요)</p>
+                <p className="mt-2 text-caption text-ink-3" aria-live="polite">{framing
+                  ? "영상에서 장면을 뽑고 있어요…"
+                  : `요리책·손글씨는 사진만 올려도 돼요. 릴스·쇼츠는 화면 녹화를 '동영상'으로 올리면 장면을 최대 ${VIDEO_FRAMES}장 뽑아 화면 글자를 읽어요 (소리는 못 들어요)`}</p>
               </div>
               {srcOpen || url.trim() ? (
                 <TextField wrapClass="mx-5 mt-5" label="원본 링크" aria-label="원본 링크" type="url" inputMode="url" placeholder="https://" value={url}

@@ -12,6 +12,8 @@ import { checkAllowed, chargeUsage, refundUsage, usageToday, allowList, GuardErr
 import { trendingRecipes, TrendingError } from "./trending";
 
 export interface Env extends AiEnv, GuardEnv {
+  /** "off" 면 인스타 게시물을 서버에서 읽지 않는다 */
+  INSTAGRAM_EMBED?: string;
   FIREBASE_PROJECT_ID: string;
   ALLOWED_ORIGINS: string;   // 쉼표로 구분
   // ALLOWED_EMAILS: 쉼표로 구분한 가족 이메일. 비우면 아무도 못 쓴다 ("*"는 로그인한 모두)
@@ -114,8 +116,9 @@ const ReceiptRequest = z.object({
 const ImportUrlRequest = z.object({ url: z.string().trim().min(8).max(2000) });
 const ImportTextRequest = z.object({
   text: z.string().max(8000).nullable().optional(),
-  // 영상에서 뽑은 장면까지 합쳐 8장 (사진 한 장 5MB, 요청 전체 12MB 상한은 그대로)
-  images: z.array(ImageInput).max(8, "사진·장면은 8장까지 올릴 수 있습니다").optional(),
+  // 사진 4장 + 영상 장면을 합쳐 12장, 모두 합쳐 9MB까지 (사진 한 장 5MB, 요청 전체 12MB 상한은 그대로)
+  images: z.array(ImageInput).max(12, "사진·장면은 12장까지 올릴 수 있습니다")
+    .refine((l) => l.reduce((n, im) => n + im.data.length, 0) <= 9_000_000, "사진이 너무 커요. 몇 장 빼고 다시 보내 주세요").optional(),
   url: z.string().max(2000).nullable().optional(),
   /** 사진이 영상에서 뽑은 장면(시간 순서)인가 */
   frames: z.boolean().optional(),

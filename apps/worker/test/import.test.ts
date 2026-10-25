@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import handler, { type Env } from "../src/index";
 import { makeSigner, PROJECT, SAMPLE_RECIPE, FAKE_IMAGE, jsonResponse, claudeMessage } from "./helpers";
+import { resetInstagramBlock } from "../src/instagram";
 
 let signer: Awaited<ReturnType<typeof makeSigner>>;
 let token: string;
@@ -33,7 +34,7 @@ const post = (path: string, body: unknown, e: Env = env) => handler.fetch!(new R
 }) as any, e, {} as any);
 
 beforeAll(async () => { signer = await makeSigner(); token = await signer.token(); });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); resetInstagramBlock(); });
 
 describe("/import/url — YouTube", () => {
   it("uses the Data API description when a YouTube key is set", async () => {
@@ -170,21 +171,53 @@ describe("/import/url — Instagram and web", () => {
     expect(calls.find((c) => isClaude(c.url))!.body.messages[0].content.at(-1).text).toContain("계란 4개 소금 약간");
   });
 
-  it("asks Claude to read the embed page when the Worker is blocked, then gives up kindly", async () => {
+  /** Claude 웹 읽기 응답: 실제로 읽은 주소가 있으면 web_fetch 결과 블록을 붙인다 */
+  const fetched = (text: string, url?: string) => claudeMessage(text, url ? { content: [
+    { type: "web_fetch_tool_result", tool_use_id: "srvtoolu_1", content: { type: "web_fetch_result", url, content: { type: "document", source: { type: "text", media_type: "text/plain", data: "..." } } } },
+    { type: "text", text },
+  ] } : {});
+
+  it("asks Claude to read the embed page when the Worker is blocked, trusting it only if Instagram was really read", async () => {
     let n = 0;
     stub([
       { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 429 }) },
-      { match: isClaude, reply: () => jsonResponse(claudeMessage(++n === 1 ? "떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다." : found())) },
+      { match: isClaude, reply: () => jsonResponse(++n === 1 ? fetched("떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다.", "https://www.instagram.com/p/C1abcDEF/embed/captioned/") : claudeMessage(found())) },
     ]);
     const j = await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any;
     expect(j.via).toBe("instagram_caption");
-    stub([
+  });
+
+  it("does not believe an apology as a caption, and then stops asking for a while", async () => {
+    const calls = stub([
       { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 429 }) },
-      { match: isClaude, reply: () => jsonResponse(claudeMessage("레시피 없음")) },
+      { match: isClaude, reply: () => jsonResponse(fetched("죄송합니다. 인스타그램 페이지가 로그인을 요구해서 내용을 볼 수 없었어요. 캡션을 직접 붙여 주세요.")) },
     ]);
     const r = await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" });
     expect(r.status).toBe(422);
     expect(await r.json()).toMatchObject({ code: "instagram" });
+    const before = calls.length;
+    // 10분 동안은 인스타·Claude 어느 쪽도 다시 부르지 않고 바로 안내
+    const r2 = await post("/import/url", { url: "https://www.instagram.com/p/C9zzzZZZ/" });
+    expect(r2.status).toBe(422);
+    expect(calls.length).toBe(before);
+  });
+
+  it("follows the share-button link to the real post", async () => {
+    const calls = stub([
+      { match: (u) => u.startsWith("https://www.instagram.com/share/reel/"), reply: () => new Response("", { status: 301, headers: { location: "https://www.instagram.com/reel/C1abcDEF/?igsh=x" } }) },
+      { match: isEmbed, reply: () => html(embedWith("떡볶이 황금레시피\n떡 300g, 고추장 2큰술, 설탕 1큰술\n1. 물을 끓인다 2. 떡을 넣는다")) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(found())) },
+    ]);
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/share/reel/BAxyz123/" })).json() as any;
+    expect(j.via).toBe("instagram_caption");
+    expect(calls.some((c) => isEmbed(c.url))).toBe(true);
+  });
+
+  it("can be switched off", async () => {
+    const calls = stub([]);
+    const r = await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" }, { ...env, INSTAGRAM_EMBED: "off" } as Env);
+    expect(r.status).toBe(422);
+    expect(calls.filter((c) => !c.url.includes("googleapis"))).toHaveLength(0);
   });
 
   it("tells the AI that pictures are stills from a video, in order", async () => {
@@ -195,7 +228,7 @@ describe("/import/url — Instagram and web", () => {
     const content = calls.find((c) => isClaude(c.url))!.body.messages[0].content;
     expect(content.filter((x: any) => x.type === "image")).toHaveLength(6);
     expect(content.at(-1).text).toContain("요리 영상에서 일정한 간격으로 뽑은 장면");
-    const tooMany = await post("/import/text", { images: [...images, ...images], frames: true });
+    const tooMany = await post("/import/text", { images: [...images, ...images, images[0]], frames: true });
     expect(tooMany.status).toBe(400);
   });
 

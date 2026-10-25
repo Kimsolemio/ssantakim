@@ -8,6 +8,8 @@ describe("instagram helpers", () => {
     expect(instagramShortcode("https://www.instagram.com/cook_mom/reel/C1abcDEF/")).toBe("C1abcDEF");
     expect(instagramShortcode("https://www.instagram.com/cook_mom/")).toBeNull();
     expect(instagramShortcode("https://evil.example/p/C1abcDEF/")).toBeNull();
+    expect(instagramShortcode("https://www.instagram.com/reels/audio/1234567/")).toBeNull();
+    expect(instagramShortcode("https://www.instagram.com/share/reel/BAxyz123/")).toBeNull();
   });
   it("keeps only Instagram image hosts", () => {
     const html = `<img class="EmbeddedMediaImage" src="https://evil.example/x.jpg"><div class="Caption">짧은 글</div>`;

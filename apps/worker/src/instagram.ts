@@ -5,20 +5,55 @@
  * 막히거나(로그인 화면, 너무 많은 요청) 페이지 구조가 바뀌면 null → 앱이 "캡션 붙여넣기·화면 녹화" 안내로 넘어간다.
  * (Claude는 영상을 볼 수 없어서 영상 자체 분석은 하지 않는다. 화면 녹화를 올리면 앱이 장면을 뽑아 보낸다)
  */
+import { Buffer } from "node:buffer";
 import { htmlToText, metaContent, readLimited } from "./extract";
 
-const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+// 다른 페이지 읽기와 같은 이름표 (다른 앱인 척하지 않는다)
+const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36 FamilyCookBot/1.0";
+/** 인스타가 막고 있으면 10분 동안은 다시 묻지 않는다 (막힌 줄 알면서 AI 웹 읽기에 돈을 쓰지 않게) */
+const BLOCK_MS = 10 * 60_000;
+let blockedUntil = 0;
+export function resetInstagramBlock() { blockedUntil = 0; }
+type Kv = { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void> } | undefined;
+export async function instagramBlocked(kv: Kv, now = Date.now()): Promise<boolean> {
+  if (blockedUntil > now) return true;
+  try { const until = Number(await kv?.get("ig:blocked") ?? 0); if (until > now) { blockedUntil = until; return true; } } catch { /* 무시 */ }
+  return false;
+}
+export async function markInstagramBlocked(kv: Kv, now = Date.now()): Promise<void> {
+  blockedUntil = now + BLOCK_MS;
+  try { await kv?.put("ig:blocked", String(blockedUntil), { expirationTtl: Math.ceil(BLOCK_MS / 1000) + 60 }); } catch { /* 무시 */ }
+}
 
 export type InstagramPost = { shortcode: string; caption: string | null; username: string | null; image: string | null };
 
-/** /p/ABC, /reel/ABC, /reels/ABC, /tv/ABC → ABC */
+const isInstaHost = (h: string) => /(^|\.)instagram\.com$/i.test(h);
+
+/** /p/ABC, /reel/ABC, /reels/ABC, /tv/ABC → ABC (공유 버튼 주소 /share/… 는 resolveInstagramUrl 로 먼저 푼다) */
 export function instagramShortcode(raw: string): string | null {
   try {
     const u = new URL(raw);
-    if (!/(^|\.)instagram\.com$/i.test(u.hostname)) return null;
-    const m = /^\/(?:[\w.]+\/)?(?:p|reels?|tv)\/([\w-]{5,40})/.exec(u.pathname);
-    return m ? m[1] : null;
+    if (!isInstaHost(u.hostname) || /^\/share\//.test(u.pathname)) return null;
+    const m = /^\/(?:[\w.]+\/)?(?:p|reels?|tv)\/([\w-]{5,40})(?:\/|$)/.exec(u.pathname);
+    return m && !["audio", "share"].includes(m[1].toLowerCase()) ? m[1] : null;
   } catch { return null; }
+}
+
+export const isInstagramShare = (raw: string) => { try { const u = new URL(raw); return isInstaHost(u.hostname) && /^\/share\//.test(u.pathname); } catch { return false; } };
+
+/** 인스타 앱 "공유" 주소(/share/reel/…)는 한 번 넘겨 주는 주소라, 실제 게시물 주소로 바꾼다 (인스타 안에서만) */
+export async function resolveInstagramUrl(raw: string, f: typeof fetch): Promise<string> {
+  if (!isInstagramShare(raw)) return raw;
+  try {
+    const r = await f(raw, { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(8_000) });
+    void r.body?.cancel();
+    const loc = r.headers.get("location");
+    if (r.status >= 300 && r.status < 400 && loc) {
+      const next = new URL(loc, raw);
+      if (next.protocol === "https:" && isInstaHost(next.hostname)) return next.toString();
+    }
+  } catch { /* 아래 */ }
+  return raw;
 }
 
 /** JSON 안 어디에 있든 첫 번째로 나오는 키 값을 찾는다 (퍼가기 페이지의 데이터 모양이 자주 바뀐다) */
@@ -37,7 +72,7 @@ const safeImage = (u: string | null) => {
   if (!u) return null;
   try {
     const x = new URL(u.replace(/&amp;/g, "&"));
-    return x.protocol === "https:" && /(\.cdninstagram\.com|\.fbcdn\.net)$/i.test(x.hostname) ? x.toString() : null;
+    return x.protocol === "https:" && !x.port && /(\.cdninstagram\.com|\.fbcdn\.net)$/i.test(x.hostname) ? x.toString() : null;
   } catch { return null; }
 };
 
@@ -50,7 +85,8 @@ export function parseInstagramEmbed(html: string): Omit<InstagramPost, "shortcod
     try {
       const data = JSON.parse(JSON.parse(`"${ctx[1]}"`) as string) as unknown;
       const edges = findKey(data, "edge_media_to_caption") as { edges?: { node?: { text?: string } }[] } | undefined;
-      caption = str(edges?.edges?.[0]?.node?.text) ?? str(findKey(data, "caption"));
+      const cap = findKey(data, "caption") as unknown;
+      caption = str(edges?.edges?.[0]?.node?.text) ?? str(cap) ?? str((cap as { text?: unknown } | null)?.text);
       const owner = findKey(data, "owner") as { username?: string } | undefined;
       username = str(owner?.username) ?? str(findKey(data, "username"));
       image = str(findKey(data, "display_url"));
@@ -72,7 +108,14 @@ export function parseInstagramEmbed(html: string): Omit<InstagramPost, "shortcod
     }
   }
   if (!username) { const m = /<span class="UsernameText">([^<]+)<\/span>/.exec(html); if (m) username = str(m[1]); }
-  if (!image) { const m = /<img[^>]*class="EmbeddedMediaImage"[^>]*src="([^"]+)"/.exec(html); if (m) image = m[1]; }
+  if (!image) {
+    // 태그를 먼저 끊어 보고 그 안에서 찾는다 (닫히지 않은 <img 가 많아도 느려지지 않게)
+    for (const tag of html.match(/<img\b[^>]{0,2000}>/g) ?? []) {
+      if (!/class="EmbeddedMediaImage"/.test(tag)) continue;
+      const m = /src="([^"]+)"/.exec(tag);
+      if (m) { image = m[1]; break; }
+    }
+  }
   return { caption: caption ? caption.slice(0, 8000) : null, username, image: safeImage(image) };
 }
 
@@ -83,16 +126,17 @@ export function captionFromOgDescription(desc: string | null): string | null {
   return str(m ? m[1] : null);
 }
 
-/** 공개 게시물 읽기. 아무것도 못 읽으면 null */
-export async function instagramPost(url: string, f: typeof fetch): Promise<InstagramPost | null> {
+/** 공개 게시물 읽기. blocked: 인스타가 서버 접속을 막았다 (로그인 화면·너무 많은 요청) */
+export async function instagramPost(url: string, f: typeof fetch): Promise<{ post: InstagramPost | null; blocked: boolean }> {
   const shortcode = instagramShortcode(url);
-  if (!shortcode) return null;
+  if (!shortcode) return { post: null, blocked: false };
+  let blocked = false;
   const headers = { "User-Agent": UA, "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8", Accept: "text/html" };
   let post: Omit<InstagramPost, "shortcode"> = { caption: null, username: null, image: null };
   try {
     const r = await f(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, { headers, redirect: "manual", signal: AbortSignal.timeout(10_000) });
     if (r.ok) post = parseInstagramEmbed(await readLimited(r, 2_000_000));
-    else void r.body?.cancel();
+    else { void r.body?.cancel(); blocked = true; }
     console.log(JSON.stringify({ route: "instagram", step: "embed", status: r.status, caption: !!post.caption, image: !!post.image }));
   } catch (e) { console.warn("instagram embed failed", e instanceof Error ? e.message : e); }
   if (!post.caption) {
@@ -102,24 +146,27 @@ export async function instagramPost(url: string, f: typeof fetch): Promise<Insta
       if (r.ok) {
         const html = await readLimited(r, 1_500_000);
         const cap = captionFromOgDescription(metaContent(html, "og:description"));
-        if (cap) post = { ...post, caption: cap, image: post.image ?? safeImage(metaContent(html, "og:image")) };
+        if (cap) { post = { ...post, caption: cap, image: post.image ?? safeImage(metaContent(html, "og:image")) }; blocked = false; }
       } else void r.body?.cancel();
       console.log(JSON.stringify({ route: "instagram", step: "page", status: r.status, caption: !!post.caption }));
     } catch (e) { console.warn("instagram page failed", e instanceof Error ? e.message : e); }
   }
-  return post.caption || post.image ? { shortcode, ...post } : null;
+  const found = !!(post.caption || post.image);
+  return { post: found ? { shortcode, ...post } : null, blocked: blocked && !found };
 }
 
+const MAX_IMAGE = 1_500_000;
 /** 표지 사진 받기 (캡션이 짧을 때 화면 글자를 읽으려고). 실패하면 null */
 export async function fetchInstagramImage(src: string, f: typeof fetch): Promise<{ mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string } | null> {
   try {
-    const r = await f(src, { signal: AbortSignal.timeout(10_000) });
+    // 다른 곳으로 넘기는 응답은 따라가지 않는다 (확인한 인스타 이미지 주소만)
+    const r = await f(src, { redirect: "manual", signal: AbortSignal.timeout(10_000) });
     const type = (r.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    if (!r.ok || !["image/jpeg", "image/png", "image/webp"].includes(type)) { void r.body?.cancel(); return null; }
+    const len = Number(r.headers.get("content-length") ?? 0);
+    if (!r.ok || !["image/jpeg", "image/png", "image/webp"].includes(type) || len > MAX_IMAGE) { void r.body?.cancel(); return null; }
     const buf = new Uint8Array(await r.arrayBuffer());
-    if (buf.byteLength < 500 || buf.byteLength > 4_500_000) return null;
-    let bin = "";
-    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-    return { mediaType: type as "image/jpeg" | "image/png" | "image/webp", data: btoa(bin) };
+    if (buf.byteLength < 500 || buf.byteLength > MAX_IMAGE) return null;
+    // Buffer 변환은 문자 하나씩 이어 붙이는 것보다 훨씬 빨라 무료 요금제 CPU 한도 안에 든다
+    return { mediaType: type as "image/jpeg" | "image/png" | "image/webp", data: Buffer.from(buf).toString("base64") };
   } catch { return null; }
 }
