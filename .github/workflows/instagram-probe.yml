@@ -1,0 +1,86 @@
+name: 인스타 읽기 점검
+# 인스타 게시물 하나를 실제로 읽어 본다: ① GitHub 서버에서 직접(+ 앱처럼 링크 가져오기, 릴스면 영상 장면으로 레시피 정리)
+# ② Claude 웹 읽기 ③ 진짜 AI 서버와 같은 곳(Cloudflare, 미국 동부).
+# ③은 같은 코드를 임시 Worker(family-cook-ig-probe)로 잠깐 올려 읽고 바로 지운다. 결과는 실행 화면의 Summary에 적힌다.
+# Claude 요금이 조금 들어서(몇 번), 이 파일·점검 코드를 고쳐 올릴 때와 손으로 누를 때만 돈다.
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 인스타 게시물 링크
+        required: false
+  push:
+    branches: [claude/cooking-app-planning-9zxk62]
+    paths: [.github/workflows/instagram-probe.yml, apps/worker/test/instagram-live.test.ts]
+concurrency:
+  group: instagram-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      IG_URL: ${{ inputs.url || 'https://www.instagram.com/p/fA9uwTtkSN/' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 장면 뽑기 도구(ffmpeg)
+        continue-on-error: true
+        run: command -v ffmpeg >/dev/null || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
+      - name: Cloudflare(진짜 AI 서버와 같은 곳)에 임시 Worker 올리기
+        id: probe
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          token=$(openssl rand -hex 16)
+          echo "::add-mask::$token"
+          pnpm exec wrangler deploy -c probe/wrangler.toml --var "PROBE_TOKEN:$token" 2>&1 | tee "$RUNNER_TEMP/probe.log"
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/probe.log" | head -1)
+          { echo "PROBE_URL=$url"; echo "PROBE_TOKEN=$token"; } >> "$GITHUB_ENV"
+      - name: Cloudflare에서 읽기
+        run: |
+          out=""
+          for i in $(seq 1 12); do
+            out=$(curl -sS -m 30 --get --data-urlencode "u=$IG_URL" --data-urlencode "t=$PROBE_TOKEN" "$PROBE_URL/" || true)
+            echo "$out" | grep -q '"colo"' && break
+            sleep 5
+          done
+          echo "$out" | jq . || echo "$out"
+          {
+            echo "### Cloudflare에서 읽은 결과"
+            echo '```json'
+            echo "$out" | jq . 2>/dev/null || echo "$out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: GitHub 서버에서 직접 + Claude 웹 읽기 + 릴스 장면으로 레시피 (영상은 Cloudflare를 거쳐)
+        working-directory: apps/worker
+        continue-on-error: true
+        env:
+          COOK_INSTAGRAM_URL: ${{ env.IG_URL }}
+          COOK_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          COOK_PROBE_URL: ${{ env.PROBE_URL }}
+          COOK_PROBE_TOKEN: ${{ env.PROBE_TOKEN }}
+        run: |
+          set -o pipefail
+          pnpm exec vitest run instagram-live 2>&1 | tee "$RUNNER_TEMP/live.log"
+          {
+            echo "### 점검한 링크: $IG_URL"
+            echo '```'
+            grep -E '^(THIS MACHINE|CLAUDE|IMPORT URL|REEL VIDEO|REEL) ' "$RUNNER_TEMP/live.log" || echo "(결과 없음)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: 임시 Worker 지우기
+        if: always()
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm exec wrangler delete -c probe/wrangler.toml --name family-cook-ig-probe --force || echo "::warning title=임시 Worker 못 지움::Cloudflare 대시보드에서 family-cook-ig-probe 를 지워 주세요"
