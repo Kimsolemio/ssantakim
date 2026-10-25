@@ -33,32 +33,56 @@ export default {
       } catch (e) { out[name] = { error: e instanceof Error ? e.message : String(e) }; }
     }
     // 같은 게시물을 여러 방식으로 열어 어떤 방식에 캡션이 담겨 오는지 본다
+    const sf = { "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "cross-site" };
     const variants: [string, string, Record<string, string>][] = [
-      ["embed+iframe", `https://www.instagram.com/p/${code}/embed/captioned/`, { ...headers, "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "cross-site", Referer: "https://family-cook.example/" }],
-      ["embed?cr", `https://www.instagram.com/p/${code}/embed/captioned/?cr=1&v=14&wp=540`, headers],
-      ["reel-embed", `https://www.instagram.com/reel/${code}/embed/captioned/`, headers],
-      ["embed-plain", `https://www.instagram.com/p/${code}/embed/`, headers],
-      ["embed-noUA", `https://www.instagram.com/p/${code}/embed/captioned/`, { Accept: "text/html" }],
-      ["oembed", `https://www.instagram.com/api/v1/oembed/?url=${encodeURIComponent(`https://www.instagram.com/p/${code}/`)}`, { "User-Agent": UA, Accept: "application/json" }],
+      ["dest-only", `https://www.instagram.com/p/${code}/embed/captioned/`, { ...headers, "Sec-Fetch-Dest": "iframe" }],
+      ["sf3-noRef", `https://www.instagram.com/p/${code}/embed/captioned/`, { ...headers, ...sf }],
+      ["page-document", `https://www.instagram.com/p/${code}/`, { ...headers, "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none" }],
     ];
     const deep: Record<string, unknown> = {};
+    let embedHtml = "";
     for (const [name, target, h] of variants) {
       try {
         const r = await fetch(target, { headers: h, redirect: "manual" });
         const text = r.status === 200 ? await r.text() : "";
         if (r.status !== 200) void r.body?.cancel();
-        const at = (needle: string) => { const i = text.indexOf(needle); return i < 0 ? null : text.slice(Math.max(0, i - 60), i + 240).replace(/\s+/g, " "); };
+        if (!embedHtml && text.includes("contextJSON")) embedHtml = text;
         deep[name] = {
-          status: r.status, location: r.headers.get("location"), type: r.headers.get("content-type"), bytes: text.length,
-          title: /<title[^>]*>([^<]{0,120})/.exec(text)?.[1]?.trim() ?? null,
-          codeHits: text.split(code).length - 1,
-          markers: ["contextJSON", 'class="Caption"', "edge_media_to_caption", "EmbeddedMedia", "xdt_", "shortcode_media", "ScheduledServerJS", "og:description", '"caption"', "accessibility_caption"].filter((m) => text.includes(m)),
-          parsed: parseInstagramEmbed(text).caption?.slice(0, 200) ?? null,
-          snipCaption: at('"caption"') ?? at('class="Caption"'),
-          snipCode: at(code),
-          head: text.length < 3000 ? text.slice(0, 1500) : null,
+          status: r.status, location: r.headers.get("location"), bytes: text.length,
+          markers: ["contextJSON", 'class="Caption"', "edge_media_to_caption", "og:description", "video_url"].filter((m) => text.includes(m)),
+          parsed: parseInstagramEmbed(text).caption?.slice(0, 120) ?? null,
+          og: captionFromOgDescription(metaContent(text, "og:description"))?.slice(0, 120) ?? null,
         };
       } catch (e) { deep[name] = { error: e instanceof Error ? e.message : String(e) }; }
+    }
+    // 영상 파일 주소가 함께 오는지, 받을 수 있는지
+    if (embedHtml) {
+      const ctx = /"contextJSON":"((?:[^"\\]|\\.)*)"/.exec(embedHtml);
+      let data: unknown = null;
+      try { data = ctx ? JSON.parse(JSON.parse(`"${ctx[1]}"`) as string) : null; } catch (e) { deep.ctxError = String(e); }
+      const find = (o: unknown, key: string, d = 0): unknown => {
+        if (!o || typeof o !== "object" || d > 12) return undefined;
+        if (key in (o as Record<string, unknown>)) return (o as Record<string, unknown>)[key];
+        for (const v of Object.values(o as Record<string, unknown>)) { const f = find(v, key, d + 1); if (f !== undefined) return f; }
+        return undefined;
+      };
+      const videoUrl = find(data, "video_url");
+      const full = parseInstagramEmbed(embedHtml);
+      const video: Record<string, unknown> = {
+        is_video: find(data, "is_video") ?? null, product_type: find(data, "product_type") ?? null,
+        video_duration: find(data, "video_duration") ?? null, video_view_count: find(data, "video_view_count") ?? null,
+        videoHost: typeof videoUrl === "string" ? new URL(videoUrl).hostname : null,
+        rawVideoInHtml: /\.mp4/.test(embedHtml), caption: full.caption?.slice(0, 1000) ?? null, username: full.username, image: !!full.image,
+        ctxKeys: data && typeof data === "object" ? Object.keys(data as object).slice(0, 20) : null,
+      };
+      if (typeof videoUrl === "string") {
+        try {
+          const r = await fetch(videoUrl, { headers: { "User-Agent": UA, Range: "bytes=0-1023" } });
+          void r.body?.cancel();
+          Object.assign(video, { videoStatus: r.status, videoType: r.headers.get("content-type"), videoRange: r.headers.get("content-range"), videoLength: r.headers.get("content-length"), videoCors: r.headers.get("access-control-allow-origin") });
+        } catch (e) { video.videoError = String(e); }
+      }
+      deep.video = video;
     }
     out.deep = deep;
     const p = await instagramPost(resolved.url, fetch);
