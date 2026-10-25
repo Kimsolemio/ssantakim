@@ -10,19 +10,29 @@ import { htmlToText, metaContent, readLimited } from "./extract";
 
 // 다른 페이지 읽기와 같은 이름표 (다른 앱인 척하지 않는다)
 const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36 FamilyCookBot/1.0";
-/** 인스타가 막고 있으면 10분 동안은 다시 묻지 않는다 (막힌 줄 알면서 AI 웹 읽기에 돈을 쓰지 않게) */
+/**
+ * 인스타가 막고 있으면 10분 동안은 다시 묻지 않는다. 두 갈래로 따로 기억한다:
+ *  server: 이 서버의 직접 읽기가 막힘 → 서버 읽기만 건너뛰고 Claude 웹 읽기는 해 본다
+ *  ai:     Claude 웹 읽기도 못 읽음 → 돈 드는 웹 읽기까지 건너뛰고 바로 안내
+ */
 const BLOCK_MS = 10 * 60_000;
-let blockedUntil = 0;
-export function resetInstagramBlock() { blockedUntil = 0; }
+export type BlockKind = "server" | "ai";
+const blockedUntil: Record<BlockKind, number> = { server: 0, ai: 0 };
+export function resetInstagramBlock() { blockedUntil.server = 0; blockedUntil.ai = 0; }
 type Kv = { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void> } | undefined;
-export async function instagramBlocked(kv: Kv, now = Date.now()): Promise<boolean> {
-  if (blockedUntil > now) return true;
-  try { const until = Number(await kv?.get("ig:blocked") ?? 0); if (until > now) { blockedUntil = until; return true; } } catch { /* 무시 */ }
+export async function instagramBlocked(kv: Kv, kind: BlockKind, now = Date.now()): Promise<boolean> {
+  if (blockedUntil[kind] > now) return true;
+  try { const until = Number(await kv?.get(`ig:blocked:${kind}`) ?? 0); if (until > now) { blockedUntil[kind] = until; return true; } } catch { /* 무시 */ }
   return false;
 }
-export async function markInstagramBlocked(kv: Kv, now = Date.now()): Promise<void> {
-  blockedUntil = now + BLOCK_MS;
-  try { await kv?.put("ig:blocked", String(blockedUntil), { expirationTtl: Math.ceil(BLOCK_MS / 1000) + 60 }); } catch { /* 무시 */ }
+export async function markInstagramBlocked(kv: Kv, kind: BlockKind, now = Date.now()): Promise<void> {
+  blockedUntil[kind] = now + BLOCK_MS;
+  try { await kv?.put(`ig:blocked:${kind}`, String(blockedUntil[kind]), { expirationTtl: Math.ceil(BLOCK_MS / 1000) + 60 }); } catch { /* 무시 */ }
+}
+/** 막힌 것인가: 너무 많은 요청(429)·거절(403)·로그인 화면으로 넘김. 없는 게시물(404)은 막힘이 아니다 */
+export function looksBlocked(r: Response): boolean {
+  if (r.status === 429 || r.status === 403) return true;
+  return r.status >= 300 && r.status < 400 && /login|challenge/i.test(r.headers.get("location") ?? "");
 }
 
 export type InstagramPost = { shortcode: string; caption: string | null; username: string | null; image: string | null };
@@ -136,7 +146,7 @@ export async function instagramPost(url: string, f: typeof fetch): Promise<{ pos
   try {
     const r = await f(`https://www.instagram.com/p/${shortcode}/embed/captioned/`, { headers, redirect: "manual", signal: AbortSignal.timeout(10_000) });
     if (r.ok) post = parseInstagramEmbed(await readLimited(r, 2_000_000));
-    else { void r.body?.cancel(); blocked = true; }
+    else { blocked = looksBlocked(r); void r.body?.cancel(); }
     console.log(JSON.stringify({ route: "instagram", step: "embed", status: r.status, caption: !!post.caption, image: !!post.image }));
   } catch (e) { console.warn("instagram embed failed", e instanceof Error ? e.message : e); }
   if (!post.caption) {

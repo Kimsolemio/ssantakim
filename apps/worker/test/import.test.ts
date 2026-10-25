@@ -202,6 +202,31 @@ describe("/import/url — Instagram and web", () => {
     expect(calls.length).toBe(before);
   });
 
+  it("keeps using Claude's reading while only the Worker is blocked", async () => {
+    let n = 0;
+    const calls = stub([
+      { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 429 }) },
+      { match: isClaude, reply: () => jsonResponse(n++ % 2 === 0 ? fetched("떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다.", "https://www.instagram.com/p/C1abcDEF/embed/captioned/") : claudeMessage(found())) },
+    ]);
+    expect((await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any).via).toBe("instagram_caption");
+    const igCalls = calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length;
+    // 두 번째: 서버 읽기는 건너뛰고(인스타를 다시 부르지 않음) Claude 웹 읽기는 그대로
+    expect((await (await post("/import/url", { url: "https://www.instagram.com/p/C2abcDEF/" })).json() as any).via).toBe("instagram_caption");
+    expect(calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length).toBe(igCalls);
+  });
+
+  it("does not treat a missing post (404) as Instagram blocking us", async () => {
+    let n = 0;
+    const calls = stub([
+      { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 404 }) },
+      { match: isClaude, reply: () => jsonResponse(fetched(++n ? "레시피 없음" : "", "https://www.instagram.com/p/GONEpost/embed/captioned/")) },
+    ]);
+    await post("/import/url", { url: "https://www.instagram.com/p/GONEpost/" });
+    const before = calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length;
+    await post("/import/url", { url: "https://www.instagram.com/p/OTHERpost/" });
+    expect(calls.filter((c) => c.url.startsWith("https://www.instagram.com/")).length).toBeGreaterThan(before);
+  });
+
   it("follows the share-button link to the real post", async () => {
     const calls = stub([
       { match: (u) => u.startsWith("https://www.instagram.com/share/reel/"), reply: () => new Response("", { status: 301, headers: { location: "https://www.instagram.com/reel/C1abcDEF/?igsh=x" } }) },

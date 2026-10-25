@@ -231,15 +231,19 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
                 helper={text.length > 7000 ? `${text.length.toLocaleString()} / 8,000자 · 재료와 순서만 남기면 더 정확해요` : undefined} />
               <div className="mx-5 mt-4">
                 <div className="flex flex-wrap gap-3">
-                  {images.map((im, i) => (
+                  {images.map((im, i) => {
+                    // 사진·장면을 따로 센다 (사진 1, 영상 장면 1 …)
+                    const label = `${im.frame ? "영상 장면" : "사진"} ${images.slice(0, i + 1).filter((x) => !x.frame === !im.frame).length}`;
+                    return (
                     <span key={im.previewUrl} className="relative size-16 shrink-0">
-                      <img src={im.previewUrl} alt={im.frame ? `영상 장면 ${i + 1}` : `사진 ${i + 1}`} className="size-16 rounded-control object-cover ring-1 ring-line" />
-                      <button type="button" aria-label={`사진 ${i + 1} 빼기`} onClick={() => { URL.revokeObjectURL(im.previewUrl); setImages((l) => l.filter((x) => x !== im)); }}
+                      <img src={im.previewUrl} alt={label} className="size-16 rounded-control object-cover ring-1 ring-line" />
+                      <button type="button" aria-label={`${label} 빼기`} onClick={() => { URL.revokeObjectURL(im.previewUrl); setImages((l) => l.filter((x) => x !== im)); }}
                         className="absolute -right-3 -top-3 grid size-11 place-items-center">
                         <span className="grid size-7 place-items-center rounded-full bg-ink/70 text-surface"><X size={16} strokeWidth={2.5} aria-hidden /></span>
                       </button>
                     </span>
-                  ))}
+                    );
+                  })}
                   {photos < MAX_PHOTOS && images.length < MAX_IMAGES && (
                     <button type="button" aria-label="사진 추가" onClick={() => fileRef.current?.click()}
                       className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-control bg-surface-2 text-ink-2 transition-colors active:bg-fill-pressed">

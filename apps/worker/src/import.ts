@@ -198,11 +198,13 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
  */
 async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch): Promise<ImportResponse> {
   if ((env.INSTAGRAM_EMBED ?? "").trim().toLowerCase() === "off") throw instagramBlocked("인스타 게시물 읽기를 꺼 두었어요");
+  // 서버도 AI 웹 읽기도 막혀 있으면 아무것도 묻지 않고 바로 안내 (공유 주소 풀기도 하지 않는다)
+  if (await igBlockedNow(env.USAGE, "ai")) throw instagramBlocked();
   const url = await resolveInstagramUrl(rawUrl, f);
   const code = instagramShortcode(url);
   if (!code) throw instagramBlocked("게시물 주소를 찾지 못했어요");
-  if (await igBlockedNow(env.USAGE)) throw instagramBlocked();
-  const { post, blocked } = await instagramPost(url, f);
+  const serverBlocked = await igBlockedNow(env.USAGE, "server");
+  const { post, blocked } = serverBlocked ? { post: null, blocked: true } : await instagramPost(url, f);
   const source: RecipeSource = { type: "instagram", url: rawUrl, ...(post?.username ? { channel: post.username } : {}) };
   const header = `인스타그램 게시물${post?.username ? `\n작성자: @${post.username}` : ""}\n주소: ${url}`;
   if (post) {
@@ -217,7 +219,7 @@ async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch):
       return runImport(importAi(env, parts), parts, source, "instagram_caption");
     }
   }
-  if (blocked) await markInstagramBlocked(env.USAGE);
+  if (blocked && !serverBlocked) await markInstagramBlocked(env.USAGE, "server");
   // 서버에서 막혔으면 Claude가 퍼가기 페이지를 직접 읽어 본다 (Claude일 때만). 인스타 페이지를 실제로 읽은 경우만 믿는다
   const ai = selectProvider(env);
   if (!ai.research) throw instagramBlocked();
@@ -234,7 +236,7 @@ async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch):
   }
   const readInstagram = r.sources.some((x) => { try { return /(^|\.)instagram\.com$/i.test(new URL(x.url).hostname); } catch { return false; } });
   if (!readInstagram || r.text.replace(/\s/g, "").length < 40 || /^레시피 없음/.test(r.text.trim())) {
-    if (!readInstagram) await markInstagramBlocked(env.USAGE);
+    if (!readInstagram) await markInstagramBlocked(env.USAGE, "ai");
     throw instagramBlocked(undefined, true);
   }
   const parts: AiPart[] = [{ type: "text", text: `${header}\n\n(AI가 직접 읽은 캡션)\n${r.text.slice(0, 8000)}` }];

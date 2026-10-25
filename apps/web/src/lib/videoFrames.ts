@@ -20,11 +20,17 @@ function once(el: HTMLVideoElement, ok: string, ms: number): Promise<void> {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** 옮긴 장면이 실제로 그려질 때까지 (iOS는 seeked 직후 이전 장면을 그리기도 한다) */
-function frameReady(v: HTMLVideoElement): Promise<void> {
+/**
+ * 옮긴 장면이 실제로 그려질 때까지 (iOS는 seeked 직후 이전 장면을 그리기도 한다).
+ * 옮기기 전에 불러 둬야 새 장면이 그려지는 순간을 놓치지 않는다. 돌려준 함수는 seeked 뒤에 기다린다.
+ */
+function armFrame(v: HTMLVideoElement): () => Promise<void> {
   const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number }).requestVideoFrameCallback;
-  if (rvfc) return Promise.race([new Promise<void>((r) => { rvfc.call(v, () => r()); }), sleep(400)]);
-  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  if (rvfc) {
+    const painted = new Promise<void>((r) => { rvfc.call(v, () => r()); });
+    return () => Promise.race([painted, sleep(400)]);
+  }
+  return () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 }
 
 /** 장면을 뽑을 시각들: 앞뒤 조금 빼고 고르게 (1.5초에 한 장보다 촘촘하게는 뽑지 않는다) */
@@ -76,9 +82,10 @@ export async function extractFrames(file: File, count: number): Promise<Prepared
     if (!ctx || !tctx) throw new Error("이 브라우저는 영상 처리를 지원하지 않아요");
     let last: Uint8Array | null = null;
     for (const t of frameTimes(duration, count)) {
+      const ready = armFrame(v);
       v.currentTime = t;
       await once(v, "seeked", 8_000);
-      await frameReady(v);
+      await ready();
       ctx.drawImage(v, 0, 0, w, h);
       // 앞 장면과 거의 같으면 (가만히 있는 화면) 빼고 다음으로
       const sig = signature(tctx, canvas);
