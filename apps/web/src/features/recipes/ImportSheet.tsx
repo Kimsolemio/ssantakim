@@ -123,7 +123,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
     let gotFrames = false;
     try {
       const blob = await callWorkerBlob("/import/instagram-video", { url: link }, ctl.signal);
-      frames = await extractFrames(new File([blob], "reel.mp4", { type: blob.type || "video/mp4" }), VIDEO_FRAMES);
+      frames = await extractFrames(new File([blob], "reel.mp4", { type: blob.type || "video/mp4" }), VIDEO_FRAMES, ctl.signal);
       gotFrames = true;
       if (ctl.signal.aborted || !alive.current) return;
       const res = await callWorker<ImportResponse>("/import/text", {
@@ -242,7 +242,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
     <FullScreen title="레시피 가져오기" onClose={() => { abort.current?.abort(); onClose(); }}
       confirmClose={busy ? "레시피를 정리하는 중이에요. 그만둘까요?" : null} footer={footer}>
       {busy ? (
-        <AiProgress messages={steps ?? (mode === "link" ? LINK_STEPS : PASTE_STEPS)}
+        <AiProgress key={steps ? "reel" : mode} messages={steps ?? (mode === "link" ? LINK_STEPS : PASTE_STEPS)}
           typical={steps ? "영상을 보면 30초~1분쯤 걸려요" : mode === "link" && isYoutube(url) ? "영상까지 보면 1분 넘게 걸려요" : "보통 15~40초"}
           onCancel={() => abort.current?.abort()} />
       ) : (

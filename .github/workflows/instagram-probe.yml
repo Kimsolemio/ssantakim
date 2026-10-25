@@ -18,7 +18,7 @@ concurrency:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       IG_URL: ${{ inputs.url || 'https://www.instagram.com/p/fA9uwTtkSN/' }}
     steps:
@@ -29,6 +29,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: 장면 뽑기 도구(ffmpeg)
+        run: command -v ffmpeg >/dev/null || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
       - name: GitHub 서버에서 직접 + Claude 웹 읽기
         working-directory: apps/worker
         continue-on-error: true
@@ -57,7 +59,7 @@ jobs:
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/probe.log" | head -1)
           out=""
           for i in $(seq 1 12); do
-            out=$(curl -sS -m 60 --get --data-urlencode "u=$IG_URL" --data-urlencode "t=$token" "$url/" || true)
+            out=$(curl -sS -m 30 --get --data-urlencode "u=$IG_URL" --data-urlencode "t=$token" "$url/" || true)
             echo "$out" | grep -q '"colo"' && break
             sleep 5
           done
@@ -74,4 +76,4 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: pnpm exec wrangler delete -c probe/wrangler.toml --name family-cook-ig-probe --force || true
+        run: pnpm exec wrangler delete -c probe/wrangler.toml --name family-cook-ig-probe --force || echo "::warning title=임시 Worker 못 지움::Cloudflare 대시보드에서 family-cook-ig-probe 를 지워 주세요"

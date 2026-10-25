@@ -222,8 +222,12 @@ describe("/import/url — Instagram and web", () => {
   });
 
   it("refuses a video that is not on Instagram's CDN, not a video, or too big", async () => {
-    stub([{ match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣", "https://evil.example.com/reel.mp4")) }]);
+    const evil = stub([
+      { match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣", "https://evil.example.com/reel.mp4")) },
+      { match: (u) => u.startsWith("https://evil.example.com/"), reply: () => mp4(3000) },
+    ]);
     expect((await post("/import/instagram-video", { url: "https://www.instagram.com/p/C1abcDEF/" })).status).toBe(422);
+    expect(evil.some((c) => c.url.includes("evil.example.com"))).toBe(false);
     stub([
       { match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣")) },
       { match: (u) => u.startsWith("https://scontent-iad6-1.cdninstagram.com/"), reply: () => html("<html>login</html>") },
@@ -236,6 +240,35 @@ describe("/import/url — Instagram and web", () => {
     const r = await post("/import/instagram-video", { url: "https://www.instagram.com/p/C1abcDEF/" });
     expect(r.status).toBe(422);
     expect(await r.json()).toMatchObject({ code: "instagram" });
+  });
+
+  it("reuses the video address found by the link import, and keeps usage for the frames step", async () => {
+    const m = new Map<string, string>();
+    const USAGE = { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); }, delete: async (k: string) => { m.delete(k); } } as unknown as KVNamespace;
+    const e = { ...env, USAGE } as Env;
+    const usage = async () => (await (await handler.fetch!(new Request("https://api.test/usage", { headers: { Origin: "http://localhost:5173", Authorization: `Bearer ${token}` } }) as any, e, {} as any)).json() as any).today.used;
+    const calls = stub([
+      { match: isEmbed, reply: () => html(reelEmbed("Salmon Sushi 🍣")) },
+      { match: (u) => u.startsWith("https://scontent-iad6-1.cdninstagram.com/"), reply: () => mp4(3000) },
+    ]);
+    expect((await (await post("/import/url", { url: "https://www.instagram.com/reel/C1abcDEF/" }, e)).json() as any).video).toBeTruthy();
+    // AI를 부르지 않았으니 사용량은 그대로
+    expect(await usage()).toBe(0);
+    const r = await post("/import/instagram-video", { url: "https://www.instagram.com/reel/C1abcDEF/" }, e);
+    expect(r.status).toBe(200);
+    expect((await r.arrayBuffer()).byteLength).toBe(3000);
+    // 퍼가기 페이지는 한 번만 열었다 (영상 받기는 기억한 주소로)
+    expect(calls.filter((c) => isEmbed(c.url))).toHaveLength(1);
+    // 영상 받기도 하루 사용량을 쓰지 않는다
+    expect(await usage()).toBe(0);
+  });
+
+  it("needs a login for the video route", async () => {
+    stub([]);
+    const r = await handler.fetch!(new Request("https://api.test/import/instagram-video", {
+      method: "POST", body: JSON.stringify({ url: "https://www.instagram.com/p/C1abcDEF/" }), headers: { Origin: "http://localhost:5173", "Content-Type": "application/json" },
+    }) as any, env, {} as any);
+    expect(r.status).toBe(401);
   });
 
   it("does not use the video route while Instagram is blocking the Worker", async () => {

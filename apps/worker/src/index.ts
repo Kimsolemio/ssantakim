@@ -257,8 +257,8 @@ async function handle(request: Request, env: Env): Promise<Response> {
     if (url.pathname === "/import/url" && request.method === "POST") {
       const { user, body } = await begin(ctx, request, env, "/import/url", ImportUrlRequest, undefined, undefined, (b) => precheckImportUrl(b.url));
       const r = await importFromUrl(env, body.url);
-      // AI를 부르지 않고 끝났으면 (릴스라 영상을 봐야 함) 사용량을 돌려준다. 영상 장면을 보낼 때 센다
-      if (!r.model && ctx.refund) { const refund = ctx.refund; ctx.refund = null; await refund().catch((err) => console.warn("refund failed", err)); }
+      // 릴스라 AI를 부르지 않고 "영상을 봐 주세요"로 끝났으면 사용량을 돌려준다. 영상 장면을 보낼 때 센다
+      if (r.video && r.model === "" && ctx.refund) { const refund = ctx.refund; ctx.refund = null; await refund().catch((err) => console.warn("refund failed", err)); }
       console.log(JSON.stringify({ route: "import/url", uid: user.uid, via: r.via, hasRecipe: r.result.hasRecipe, video: !!r.video, provider: r.provider, model: r.model }));
       return json(r, 200, cors);
     }
@@ -271,7 +271,7 @@ async function handle(request: Request, env: Env): Promise<Response> {
       if (!instagramShortcode(body.url) && !isInstagramShare(body.url)) throw new HttpError(400, "인스타 게시물 주소만 받을 수 있어요");
       const v = await instagramVideo(env, body.url);
       console.log(JSON.stringify({ route: "import/instagram-video", uid: user.uid, bytes: v.length }));
-      return new Response(v.body, { status: 200, headers: { "Content-Type": v.type, "Cache-Control": "no-store", ...(v.length ? { "Content-Length": String(v.length) } : {}), ...cors } });
+      return new Response(v.body, { status: 200, headers: { "Content-Type": v.type, "Cache-Control": "no-store", ...cors } });
     }
 
     if (url.pathname === "/import/text" && request.method === "POST") {

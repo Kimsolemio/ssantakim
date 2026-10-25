@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captionFromOgDescription, instagramShortcode, looksBlocked, parseInstagramEmbed } from "../src/instagram";
+import { captionFromOgDescription, fetchInstagramVideo, instagramShortcode, looksBlocked, parseInstagramEmbed } from "../src/instagram";
 
 describe("instagram helpers", () => {
   it("reads the reel video address from the embed data, from Instagram's CDN only", () => {
@@ -9,7 +9,22 @@ describe("instagram helpers", () => {
     expect(parseInstagramEmbed(page("https://evil.example.com/reel.mp4")).video).toBeNull();
     expect(parseInstagramEmbed(page("http://scontent.cdninstagram.com/reel.mp4")).video).toBeNull();
     // 감싸지 않은 데이터에서도
-    expect(parseInstagramEmbed(`{"video_url":"https:\\/\\/scontent.cdninstagram.com\\/v.mp4"}`).video).toBe("https://scontent.cdninstagram.com/v.mp4");
+    expect(parseInstagramEmbed(`{"is_video":true,"video_url":"https:\\/\\/scontent.cdninstagram.com\\/v.mp4"}`).video).toBe("https://scontent.cdninstagram.com/v.mp4");
+    // 여러 장 묶음 안의 영상 하나는 릴스가 아니다
+    const carousel = `<script>{"contextJSON":${JSON.stringify(JSON.stringify({ context: { media: { is_video: false, __typename: "GraphSidecar", edge_sidecar_to_children: { edges: [{ node: { is_video: true, video_url: "https://scontent.cdninstagram.com/child.mp4" } }] } } } }))}}</script>`;
+    expect(parseInstagramEmbed(carousel).video).toBeNull();
+  });
+
+  it("cuts a video stream that grows past the limit even without a length header", async () => {
+    const body = new ReadableStream<Uint8Array>({ start(c) { for (let i = 0; i < 5; i++) c.enqueue(new Uint8Array(100)); c.close(); } });
+    const f = (async () => new Response(body, { headers: { "content-type": "video/mp4" } })) as unknown as typeof fetch;
+    const v = await fetchInstagramVideo("https://scontent.cdninstagram.com/v.mp4", f, 300);
+    expect(v).not.toBeNull();
+    await expect(new Response(v!.body).arrayBuffer()).rejects.toThrow();
+    // 확인한 인스타 CDN 주소가 아니면 아예 부르지 않는다
+    let called = false;
+    expect(await fetchInstagramVideo("https://evil.example.com/v.mp4", (async () => { called = true; return new Response(""); }) as unknown as typeof fetch)).toBeNull();
+    expect(called).toBe(false);
   });
   it("counts refusals and login redirects as blocking, not a missing post", () => {
     expect(looksBlocked(new Response("", { status: 429 }))).toBe(true);

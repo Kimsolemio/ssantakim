@@ -7,14 +7,19 @@ import type { PreparedImage } from "./image";
 
 const MAX_EDGE = 768;
 
-function once(el: HTMLVideoElement, ok: string, ms: number): Promise<void> {
+const aborted = () => new DOMException("취소되었습니다", "AbortError");
+
+function once(el: HTMLVideoElement, ok: string, ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(aborted());
     const t = setTimeout(() => { cleanup(); reject(new Error("영상을 읽는 데 너무 오래 걸려요")); }, ms);
     const done = () => { cleanup(); resolve(); };
     const fail = () => { cleanup(); reject(new Error("이 영상은 열 수 없어요. 다른 형식으로 저장해 보세요")); };
-    const cleanup = () => { clearTimeout(t); el.removeEventListener(ok, done); el.removeEventListener("error", fail); };
+    const stop = () => { cleanup(); reject(aborted()); };
+    const cleanup = () => { clearTimeout(t); el.removeEventListener(ok, done); el.removeEventListener("error", fail); signal?.removeEventListener("abort", stop); };
     el.addEventListener(ok, done, { once: true });
     el.addEventListener("error", fail, { once: true });
+    signal?.addEventListener("abort", stop, { once: true });
   });
 }
 
@@ -62,16 +67,17 @@ export function differs(a: Uint8Array, b: Uint8Array): boolean {
   return false;
 }
 
-export async function extractFrames(file: File, count: number): Promise<PreparedImage[]> {
+/** signal: 취소하면 다음 장면으로 넘어가기 전에 멈춘다 (AbortError) */
+export async function extractFrames(file: File, count: number, signal?: AbortSignal): Promise<PreparedImage[]> {
   if (file.type && !file.type.startsWith("video/")) throw new Error("동영상 파일만 올릴 수 있어요");
   const url = URL.createObjectURL(file);
   const v = document.createElement("video");
   v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = url;
   const out: PreparedImage[] = [];
   try {
-    await once(v, "loadedmetadata", 15_000);
+    await once(v, "loadedmetadata", 15_000, signal);
     // 일부 화면 녹화는 길이를 모른다고 나온다: 끝으로 한 번 보내면 알 수 있다
-    if (!Number.isFinite(v.duration)) { v.currentTime = 1e7; await once(v, "seeked", 8_000).catch(() => {}); }
+    if (!Number.isFinite(v.duration)) { v.currentTime = 1e7; await once(v, "seeked", 8_000, signal).catch((e) => { if (signal?.aborted) throw e; }); }
     let duration = v.duration;
     if (!Number.isFinite(duration) && v.seekable.length) duration = v.seekable.end(v.seekable.length - 1);
     // iOS 사파리는 한 번 재생해야 장면이 그려진다 (재생이 안 끝나도 1.5초 뒤 넘어간다)
@@ -87,9 +93,10 @@ export async function extractFrames(file: File, count: number): Promise<Prepared
     if (!ctx || !tctx) throw new Error("이 브라우저는 영상 처리를 지원하지 않아요");
     let last: Uint8Array | null = null;
     for (const t of frameTimes(duration, count)) {
+      if (signal?.aborted) throw aborted();
       const ready = armFrame(v, t);
       v.currentTime = t;
-      await once(v, "seeked", 8_000);
+      await once(v, "seeked", 8_000, signal);
       await ready();
       ctx.drawImage(v, 0, 0, w, h);
       // 앞 장면과 거의 같으면 (가만히 있는 화면) 빼고 다음으로

@@ -18,7 +18,7 @@ export const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, li
 const BLOCK_MS = 10 * 60_000;
 export type BlockKind = "server" | "ai";
 const blockedUntil: Record<BlockKind, number> = { server: 0, ai: 0 };
-export function resetInstagramBlock() { blockedUntil.server = 0; blockedUntil.ai = 0; }
+export function resetInstagramBlock() { blockedUntil.server = 0; blockedUntil.ai = 0; videoMemo.clear(); }
 type Kv = { get(k: string): Promise<string | null>; put(k: string, v: string, o?: { expirationTtl?: number }): Promise<void> } | undefined;
 export async function instagramBlocked(kv: Kv, kind: BlockKind, now = Date.now()): Promise<boolean> {
   if (blockedUntil[kind] > now) return true;
@@ -111,10 +111,11 @@ export function parseInstagramEmbed(html: string): Omit<InstagramPost, "shortcod
       const owner = findKey(data, "owner") as { username?: string } | undefined;
       username = str(owner?.username) ?? str(findKey(data, "username"));
       image = str(findKey(data, "display_url"));
-      video = str(findKey(data, "video_url"));
+      // 게시물 자체가 영상(릴스)일 때만: 여러 장 묶음 안의 영상 하나는 아니다
+      if (findKey(data, "is_video") === true || findKey(data, "product_type") === "clips") video = str(findKey(data, "video_url"));
     } catch { /* 아래 방법으로 */ }
   }
-  if (!video) {
+  if (!video && !ctx && /"is_video":true/.test(html)) {
     const m = /"video_url":("(?:[^"\\]|\\.)*")/.exec(html);
     if (m) { try { video = str(JSON.parse(m[1])); } catch { /* 무시 */ } }
   }
@@ -203,22 +204,39 @@ export async function fetchInstagramImage(src: string, f: typeof fetch): Promise
   } catch { return null; }
 }
 
+/**
+ * 링크 가져오기에서 찾은 릴스 영상 주소를 10분 기억한다: 바로 이어지는 영상 받기에서 퍼가기 페이지를 또 열지 않게.
+ * (주소는 인스타가 서명한 CDN 주소라 몇 시간은 그대로 쓸 수 있다)
+ */
+const VIDEO_MS = 10 * 60_000;
+const videoMemo = new Map<string, { url: string; until: number }>();
+export async function rememberInstagramVideo(kv: Kv, code: string, url: string, now = Date.now()): Promise<void> {
+  videoMemo.set(code, { url, until: now + VIDEO_MS });
+  if (videoMemo.size > 200) videoMemo.delete(videoMemo.keys().next().value!);
+  try { await kv?.put(`ig:video:${code}`, url, { expirationTtl: Math.ceil(VIDEO_MS / 1000) }); } catch { /* 무시 */ }
+}
+export async function recallInstagramVideo(kv: Kv, code: string, now = Date.now()): Promise<string | null> {
+  const m = videoMemo.get(code);
+  if (m && m.until > now) return m.url;
+  try { return safeMedia(await kv?.get(`ig:video:${code}`) ?? null); } catch { return null; }
+}
+
 /** 영상 한 편 상한 (릴스 90초 고화질도 대개 20MB 아래) */
 export const MAX_VIDEO = 40_000_000;
 /** 영상 파일 받기: 인스타 CDN에서 확인한 주소만, 상한을 넘으면 끊는다. 실패하면 null */
-export async function fetchInstagramVideo(src: string, f: typeof fetch): Promise<{ body: ReadableStream<Uint8Array>; type: string; length: number | null } | null> {
+export async function fetchInstagramVideo(src: string, f: typeof fetch, max = MAX_VIDEO): Promise<{ body: ReadableStream<Uint8Array>; type: string; length: number | null } | null> {
   if (!safeMedia(src)) return null;
   try {
     const r = await f(src, { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(20_000) });
     const type = (r.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
     const len = r.headers.get("content-length") ? Number(r.headers.get("content-length")) : null;
-    if (!r.ok || !r.body || !type.startsWith("video/") || (len != null && len > MAX_VIDEO)) { void r.body?.cancel(); return null; }
+    if (!r.ok || !r.body || !type.startsWith("video/") || (len != null && len > max)) { void r.body?.cancel(); return null; }
     // 길이를 안 알려 주는 응답도 상한에서 끊는다
     let seen = 0;
     const cap = new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, ctl) {
         seen += chunk.byteLength;
-        if (seen > MAX_VIDEO) ctl.error(new Error("영상이 너무 커요"));
+        if (seen > max) ctl.error(new Error("영상이 너무 커요"));
         else ctl.enqueue(chunk);
       },
     });

@@ -3,7 +3,10 @@ import { GenerationError, lazyFetch, selectProvider, type AiEnv, type AiPart, ty
 import { geminiProvider } from "./ai/gemini";
 import { IMPORT_SYSTEM_PROMPT, PAGE_READ_PROMPT } from "./prompts";
 import { parseAiJson } from "./recipe";
-import { fetchInstagramImage, fetchInstagramVideo, instagramBlocked as igBlockedNow, instagramPost, instagramShortcode, isInstagramShare, markInstagramBlocked, resolveInstagramUrl } from "./instagram";
+import {
+  fetchInstagramImage, fetchInstagramVideo, instagramBlocked as igBlockedNow, instagramPost, instagramShortcode, isInstagramShare,
+  markInstagramBlocked, recallInstagramVideo, rememberInstagramVideo, resolveInstagramUrl,
+} from "./instagram";
 import {
   htmlToText, isSafePublicUrl, jsonLdRecipeText, linkKind, metaContent, naverBlogMobileUrl, readLimited, youtubeId, youtubePageInfo,
 } from "./extract";
@@ -217,6 +220,7 @@ async function importInstagram(env: ImportEnv, rawUrl: string, f: typeof fetch):
   if (post) {
     const shortCaption = (post.caption ?? "").replace(/\s/g, "").length < 40;
     const video = post.video ? { caption: post.caption } : undefined;
+    if (post.video) await rememberInstagramVideo(env.USAGE, post.shortcode, post.video);
     // 릴스인데 캡션이 짧으면 레시피는 영상 안에 있다: AI를 부르지 않고 앱에게 영상 장면을 보내 달라고 한다
     if (video && shortCaption) {
       return { result: { hasRecipe: false, reason: "캡션이 짧아 영상을 보고 찾아야 해요", dishName: null, recipe: null }, via: "instagram_caption", provider: selectProvider(env).name, model: "", video };
@@ -270,7 +274,12 @@ export async function instagramVideo(env: ImportEnv, rawUrl: string, f: typeof f
   if (await igBlockedNow(env.USAGE, "server")) throw instagramBlocked();
   const { url, blocked } = await resolveInstagramUrl(rawUrl, f);
   if (blocked) { await markInstagramBlocked(env.USAGE, "server"); throw instagramBlocked(); }
-  if (!instagramShortcode(url)) throw instagramBlocked("게시물 주소를 찾지 못했어요");
+  const code = instagramShortcode(url);
+  if (!code) throw instagramBlocked("게시물 주소를 찾지 못했어요");
+  // 방금 링크 가져오기에서 찾은 주소가 있으면 퍼가기 페이지를 다시 열지 않는다 (만료됐으면 다시 찾는다)
+  const remembered = await recallInstagramVideo(env.USAGE, code);
+  const first = remembered ? await fetchInstagramVideo(remembered, f) : null;
+  if (first) return first;
   const r = await instagramPost(url, f);
   if (r.blocked) await markInstagramBlocked(env.USAGE, "server");
   const v = r.post?.video ? await fetchInstagramVideo(r.post.video, f) : null;
@@ -291,7 +300,7 @@ export async function importFromText(env: ImportEnv, input: { text?: string | nu
     { type: "text", text: [
       isInsta ? "인스타그램 게시물" : images.length && !text ? "레시피 사진" : "붙여넣은 글",
       input.frames && images.length
-        ? `\n위 사진 ${images.length}장은 요리 영상에서 일정한 간격으로 뽑은 장면이에요 (시간 순서). 화면 글자·자막·보이는 재료와 동작으로 재료와 순서를 정리해 주세요. 소리는 들을 수 없어요. 글자 없이 만드는 모습만 나오는 영상이면, 장면에 보이는 재료와 순서만 옮기고 양은 보이는 크기로 어림해 note에 "추정"이라고 적어 주세요. 장면에 없는 재료·단계는 넣지 마세요.`
+        ? `\n위 사진 ${images.length}장은 요리 영상에서 일정한 간격으로 뽑은 장면이에요 (시간 순서). 화면 글자·자막·보이는 재료와 동작으로 재료와 순서를 정리해 주세요. 소리는 들을 수 없어요. 글자 없이 만드는 모습만 나오는 영상이면, 장면에 보이는 재료와 순서만 옮기고 양은 보이는 크기로 어림해 note에 "추정"이라고 적어 주세요. 장면에 없는 재료·단계는 넣지 마세요. 요리하는 과정이 보이지 않으면(먹는 모습·식당·완성된 음식만) hasRecipe false 로 두세요.`
         : "",
       text ? `\n${text.slice(0, 8000)}` : `\n사진 ${images.length}장`,
     ].join("") },
