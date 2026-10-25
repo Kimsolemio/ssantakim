@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Camera, ClipboardPaste, Plus, X } from "lucide-react";
+import { Camera, ClipboardPaste, Film, Plus, X } from "lucide-react";
 import type { ImportResult, RecipeDraft } from "@cook/shared";
 import { FullScreen } from "../../components/FullScreen";
 import { AiNotice } from "../../components/AiNotice";
@@ -10,23 +10,29 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { AiProgress } from "../../components/ui/Ai";
 import { callWorker, workerConfigured, ApiError } from "../../lib/api";
 import { prepareImage, type PreparedImage } from "../../lib/image";
+import { extractFrames } from "../../lib/videoFrames";
 import type { SharedPayload } from "../../lib/share";
 
 type ImportResponse = { result: ImportResult; via: string; provider: string; model: string };
 type Mode = "link" | "paste";
 type Info = { title: string; body?: string };
 
-const isInstagram = (u: string) => /(^|\.)instagram\.com$/i.test((() => { try { return new URL(u).hostname; } catch { return ""; } })());
 const isYoutube = (u: string) => /(^|\.)(youtube\.com|youtu\.be)$/i.test((() => { try { return new URL(u).hostname; } catch { return ""; } })());
 const VIA_LABEL: Record<string, string> = {
   youtube_description: "유튜브 설명란에서 찾았어요", youtube_video: "유튜브 영상을 보고 정리했어요", jsonld: "레시피 사이트 정보를 읽었어요",
   page: "페이지 본문에서 찾았어요", caption: "붙여넣은 글에서 찾았어요", photo: "사진에서 읽었어요",
+  instagram_caption: "인스타 캡션에서 찾았어요",
 };
+/** 사진·영상 장면을 합쳐 한 번에 보낼 수 있는 수 */
+const MAX_IMAGES = 8;
+/** 영상 하나에서 뽑는 장면 수 */
+const VIDEO_FRAMES = 8;
 const MODES: { value: Mode; label: string }[] = [{ value: "link", label: "링크" }, { value: "paste", label: "캡션·사진" }];
 const LINK_STEPS = ["페이지를 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
 const PASTE_STEPS = ["글과 사진을 읽는 중…", "레시피를 찾는 중…", "재료와 순서를 정리하는 중…"];
-const INSTAGRAM: Info = { title: "인스타그램은 링크만으로 볼 수 없어요", body: "캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요" };
 const TO_PASTE: Info = { title: "캡션을 붙여넣거나 스크린샷을 올려 주세요" };
+/** 인스타 캡션에 레시피가 없을 때: 영상 속 화면 글자를 읽게 한다 */
+const INSTA_VIDEO: Info = { title: "캡션에는 레시피가 없어요", body: "릴스를 화면 녹화해 '동영상'으로 올리면 화면 속 글자와 재료를 읽어 볼게요" };
 
 /** 서버 문장 "A했어요. B해 주세요." → 제목 A, 본문 B */
 function splitMessage(msg: string): Info {
@@ -45,7 +51,7 @@ type Props = {
 /** 유튜브·블로그 링크, 인스타 캡션·스크린샷, 요리책 사진 → 레시피 */
 export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props) {
   const startUrl = initial?.url ?? "";
-  const [mode, setMode] = useState<Mode>(!startUrl && initial?.text ? "paste" : startUrl && isInstagram(startUrl) ? "paste" : "link");
+  const [mode, setMode] = useState<Mode>(!startUrl && initial?.text ? "paste" : "link");
   const [url, setUrl] = useState(startUrl);
   const [text, setText] = useState(initial?.text && initial.text !== startUrl ? initial.text.replace(startUrl, "").trim() : "");
   const [images, setImages] = useState<PreparedImage[]>([]);
@@ -55,15 +61,23 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const [urlErr, setUrlErr] = useState<string | null>(null);
   /** 서버가 이 페이지를 못 읽었을 때 (링크 탭) */
   const [unreadable, setUnreadable] = useState<string | null>(null);
-  const [info, setInfo] = useState<Info | null>(startUrl && isInstagram(startUrl) ? INSTAGRAM : null);
+  const [info, setInfo] = useState<Info | null>(null);
+  /** 동영상에서 장면을 뽑는 중 */
+  const [framing, setFraming] = useState(false);
+  /** 올린 사진 중 영상 장면이 있는가 (서버에 "시간 순서 장면"이라고 알려 준다) */
+  const [fromVideo, setFromVideo] = useState(false);
   const [miss, setMiss] = useState<ImportResult | null>(null);
   const [srcOpen, setSrcOpen] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLInputElement>(null);
   const urlId = useId();
   const canPaste = typeof navigator !== "undefined" && "clipboard" in navigator;
 
   useEffect(() => () => { abort.current?.abort(); images.forEach((i) => URL.revokeObjectURL(i.previewUrl)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 사진을 모두 빼면 "영상 장면"이라는 표시도 지운다
+  useEffect(() => { if (images.length === 0) setFromVideo(false); }, [images.length]);
 
   const clearNotes = () => { setErr(null); setUrlErr(null); setUnreadable(null); setMiss(null); };
   const switchMode = (m: Mode) => { setMode(m); clearNotes(); };
@@ -71,6 +85,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
 
   const handle = (res: ImportResponse) => {
     if (res.result.hasRecipe && res.result.recipe) onResult(res.result.recipe, VIA_LABEL[res.via] ?? "");
+    else if (res.via === "instagram_caption") toPaste(INSTA_VIDEO);
     else setMiss(res.result);
   };
 
@@ -91,7 +106,6 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const importLink = async (u = url) => {
     const target = u.trim();
     if (!/^https?:\/\//i.test(target)) { setUrlErr("http:// 또는 https:// 로 시작하는 주소를 넣어 주세요"); return; }
-    if (isInstagram(target)) { toPaste(INSTAGRAM); return; }
     const res = await run<ImportResponse>("/import/url", { url: target });
     if (res) handle(res);
   };
@@ -99,14 +113,15 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
     const res = await run<ImportResponse>("/import/text", {
       text: text.trim() || null, url: url.trim() || null,
       images: images.map((i) => ({ mediaType: i.mediaType, data: i.data })),
+      ...(fromVideo && images.length ? { frames: true } : {}),
     });
     if (res) handle(res);
   };
 
-  // 공유로 링크가 들어왔으면 바로 가져온다 (인스타 제외).
+  // 공유로 링크가 들어왔으면 바로 가져온다 (인스타도: 공개 게시물이면 캡션을 읽어 본다).
   // 다음 틈으로 미뤄 두면, 개발 모드처럼 화면이 한 번 내려갔다 다시 올라와도 예약이 취소·재등록되어 정확히 한 번만 돈다
   useEffect(() => {
-    if (!startUrl || isInstagram(startUrl) || !workerConfigured) return;
+    if (!startUrl || !workerConfigured) return;
     const t = setTimeout(() => { void importLink(startUrl); }, 0);
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -114,13 +129,26 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
   const addFiles = async (files: FileList | null) => {
     if (!files) return;
     try {
-      const room = 4 - images.length;
+      const room = MAX_IMAGES - images.length;
       const next: PreparedImage[] = [];
       for (const f of Array.from(files).slice(0, room)) next.push(await prepareImage(f));
       setImages((l) => [...l, ...next]);
       setMiss(null);
     } catch (e) { setErr(e instanceof Error ? e.message : "사진을 처리하지 못했습니다"); }
     finally { if (fileRef.current) fileRef.current.value = ""; }
+  };
+
+  const addVideo = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setFraming(true); setErr(null);
+    try {
+      const frames = await extractFrames(file, Math.min(VIDEO_FRAMES, MAX_IMAGES - images.length));
+      setImages((l) => [...l, ...frames].slice(0, MAX_IMAGES));
+      setFromVideo(true);
+      setMiss(null);
+    } catch (e) { setErr(e instanceof Error ? e.message : "영상을 처리하지 못했어요"); }
+    finally { setFraming(false); if (videoRef.current) videoRef.current.value = ""; }
   };
 
   const pasteFromClipboard = async () => {
@@ -190,22 +218,29 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
                 <div className="flex flex-wrap gap-3">
                   {images.map((im, i) => (
                     <span key={im.previewUrl} className="relative size-16 shrink-0">
-                      <img src={im.previewUrl} alt={`사진 ${i + 1}`} className="size-16 rounded-control object-cover" />
+                      <img src={im.previewUrl} alt={`사진 ${i + 1}`} className="size-16 rounded-control object-cover ring-1 ring-line" />
                       <button type="button" aria-label={`사진 ${i + 1} 빼기`} onClick={() => { URL.revokeObjectURL(im.previewUrl); setImages((l) => l.filter((x) => x !== im)); }}
                         className="absolute -right-3 -top-3 grid size-11 place-items-center">
                         <span className="grid size-7 place-items-center rounded-full bg-ink/70 text-surface"><X size={16} strokeWidth={2.5} aria-hidden /></span>
                       </button>
                     </span>
                   ))}
-                  {images.length < 4 && (
+                  {images.length < MAX_IMAGES && (
                     <button type="button" aria-label="사진 추가" onClick={() => fileRef.current?.click()}
                       className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-control bg-surface-2 text-ink-2 transition-colors active:bg-fill-pressed">
-                      <Camera size={22} aria-hidden /><span className="text-micro tabular-nums">{images.length}/4</span>
+                      <Camera size={22} aria-hidden /><span className="text-micro tabular-nums">{images.length}/{MAX_IMAGES}</span>
+                    </button>
+                  )}
+                  {images.length < MAX_IMAGES && (
+                    <button type="button" aria-label="동영상에서 장면 뽑기" onClick={() => videoRef.current?.click()} disabled={framing} aria-busy={framing}
+                      className="flex size-16 shrink-0 flex-col items-center justify-center gap-0.5 rounded-control bg-surface-2 text-ink-2 transition-colors active:bg-fill-pressed disabled:opacity-60">
+                      <Film size={22} aria-hidden /><span className="text-micro">{framing ? "읽는 중" : "동영상"}</span>
                     </button>
                   )}
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} data-testid="import-files" />
-                <p className="mt-2 text-caption text-ink-3">요리책·손글씨는 사진만 올려도 돼요</p>
+                <input ref={videoRef} type="file" accept="video/*" className="hidden" onChange={(e) => addVideo(e.target.files)} data-testid="import-video" />
+                <p className="mt-2 text-caption text-ink-3">요리책·손글씨는 사진만 올려도 돼요. 릴스·쇼츠는 화면 녹화를 '동영상'으로 올리면 장면 {VIDEO_FRAMES}장을 뽑아 화면 글자를 읽어요 (소리는 못 들어요)</p>
               </div>
               {srcOpen || url.trim() ? (
                 <TextField wrapClass="mx-5 mt-5" label="원본 링크" aria-label="원본 링크" type="url" inputMode="url" placeholder="https://" value={url}
@@ -224,7 +259,7 @@ export function ImportSheet({ initial, onClose, onResult, onMakeWithAi }: Props)
                 {miss.dishName && <Button ai size="md" block onClick={() => onMakeWithAi(miss.dishName!)}>‘{miss.dishName}’ AI로 만들기</Button>}
                 {mode === "link" && (
                   <Button variant="secondary" size="md" block
-                    onClick={() => toPaste({ title: TO_PASTE.title, body: "재료가 보이는 화면이나 댓글 속 레시피도 좋아요" })}>캡션·사진으로 다시</Button>
+                    onClick={() => toPaste({ title: TO_PASTE.title, body: "재료가 보이는 화면, 화면 녹화 영상, 댓글 속 레시피도 좋아요" })}>캡션·사진·영상으로 다시</Button>
                 )}
               </div>
             </div>

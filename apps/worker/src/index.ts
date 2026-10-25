@@ -114,8 +114,11 @@ const ReceiptRequest = z.object({
 const ImportUrlRequest = z.object({ url: z.string().trim().min(8).max(2000) });
 const ImportTextRequest = z.object({
   text: z.string().max(8000).nullable().optional(),
-  images: z.array(ImageInput).max(4, "사진은 4장까지 올릴 수 있습니다").optional(),
+  // 영상에서 뽑은 장면까지 합쳐 8장 (사진 한 장 5MB, 요청 전체 12MB 상한은 그대로)
+  images: z.array(ImageInput).max(8, "사진·장면은 8장까지 올릴 수 있습니다").optional(),
   url: z.string().max(2000).nullable().optional(),
+  /** 사진이 영상에서 뽑은 장면(시간 순서)인가 */
+  frames: z.boolean().optional(),
 }).refine((b) => (b.text?.trim().length ?? 0) > 0 || (b.images?.length ?? 0) > 0, "글이나 사진이 필요합니다");
 
 /**

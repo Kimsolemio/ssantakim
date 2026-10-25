@@ -57,7 +57,7 @@ export async function demoWorker<T>(path: string, body: Body = {}, signal?: Abor
     }
     case "/import/url": {
       const u = String(body.url ?? "");
-      if (u.includes("instagram.com")) throw new DemoHttpError(422, "인스타그램은 링크만으로 내용을 볼 수 없어요. 캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요.", "instagram");
+      if (u.includes("instagram.com")) throw new DemoHttpError(422, "체험판에서는 인스타 게시물을 읽지 않아요. 캡션을 복사해 붙여넣거나, 영상을 화면 녹화해 올려 주세요.", "instagram");
       const yt = /youtu/.test(u);
       const recipe = { ...demoRecipeFor(yt ? "김치찌개" : "된장찌개", 2), source: yt ? { type: "youtube", url: u, channel: "예시 채널", title: "체험판 예시 영상" } : { type: "web", url: u, title: "체험판 예시 글" } };
       return reply(1800, { result: { hasRecipe: true, reason: "", dishName: recipe.title, recipe }, via: yt ? "youtube_description" : "jsonld" });

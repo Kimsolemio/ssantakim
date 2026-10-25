@@ -62,12 +62,14 @@ createServer((req, res) => {
     }
     if (req.url === "/import/url" || req.url === "/import/text") {
       const b = JSON.parse(body || "{}");
-      console.log("mock " + req.url, JSON.stringify({ url: b.url, text: b.text?.slice(0, 40), images: b.images?.length }));
+      console.log("mock " + req.url, JSON.stringify({ url: b.url, text: b.text?.slice(0, 40), images: b.images?.length, frames: b.frames }));
       const send = (status, data) => { res.writeHead(status, { ...cors, "content-type": "application/json" }); res.end(JSON.stringify(data)); };
       const make = (title, source) => ({ ...recipe, title, servingsBase: 2, source });
       if (req.url === "/import/url") {
         const u = String(b.url ?? "");
-        if (u.includes("instagram.com")) return send(422, { error: "인스타그램은 링크만으로 내용을 볼 수 없어요. 캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요.", code: "instagram" });
+        // 공개 게시물(캡션을 읽을 수 있는 경우)과 막힌 경우
+        if (u.includes("instagram.com/p/OKpost")) return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make("인스타 캡션 떡볶이", { type: "instagram", url: u, channel: "cook_mom" }) }, via: "instagram_caption", provider: "mock", model: "mock" }), 700);
+        if (u.includes("instagram.com")) return send(422, { error: "인스타그램이 이 게시물 내용을 보여 주지 않았어요. 캡션을 복사해 붙여넣거나, 영상을 화면 녹화해 올려 주세요.", code: "instagram" });
         if (u.includes("noRecipe")) return setTimeout(() => send(200, { result: { hasRecipe: false, reason: "설명란에 레시피가 없어요", dishName: "김치볶음밥", recipe: null }, via: "youtube_description", provider: "mock", model: "mock" }), 500);
         if (u.includes("youtu")) {
           const id = /([\w-]{11})/.exec(u.split("/").pop().replace("watch?v=", ""))?.[1] ?? "mockRecipe1";
@@ -76,6 +78,8 @@ createServer((req, res) => {
         return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "된장찌개", recipe: make("블로그 된장찌개", { type: "web", url: u, title: "된장찌개 황금레시피" }) }, via: "jsonld", provider: "mock", model: "mock" }), 700);
       }
       if (!(b.text && b.text.trim()) && !(b.images?.length)) return send(400, { error: "글이나 사진이 필요합니다" });
+      // 영상에서 뽑은 장면: 앱이 frames 표시와 함께 여러 장을 보낸다
+      if (b.frames) return setTimeout(() => send(200, { result: { hasRecipe: (b.images?.length ?? 0) >= 2, reason: "", dishName: "떡볶이", recipe: make(`영상 장면 떡볶이 ${b.images.length}장`, { type: "photo" }) }, via: "photo", provider: "mock", model: "mock" }), 700);
       const insta = String(b.url ?? "").includes("instagram.com");
       return setTimeout(() => send(200, { result: { hasRecipe: true, reason: "", dishName: "떡볶이", recipe: make(insta ? "인스타 떡볶이" : "메모 떡볶이", insta ? { type: "instagram", url: b.url } : { type: b.text ? "text" : "photo" }) }, via: b.text ? "caption" : "photo", provider: "mock", model: "mock" }), 700);
     }

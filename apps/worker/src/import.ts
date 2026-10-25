@@ -3,6 +3,7 @@ import { GenerationError, lazyFetch, selectProvider, type AiEnv, type AiPart, ty
 import { geminiProvider } from "./ai/gemini";
 import { IMPORT_SYSTEM_PROMPT, PAGE_READ_PROMPT } from "./prompts";
 import { parseAiJson } from "./recipe";
+import { fetchInstagramImage, instagramPost, instagramShortcode } from "./instagram";
 import {
   htmlToText, isSafePublicUrl, jsonLdRecipeText, linkKind, metaContent, naverBlogMobileUrl, readLimited, youtubeId, youtubePageInfo,
 } from "./extract";
@@ -12,7 +13,7 @@ const UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Geck
 
 export type ImportEnv = AiEnv & { YOUTUBE_API_KEY?: string };
 /** 어디서 레시피를 읽었는지 (화면 안내용) */
-export type ImportVia = "youtube_description" | "youtube_video" | "jsonld" | "page" | "caption" | "photo";
+export type ImportVia = "youtube_description" | "youtube_video" | "jsonld" | "page" | "caption" | "photo" | "instagram_caption";
 export type ImportResponse = { result: ImportResult; via: ImportVia; provider: ProviderName; model: string };
 
 /** 글뿐인지 (사진·영상이 섞이면 읽기가 어려워 기본 모델로 깊게 본다) */
@@ -85,10 +86,13 @@ async function youtubeInfo(id: string, apiKey: string | undefined, f: typeof fet
 export function precheckImportUrl(rawUrl: string): void {
   const url = rawUrl.trim();
   if (!isSafePublicUrl(url)) throw new GenerationError("열 수 없는 주소입니다 (http/https 공개 주소만 가능)", 400);
-  if (linkKind(url) === "instagram") {
-    throw new GenerationError("인스타그램은 링크만으로 내용을 볼 수 없어요. 캡션을 복사해 붙여넣거나 스크린샷을 올려 주세요.", 422, "instagram");
-  }
+  // 인스타는 게시물 주소(/p/, /reel/)만 읽어 볼 수 있다 (프로필·스토리는 로그인해야 보인다)
+  if (linkKind(url) === "instagram" && !instagramShortcode(url)) throw instagramBlocked("게시물 주소가 아니에요");
 }
+
+/** 인스타 게시물을 서버가 읽지 못했을 때: 앱은 캡션 붙여넣기·화면 녹화 화면으로 넘어간다 */
+const instagramBlocked = (why = "인스타그램이 이 게시물 내용을 보여 주지 않았어요") =>
+  new GenerationError(`${why}. 캡션을 복사해 붙여넣거나, 영상을 화면 녹화해 올려 주세요.`, 422, "instagram");
 
 export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fetch = lazyFetch): Promise<ImportResponse> {
   const url = rawUrl.trim();
@@ -130,6 +134,8 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
       via: "youtube_description", provider: "gemini", model: "",
     };
   }
+
+  if (kind === "instagram") return importInstagram(env, url, f);
 
   // 블로그·레시피 사이트
   const target = kind === "naver_blog" ? naverBlogMobileUrl(url) ?? url : url;
@@ -175,7 +181,46 @@ export async function importFromUrl(env: ImportEnv, rawUrl: string, f: typeof fe
   return runImport(importAi(env, parts), parts, source, ld ? "jsonld" : "page");
 }
 
-export async function importFromText(env: ImportEnv, input: { text?: string | null; images?: { mediaType: ImageMediaType; data: string }[]; url?: string | null }): Promise<ImportResponse> {
+/**
+ * 인스타 공개 게시물: 퍼가기 페이지의 캡션(+ 캡션이 짧으면 표지 사진)으로 레시피를 찾는다.
+ * 서버가 못 읽으면 Claude 웹 읽기로 한 번 더, 그래도 없으면 422 instagram (사용량은 돌려준다).
+ */
+async function importInstagram(env: ImportEnv, url: string, f: typeof fetch): Promise<ImportResponse> {
+  const post = await instagramPost(url, f);
+  const source: RecipeSource = { type: "instagram", url, ...(post?.username ? { channel: post.username } : {}) };
+  const header = `인스타그램 게시물${post?.username ? `\n작성자: @${post.username}` : ""}\n주소: ${url}`;
+  if (post?.caption || post?.image) {
+    const parts: AiPart[] = [];
+    // 캡션이 짧거나 없으면 표지 사진의 글자(재료·양)를 함께 본다
+    if (post.image && (post.caption ?? "").replace(/\s/g, "").length < 40) {
+      const img = await fetchInstagramImage(post.image, f);
+      if (img) parts.push({ type: "image", mediaType: img.mediaType, data: img.data });
+    }
+    if (post.caption || parts.length) {
+      parts.push({ type: "text", text: `${header}\n\n${post.caption ? `캡션:\n${post.caption}` : "(캡션 없음, 표지 사진만)"}` });
+      return runImport(importAi(env, parts), parts, source, "instagram_caption");
+    }
+  }
+  // 서버에서 막혔으면 Claude가 퍼가기 페이지를 직접 읽어 본다 (Claude일 때만)
+  const ai = selectProvider(env);
+  const code = instagramShortcode(url);
+  if (ai.research && code) {
+    try {
+      const r = await ai.research({
+        system: PAGE_READ_PROMPT,
+        prompt: `이 인스타그램 게시물의 캡션에 있는 레시피를 읽어 주세요: https://www.instagram.com/p/${code}/embed/captioned/`,
+        searches: 0, fetches: 1, maxTokens: 4000,
+      });
+      if (r.text.replace(/\s/g, "").length >= 40 && !/^레시피 없음/.test(r.text.trim())) {
+        const parts: AiPart[] = [{ type: "text", text: `${header}\n\n(AI가 직접 읽은 캡션)\n${r.text.slice(0, 8000)}` }];
+        return runImport(importAi(env, parts), parts, source, "instagram_caption");
+      }
+    } catch (e) { console.warn("claude instagram fetch failed", e instanceof Error ? e.message : e); }
+  }
+  throw instagramBlocked();
+}
+
+export async function importFromText(env: ImportEnv, input: { text?: string | null; images?: { mediaType: ImageMediaType; data: string }[]; url?: string | null; frames?: boolean }): Promise<ImportResponse> {
   const images = input.images ?? [];
   const text = input.text?.trim() ?? "";
   const isInsta = !!input.url && linkKind(input.url) === "instagram";
@@ -185,7 +230,13 @@ export async function importFromText(env: ImportEnv, input: { text?: string | nu
   };
   const parts: AiPart[] = [
     ...images.map((im) => ({ type: "image" as const, mediaType: im.mediaType, data: im.data })),
-    { type: "text", text: [isInsta ? "인스타그램 게시물" : images.length && !text ? "레시피 사진" : "붙여넣은 글", text ? `\n${text.slice(0, 8000)}` : `\n사진 ${images.length}장`].join("") },
+    { type: "text", text: [
+      isInsta ? "인스타그램 게시물" : images.length && !text ? "레시피 사진" : "붙여넣은 글",
+      input.frames && images.length
+        ? `\n위 사진 ${images.length}장은 요리 영상에서 일정한 간격으로 뽑은 장면이에요 (시간 순서). 화면 글자·자막·보이는 재료와 동작으로 재료와 순서를 정리해 주세요. 소리는 들을 수 없으니 양이 안 보이면 지어내지 말고 비워 두세요.`
+        : "",
+      text ? `\n${text.slice(0, 8000)}` : `\n사진 ${images.length}장`,
+    ].join("") },
   ];
   return runImport(importAi(env, parts), parts, source, images.length && !text ? "photo" : "caption");
 }

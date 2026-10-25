@@ -29,7 +29,7 @@ async function newUser(email, name) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(`${email}: ${e.message}`));
-  page.on("console", (m) => { if (m.type() === "error" && !/favicon|ERR_CONNECTION_REFUSED.*9099|net::ERR|status of 502/.test(m.text())) errors.push(`${email} console: ${m.text()}`); });
+  page.on("console", (m) => { if (m.type() === "error" && !/favicon|ERR_CONNECTION_REFUSED.*9099|net::ERR|status of 502|status of 422/.test(m.text())) errors.push(`${email} console: ${m.text()}`); });
   page.on("dialog", (d) => d.accept());
   await page.goto(APP);
   await page.getByText("Google로 시작하기").waitFor({ timeout: 20000 });
@@ -348,7 +348,7 @@ await mom.getByRole("button", { name: "레시피 추가" }).click();
 await mom.getByTestId("open-import").click();
 await mom.getByLabel("링크").fill("https://www.instagram.com/reel/C1abcDEF/");
 await mom.getByText("가져오기", { exact: true }).click();
-await mom.getByTestId("import-info").getByText(/인스타그램은 링크만으로/).waitFor();
+await mom.getByTestId("import-info").getByText(/인스타그램이 이 게시물 내용을/).waitFor();
 assert.equal(await mom.getByLabel("원본 링크").inputValue(), "https://www.instagram.com/reel/C1abcDEF/");
 await mom.getByLabel("캡션·본문").fill("#떡볶이 황금레시피\n떡 300g, 고추장 2큰술, 설탕 1큰술, 어묵 2장");
 const shot = await mom.screenshot({ type: "png" });
@@ -494,6 +494,8 @@ const tomorrowStr = (() => { const d = new Date(); d.setDate(d.getDate() + 1); r
 await mom.locator("nav").getByText("뭐 먹지", { exact: true }).click();
 await mom.getByTestId("open-plan").click();
 await mom.getByTestId("plan-range").waitFor();
+// 일요일에는 다음 주가 먼저 열린다 → 오늘이 있는 이번 주로
+if (new Date().getDay() === 0) await mom.getByRole("button", { name: /이번 주로$/ }).click();
 const planDay = (d) => mom.locator(`[data-testid="plan-day"][data-date="${d}"]`);
 await planDay(todayStr).getByRole("button", { name: /식단 추가$/ }).click();
 await mom.getByTestId("plan-pick").getByRole("button", { name: "알리오올리오", exact: true }).click();
@@ -617,6 +619,41 @@ await dad.getByText("저장", { exact: true }).click();
 await dad.getByRole("heading", { name: "재료", exact: true }).waitFor();
 await mom.locator("nav").getByText("레시피", { exact: true }).click();
 await mom.locator("li", { hasText: "알리오올리오 (아빠 수정)" }).waitFor({ timeout: 10000 });
+
+// ---------- 인스타 공개 게시물 캡션 · 화면 녹화 영상 장면 ----------
+await mom.getByRole("button", { name: "레시피 추가" }).click();
+await mom.getByTestId("open-import").click();
+await mom.getByLabel("링크").fill("https://www.instagram.com/p/OKpost123/");
+await mom.getByText("가져오기", { exact: true }).click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+await mom.getByTestId("import-note").getByText(/인스타 캡션에서 찾았어요/).waitFor();
+assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue(), "인스타 캡션 떡볶이");
+await mom.getByText("저장", { exact: true }).click();
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+await mom.getByLabel("뒤로").click();
+
+// 글자가 바뀌는 6초짜리 영상을 만들어 (Playwright 화면 녹화) 올린다
+const recCtx = await browser.newContext({ viewport: { width: 360, height: 640 }, recordVideo: { dir: shots, size: { width: 360, height: 640 } } });
+const recPage = await recCtx.newPage();
+await recPage.setContent(`<body style="margin:0;background:#fff;font:bold 44px sans-serif"><div id="t" style="padding:48px">떡 300g</div><script>let i=0;setInterval(()=>{document.getElementById("t").textContent=["떡 300g","고추장 2큰술","설탕 1큰술","물 400ml"][++i%4]},1500)</script></body>`);
+await recPage.waitForTimeout(6500);
+const recVideo = recPage.video();
+await recCtx.close();
+const videoPath = await recVideo.path();
+await mom.getByRole("button", { name: "레시피 추가" }).click();
+await mom.getByTestId("open-import").click();
+await mom.getByRole("tab", { name: "캡션·사진" }).click();
+await mom.getByTestId("import-video").setInputFiles(videoPath);
+await mom.getByLabel("사진 2 빼기").waitFor({ timeout: 30000 });
+const frameCount = await mom.getByLabel(/^사진 \d+ 빼기$/).count();
+assert.ok(frameCount >= 3 && frameCount <= 8, `영상 장면 ${frameCount}장`);
+await mom.screenshot({ path: `${shots}/30-import-video-frames.png` });
+await mom.getByText("정리하기", { exact: true }).click();
+await mom.getByText("레시피 확인·수정").waitFor({ timeout: 15000 });
+assert.equal(await mom.getByPlaceholder("요리 이름", { exact: true }).inputValue(), `영상 장면 떡볶이 ${frameCount}장`);
+await mom.getByText("저장", { exact: true }).click();
+await mom.getByRole("heading", { name: "재료", exact: true }).waitFor();
+await mom.getByLabel("뒤로").click();
 
 // ---------- 사용자 3: 다른 가족은 못 봄 ----------
 const stranger = await newUserTracked("x@test.local", "남");

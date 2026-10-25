@@ -117,6 +117,95 @@ describe("/import/url — Instagram and web", () => {
     expect(await r.json()).toMatchObject({ code: "instagram" });
   });
 
+  // 퍼가기 페이지에 들어 있는 데이터 모양 (JSON 문자열을 한 번 더 감싼다)
+  const embedWith = (caption: string, extra = "") => {
+    const ctx = JSON.stringify({ context: { media: { owner: { username: "cook_mom" }, display_url: "https://scontent.cdninstagram.com/v/t51/abc.jpg?x=1", edge_media_to_caption: { edges: [{ node: { text: caption } }] } } } });
+    return `<html><body>${extra}<script>window.x = {"contextJSON":${JSON.stringify(ctx)}}</script></body></html>`;
+  };
+  const isEmbed = (u: string) => u.startsWith("https://www.instagram.com/p/C1abcDEF/embed/captioned/");
+
+  it("reads the caption of a public post from the embed page", async () => {
+    const calls = stub([
+      { match: isEmbed, reply: () => html(embedWith("떡볶이 황금레시피\n떡 300g, 고추장 2큰술, 설탕 1큰술\n1. 물을 끓인다 2. 떡을 넣는다")) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(found())) },
+    ]);
+    const r = await post("/import/url", { url: "https://www.instagram.com/reel/C1abcDEF/?igsh=x" });
+    expect(r.status).toBe(200);
+    const j = await r.json() as any;
+    expect(j.via).toBe("instagram_caption");
+    expect(j.result.recipe.source).toEqual({ type: "instagram", url: "https://www.instagram.com/reel/C1abcDEF/?igsh=x", channel: "cook_mom" });
+    const ai = calls.find((c) => isClaude(c.url))!;
+    expect(ai.body.messages[0].content.at(-1).text).toContain("떡 300g, 고추장 2큰술");
+    expect(ai.body.messages[0].content.at(-1).text).toContain("@cook_mom");
+    // 캡션이 충분하면 표지 사진은 받지 않는다
+    expect(calls.some((c) => c.url.includes("cdninstagram.com"))).toBe(false);
+  });
+
+  it("adds the cover picture when the caption is too short to hold a recipe", async () => {
+    const calls = stub([
+      { match: isEmbed, reply: () => html(embedWith("오늘 저녁 🍝 저장해 두세요")) },
+      { match: (u) => u.startsWith("https://scontent.cdninstagram.com/"), reply: () => new Response(new Uint8Array(2000), { headers: { "content-type": "image/jpeg" } }) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(found())) },
+    ]);
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any;
+    expect(j.via).toBe("instagram_caption");
+    const ai = calls.find((c) => isClaude(c.url))!;
+    expect(ai.body.messages[0].content[0].type).toBe("image");
+  });
+
+  it("falls back to the drawn caption block and then the page preview text", async () => {
+    stub([
+      { match: isEmbed, reply: () => html(`<div class="Caption"><a class="CaptionUsername" href="#">cook_mom</a><br/>계란말이<br>계란 4개, 소금 약간<div class="CaptionComments"></div></div>`) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(found())) },
+    ]);
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any;
+    expect(j.result.recipe.source.channel).toBe("cook_mom");
+    const calls = stub([
+      { match: isEmbed, reply: () => new Response("", { status: 302, headers: { location: "https://www.instagram.com/accounts/login/" } }) },
+      { match: (u) => u === "https://www.instagram.com/p/C1abcDEF/", reply: () => html(`<meta property="og:description" content="좋아요 1.2만개, 댓글 30개 - cook_mom님, 2026년 10월 20일: &quot;계란말이 레시피 계란 4개 소금 약간 대파 조금&quot;">`) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(found())) },
+    ]);
+    const j2 = await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any;
+    expect(j2.via).toBe("instagram_caption");
+    expect(calls.find((c) => isClaude(c.url))!.body.messages[0].content.at(-1).text).toContain("계란 4개 소금 약간");
+  });
+
+  it("asks Claude to read the embed page when the Worker is blocked, then gives up kindly", async () => {
+    let n = 0;
+    stub([
+      { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 429 }) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage(++n === 1 ? "떡볶이 레시피: 떡 300g, 고추장 2큰술, 설탕 1큰술, 물 400ml. 물을 끓이고 떡을 넣는다." : found())) },
+    ]);
+    const j = await (await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" })).json() as any;
+    expect(j.via).toBe("instagram_caption");
+    stub([
+      { match: (u) => u.startsWith("https://www.instagram.com/"), reply: () => new Response("", { status: 429 }) },
+      { match: isClaude, reply: () => jsonResponse(claudeMessage("레시피 없음")) },
+    ]);
+    const r = await post("/import/url", { url: "https://www.instagram.com/p/C1abcDEF/" });
+    expect(r.status).toBe(422);
+    expect(await r.json()).toMatchObject({ code: "instagram" });
+  });
+
+  it("tells the AI that pictures are stills from a video, in order", async () => {
+    const calls = stub([{ match: isClaude, reply: () => jsonResponse(claudeMessage(found())) }]);
+    const images = Array.from({ length: 6 }, () => ({ mediaType: "image/jpeg", data: FAKE_IMAGE }));
+    const r = await post("/import/text", { images, frames: true, url: "https://www.instagram.com/reel/C1abcDEF/" });
+    expect(r.status).toBe(200);
+    const content = calls.find((c) => isClaude(c.url))!.body.messages[0].content;
+    expect(content.filter((x: any) => x.type === "image")).toHaveLength(6);
+    expect(content.at(-1).text).toContain("요리 영상에서 일정한 간격으로 뽑은 장면");
+    const tooMany = await post("/import/text", { images: [...images, ...images], frames: true });
+    expect(tooMany.status).toBe(400);
+  });
+
+  it("does not try profile pages", async () => {
+    const calls = stub([]);
+    const r = await post("/import/url", { url: "https://www.instagram.com/cook_mom/" });
+    expect(r.status).toBe(422);
+    expect(calls).toHaveLength(0);
+  });
+
   it("reads schema.org Recipe JSON-LD from a recipe site", async () => {
     const page = `<html><head><meta property="og:title" content="김치찌개 황금레시피"></head><body>광고<script type="application/ld+json">{"@type":"Recipe","name":"김치찌개","recipeIngredient":["김치 300g","돼지고기 200g"],"recipeInstructions":["고기를 볶는다","김치를 넣고 끓인다"]}</script></body></html>`;
     const calls = stub([
