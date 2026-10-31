@@ -3,6 +3,21 @@ main = "src/index.ts"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]
 
+# 보관형 Observability 수집은 기본으로 끈다 (2026-12-01부터 계정 단위 종량 과금).
+# 앱 요청 처리·AI 사용 한도(KV)와는 별개다. 필요할 때 wrangler tail 로 실시간 점검한다.
+# 계정 전체 과금 방지는 Observability 구독/다른 데이터셋도 별도로 확인해야 한다.
+[observability]
+enabled = false
+
+[observability.logs]
+enabled = false
+
+[observability.traces]
+enabled = false
+
+[observability.issues]
+enabled = false
+
 # AI 키는 비밀값으로 넣는다. 둘 중 하나만 있어도 된다 (AI_PROVIDER=auto 면 Claude 우선).
 #   pnpm --filter @cook/worker exec wrangler secret put ANTHROPIC_API_KEY   # Claude (유료 종량제)
 #   pnpm --filter @cook/worker exec wrangler secret put GEMINI_API_KEY      # Gemini (무료 등급, 유튜브 영상 이해에도 쓴다)
