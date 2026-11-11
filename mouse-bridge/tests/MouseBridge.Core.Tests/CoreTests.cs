@@ -108,10 +108,13 @@ public class ChannelTests
         Assert.Equal(1234, b.PeerListenPort);
         Assert.Equal(5678, a.PeerListenPort);
         var big = new byte[3_000_000]; new Random(1).NextBytes(big);
-        a.Send(big); a.Send(new byte[0]); b.Send(new byte[] { 9 });
+        // Send from another thread: a 3 MB write only completes while the other side is reading.
+        var sending = Task.Run(() => { a.Send(big); a.Send(new byte[0]); });
+        b.Send(new byte[] { 9 });
         Assert.Equal(big, b.Receive());
         Assert.Empty(b.Receive());
         Assert.Equal(new byte[] { 9 }, a.Receive());
+        sending.Wait();
     }
 
     [Fact]
