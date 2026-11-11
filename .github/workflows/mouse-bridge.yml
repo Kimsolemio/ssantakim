@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -20,7 +21,7 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Unit and loopback tests
-        run: dotnet test mouse-bridge/tests/MouseBridge.Core.Tests -c Release
+        run: dotnet test mouse-bridge/tests/MouseBridge.Core.Tests -c Release --logger "console;verbosity=detailed" --blame-hang-timeout 90s
 
       - name: Build MouseBridge.exe
         run: dotnet build mouse-bridge/src/MouseBridge.App -c Release
