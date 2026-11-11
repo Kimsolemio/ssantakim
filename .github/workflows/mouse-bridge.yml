@@ -1,0 +1,56 @@
+name: MouseBridge
+
+on:
+  push:
+    paths:
+      - 'mouse-bridge/**'
+      - '.github/workflows/mouse-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Unit and loopback tests
+        run: dotnet test mouse-bridge/tests/MouseBridge.Core.Tests -c Release
+
+      - name: Build MouseBridge.exe
+        run: dotnet build mouse-bridge/src/MouseBridge.App -c Release
+
+      - name: Windows self-test (hooks, input replay, clipboard)
+        shell: pwsh
+        run: |
+          $exe = "mouse-bridge/src/MouseBridge.App/bin/Release/net48/MouseBridge.exe"
+          $out = Join-Path $env:RUNNER_TEMP "selftest.txt"
+          $p = Start-Process $exe -ArgumentList "--selftest", $out -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); Write-Error "self-test timed out" }
+          if (Test-Path $out) { Get-Content $out -Encoding UTF8 } else { Write-Error "no self-test output" }
+          exit $p.ExitCode
+
+      - name: Startup smoke test
+        shell: pwsh
+        run: |
+          $exe = "mouse-bridge/src/MouseBridge.App/bin/Release/net48/MouseBridge.exe"
+          $p = Start-Process $exe -PassThru
+          Start-Sleep -Seconds 10
+          $log = Join-Path $env:LOCALAPPDATA "MouseBridge\log.txt"
+          if (Test-Path $log) { Get-Content $log -Encoding UTF8 }
+          if ($p.HasExited) { Write-Error "MouseBridge exited during startup (code $($p.ExitCode))"; exit 1 }
+          $text = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
+          $p.Kill()
+          if ($text -notmatch "started") { Write-Error "startup was not logged"; exit 1 }
+          if ($text -match "fatal|hook install failed|clipboard listener failed") { Write-Error "startup reported a problem"; exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MouseBridge
+          path: mouse-bridge/src/MouseBridge.App/bin/Release/net48/MouseBridge.exe
+          if-no-files-found: error
