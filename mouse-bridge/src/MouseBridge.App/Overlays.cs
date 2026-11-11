@@ -53,9 +53,12 @@ namespace MouseBridge.App
         {
             _hideTimer.Stop();
             var v = Native.VirtualScreen();
-            const int w = 4;
+            const int w = 16; // Windows will not make a top-level window narrower than this
             Bounds = new Rectangle(side == Side.Right ? v.Right - w : v.Left, v.Top, w, v.Height);
             if (!Visible) Show();
+            // Whatever width Windows actually granted, keep the strip flush with the screen edge.
+            int x = side == Side.Right ? v.Right - Width : v.Left;
+            if (Left != x) Left = x;
         }
 
         /// <summary>Hide a little later, so a drop that is still being delivered is not lost.</summary>
